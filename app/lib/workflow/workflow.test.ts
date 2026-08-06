@@ -41,6 +41,26 @@ describe('agent preview/apply', () => {
     expect(applied.workflow.captions[0].text).toBe('안녕하세요');
   });
 
+  it('adds a bounded Korean variety caption through preview/apply', async () => {
+    const project = {...structuredClone(initialState), id: 'caption-variety'};
+    const change = await previewAgentCommand(project, {
+      type: 'add_caption',
+      text: '이게 된다고?!',
+      startSeconds: 1,
+      endSeconds: 2,
+      kind: 'variety',
+      preset: 'variety-shock',
+      position: 'center',
+      intensity: 0.7,
+      accentColor: '#ffd43b',
+    });
+    expect(change.proposedProject.workflow.captions[0]).toMatchObject({
+      kind: 'variety', preset: 'variety-shock', position: 'center', intensity: 0.7,
+      accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable',
+    });
+    expect(change.proposedProject.workflow.captions[0].wordTimings).toHaveLength(2);
+  });
+
   it('rejects a caption whose end is not after its start during preview', async () => {
     const project = {...structuredClone(initialState), id: 'caption-range'};
     await expect(previewAgentCommand(project, {type: 'add_caption', text: '잘못된 범위', startSeconds: 2, endSeconds: 2, preset: 'clean'})).rejects.toThrow('Caption end must be after start.');
@@ -121,7 +141,7 @@ describe('render request contract', () => {
     project.id = 'stale-duration';
     project.projectName = 'Stale';
     project.duration = 999;
-    project.workflow.captions = [{id: 'cue', text: 'caption', startSeconds: 1, endSeconds: 3, preset: 'clean', emphasis: [], safeArea: true}];
+    project.workflow.captions = [{id: 'cue', text: 'caption', startSeconds: 1, endSeconds: 3, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}];
     expect(parseRenderProjectRequest({project}).duration).toBe(3);
   });
   it('imports another project into the open project ID and invalidates its approval', () => {
@@ -176,7 +196,7 @@ describe('project reducer workflow invariants', () => {
     base.workflow = {
       ...createDefaultWorkflow(), storyboard,
       approval: {status: 'approved', storyboardHash: 'signed-hash'},
-      captions: [{id: 'caption', text: '끝', startSeconds: 4, endSeconds: 5, preset: 'clean', emphasis: [], safeArea: true}],
+      captions: [{id: 'caption', text: '끝', startSeconds: 4, endSeconds: 5, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}],
     };
     const afterMedia = projectReducer(base, setMediaFiles([]));
     expect(afterMedia.duration).toBe(5);

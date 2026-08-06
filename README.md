@@ -9,7 +9,8 @@ A browser video editor built with Next.js, React, Remotion, IndexedDB and FFmpeg
 - Higgsfield clip, START/END frame, storyboard sheet and audio/SFX provenance
 - Automatic SFX placement at the mapped storyboard cut/shot time
 - Persistent project JSON (`*.clipjs.json`)
-- Korean SRT captions with Pretendard/Noto Sans KR-safe rendering and emphasis
+- Official `@remotion/captions` SRT parsing plus a bounded dialogue/effect/variety Caption Registry
+- Self-hosted Noto Sans KR Variable rendering with deterministic word timing and font-load gating
 - Frame-accurate native transitions plus Remotion Dreamy Zoom, Film Burn and Linear Blur
 - MIT gl-transitions-derived Ripple, Crosswarp, Dissolve and Cross Zoom through Remotion's WebGL2 presentations
 - Timeline-bounded official Remotion Blur, Chromatic Aberration, Vignette, Film Noise, Pixelate and Glow effects
@@ -55,6 +56,16 @@ npm start
 7. Preview with the same Composition used by the final renderer.
 8. Render. The endpoint refuses an unapproved or modified storyboard.
 
+### Caption Registry
+
+The browser Player and server renderer share these deterministic presets in `ProjectComposition`:
+
+- Dialogue: clean, speaker label, cinematic
+- Effect: word highlight, karaoke, typewriter, bounce, glow, impact
+- Variety: sticker, shock, shake, reaction, thought bubble, name tag, quote card
+
+Caption specs allow only a registered kind/preset pair, position, `0..1` intensity, six-digit accent color and cue-bounded word timings. Arbitrary CSS, fonts and animation code are not accepted. Noto Sans KR Variable is bundled locally from `@fontsource-variable/noto-sans-kr` and rendering fails closed if the font cannot load.
+
 Local IndexedDB media remains available to the FFmpeg.wasm exporter. The server Remotion renderer intentionally requires persistent public HTTPS URLs so a local object URL cannot silently produce a broken server render.
 
 ## Agent API
@@ -82,6 +93,7 @@ npm run build     # Remotion prebundle + Next production build
 - For Vercel/cloud rendering, replace the local renderer with Remotion Lambda or the official Remotion-on-Vercel architecture.
 - Review the [Remotion license](https://www.remotion.dev/license) for your organization size and usage.
 - `gl-transitions` is MIT-licensed; the selected shaders are rendered through Remotion's maintained WebGL2 presentation wrappers.
+- `@remotion/captions` declares MIT; Noto Sans KR is bundled under OFL-1.1.
 - The upstream ClipJS code and this fork remain subject to the repository's MIT license.
 
 ## Upstream editor features

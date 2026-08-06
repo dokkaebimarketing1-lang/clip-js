@@ -1,14 +1,16 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   AbsoluteFill,
   Audio,
+  cancelRender,
+  continueRender,
+  delayRender,
   Freeze,
   Img,
   Sequence,
   interpolate,
   staticFile,
   useCurrentFrame,
-  useVideoConfig,
 } from 'remotion';
 import {Video} from '@remotion/media';
 import {crossZoom, dreamyZoom, filmBurn, linearBlur, linearTiming, TransitionSeries, type TransitionPresentation} from '@remotion/transitions';
@@ -17,9 +19,10 @@ import {dissolve} from '@remotion/transitions/dissolve';
 import {ripple} from '@remotion/transitions/ripple';
 import type {EffectDescriptor} from 'remotion';
 import type {MediaFile, ProjectState, TextElement} from '../app/types';
-import type {CaptionCue, EffectSpec, TransitionSpec} from '../app/lib/workflow/schema';
+import type {EffectSpec, TransitionSpec} from '../app/lib/workflow/schema';
 import {activeEffectsAt, buildRemotionEffects} from './effects';
 import {isOfficialTransition} from '../app/lib/workflow/transition-catalog';
+import {CaptionContent} from './captions';
 
 export interface ProjectCompositionProps extends Record<string, unknown> {
   project: ProjectState;
@@ -99,18 +102,6 @@ const TextLayer: React.FC<{item: TextElement; fps: number}> = ({item, fps}) => (
     </div>
   </Sequence>
 );
-
-const CaptionContent: React.FC<{cue: CaptionCue; durationInFrames: number}> = ({cue, durationInFrames}) => {
-  const frame = useCurrentFrame();
-  const {width, height} = useVideoConfig();
-  const scale = cue.preset === 'shorts' ? interpolate(frame, [0, Math.min(6, durationInFrames)], [0.75, 1], {extrapolateRight: 'clamp'}) : 1;
-  const words = cue.text.split(/(\s+)/);
-  return (
-    <div style={{position: 'absolute', left: width * 0.08, width: width * 0.84, bottom: height * 0.08, textAlign: 'center', fontFamily: 'Pretendard, Noto Sans KR, sans-serif', fontWeight: 800, fontSize: Math.max(38, width * 0.038), color: '#fff', textShadow: '0 3px 12px #000, 0 1px 2px #000', transform: `scale(${scale})`, lineHeight: 1.25}}>
-      {words.map((word, index) => cue.emphasis.includes(word.trim()) ? <span key={index} style={{color: '#ffd43b'}}>{word}</span> : word)}
-    </div>
-  );
-};
 
 const TransitionAsset: React.FC<{media: MediaFile; fps: number; trimStart: number; style: React.CSSProperties; effects: EffectDescriptor<unknown>[]}> = ({media, fps, trimStart, style, effects}) => {
   const source = mediaSource(media);
@@ -194,6 +185,12 @@ const TransitionPairContent: React.FC<{transition: TransitionSpec; source: Media
 };
 
 export const ProjectComposition: React.FC<ProjectCompositionProps> = ({project}) => {
+  const [fontHandle] = useState(() => delayRender('Loading Noto Sans KR caption font'));
+  useEffect(() => {
+    document.fonts.load('700 48px "Noto Sans KR Variable"')
+      .then(() => continueRender(fontHandle))
+      .catch((error) => cancelRender(error));
+  }, [fontHandle]);
   const fps = project.fps || 30;
   return (
     <AbsoluteFill style={{backgroundColor: '#000', overflow: 'hidden'}}>

@@ -82,15 +82,50 @@ export const effectSpecSchema = z.object({
   endSeconds: z.number().positive(),
 }).refine((effect) => effect.endSeconds > effect.startSeconds, 'Effect end must be after start');
 
+export const captionKindSchema = z.enum(['dialogue', 'effect', 'variety']);
+export const captionPresetSchema = z.enum([
+  'clean', 'bold-highlight', 'cinematic', 'shorts',
+  'dialogue-clean', 'dialogue-speaker', 'dialogue-cinematic',
+  'word-highlight', 'karaoke', 'typewriter', 'bounce', 'glow', 'impact',
+  'variety-sticker', 'variety-shock', 'variety-shake', 'reaction', 'thought', 'name-tag', 'quote-card',
+]);
+export const captionPositionSchema = z.enum(['top', 'center', 'bottom', 'lower-third']);
+export const captionWordTimingSchema = z.object({
+  text: z.string().min(1).max(100),
+  startMs: z.number().int().nonnegative(),
+  endMs: z.number().int().positive(),
+}).refine((word) => word.endMs > word.startMs, 'Caption word end must be after start');
+
+const captionPresetsByKind: Record<z.infer<typeof captionKindSchema>, ReadonlySet<string>> = {
+  dialogue: new Set(['clean', 'bold-highlight', 'cinematic', 'shorts', 'dialogue-clean', 'dialogue-speaker', 'dialogue-cinematic']),
+  effect: new Set(['word-highlight', 'karaoke', 'typewriter', 'bounce', 'glow', 'impact']),
+  variety: new Set(['variety-sticker', 'variety-shock', 'variety-shake', 'reaction', 'thought', 'name-tag', 'quote-card']),
+};
+
 export const captionCueSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1).max(500),
   startSeconds: z.number().nonnegative(),
   endSeconds: z.number().positive(),
-  preset: z.enum(['clean', 'bold-highlight', 'cinematic', 'shorts']).default('clean'),
+  kind: captionKindSchema.default('dialogue'),
+  preset: captionPresetSchema.default('clean'),
+  speaker: z.string().min(1).max(80).optional(),
+  position: captionPositionSchema.default('bottom'),
+  intensity: z.number().min(0).max(1).default(0.5),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#ffd43b'),
+  fontFamily: z.literal('Noto Sans KR Variable').default('Noto Sans KR Variable'),
+  wordTimings: z.array(captionWordTimingSchema).max(200).default([]),
   emphasis: z.array(z.string()).default([]),
   safeArea: z.boolean().default(true),
-}).refine((cue) => cue.endSeconds > cue.startSeconds, 'Caption end must be after start');
+}).superRefine((cue, ctx) => {
+  if (cue.endSeconds <= cue.startSeconds) ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Caption end must be after start'});
+  if (!captionPresetsByKind[cue.kind].has(cue.preset)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['preset'], message: 'Caption preset is not allowed for this caption kind'});
+  const startMs = Math.round(cue.startSeconds * 1000);
+  const endMs = Math.round(cue.endSeconds * 1000);
+  cue.wordTimings.forEach((word, index) => {
+    if (word.startMs < startMs || word.endMs > endMs) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['wordTimings', index], message: 'Caption word timing must stay within cue range'});
+  });
+});
 
 export const workflowStateSchema = z.object({
   storyboard: storyboardSchema.optional(),
@@ -98,7 +133,7 @@ export const workflowStateSchema = z.object({
   higgsfieldAssets: z.array(higgsfieldAssetSchema).default([]),
   transitions: z.array(transitionSchema).default([]),
   effects: z.array(effectSpecSchema).max(1000).default([]),
-  captions: z.array(captionCueSchema).default([]),
+  captions: z.array(captionCueSchema).max(5000).default([]),
 });
 
 export type Storyboard = z.infer<typeof storyboardSchema>;
@@ -109,6 +144,10 @@ export type HiggsfieldAsset = z.infer<typeof higgsfieldAssetSchema>;
 export type TransitionSpec = z.infer<typeof transitionSchema>;
 export type EffectType = z.infer<typeof effectTypeSchema>;
 export type EffectSpec = z.infer<typeof effectSpecSchema>;
+export type CaptionKind = z.infer<typeof captionKindSchema>;
+export type CaptionPreset = z.infer<typeof captionPresetSchema>;
+export type CaptionPosition = z.infer<typeof captionPositionSchema>;
+export type CaptionWordTiming = z.infer<typeof captionWordTimingSchema>;
 export type CaptionCue = z.infer<typeof captionCueSchema>;
 export type WorkflowState = z.infer<typeof workflowStateSchema>;
 
