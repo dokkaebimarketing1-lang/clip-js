@@ -9,6 +9,13 @@ const placement = (position: CaptionPosition, height: number): React.CSSProperti
   return {bottom: height * 0.08};
 };
 
+export const captionStackStyle = (hasSpeaker: boolean, height: number): React.CSSProperties => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  rowGap: hasSpeaker ? Math.max(10, height * 0.014) : 0,
+});
+
 const presetStyle = (cue: CaptionCue, frame: number, fps: number): React.CSSProperties => {
   const strength = cue.intensity;
   const entry = spring({frame, fps, config: {damping: 13, stiffness: 180}});
@@ -36,9 +43,9 @@ export const CaptionContent: React.FC<{cue: CaptionCue; durationInFrames: number
   const animatedWords = ['word-highlight', 'karaoke', 'bounce', 'glow'].includes(cue.preset);
 
   return (
-    <div style={{position: 'absolute', left: width * 0.07, width: width * 0.86, textAlign: 'center', ...placement(cue.position, height)}}>
-      {cue.speaker && <div style={{display: 'inline-block', marginBottom: 8, padding: '5px 14px', borderRadius: 8, background: cue.accentColor, color: '#111', fontFamily: cue.fontFamily, fontWeight: 800, fontSize: Math.max(22, width * 0.018)}}>{cue.speaker}</div>}
-      <div style={{display: 'inline-block', maxWidth: '100%', fontFamily: cue.fontFamily, fontWeight: cue.kind === 'dialogue' ? 750 : 900, fontSize: Math.max(38, width * (cue.kind === 'variety' ? 0.052 : 0.04)), lineHeight: 1.25, color: '#fff', overflowWrap: 'break-word', wordBreak: 'keep-all', WebkitTextStroke: cue.kind === 'variety' ? '2px #111' : undefined, paintOrder: 'stroke fill', textShadow: '0 4px 12px #000, 0 2px 3px #000', ...presetStyle(cue, frame, fps)}}>
+    <div style={{position: 'absolute', left: width * 0.07, width: width * 0.86, textAlign: 'center', ...captionStackStyle(Boolean(cue.speaker), height), ...placement(cue.position, height)}}>
+      {cue.speaker && <div style={{display: 'block', padding: '5px 14px', borderRadius: 8, background: cue.accentColor, color: '#111', fontFamily: cue.fontFamily, fontWeight: 800, fontSize: Math.max(22, width * 0.018)}}>{cue.speaker}</div>}
+      <div style={{display: 'block', width: 'fit-content', maxWidth: '100%', fontFamily: cue.fontFamily, fontWeight: cue.kind === 'dialogue' ? 750 : 900, fontSize: Math.max(38, width * (cue.kind === 'variety' ? 0.052 : 0.04)), lineHeight: 1.25, color: '#fff', overflowWrap: 'break-word', wordBreak: 'keep-all', WebkitTextStroke: cue.kind === 'variety' ? '2px #111' : undefined, paintOrder: 'stroke fill', textShadow: '0 4px 12px #000, 0 2px 3px #000', ...presetStyle(cue, frame, fps)}}>
         {cue.preset === 'typewriter' ? cue.text.slice(0, typewriterLength) : animatedWords ? words.map((word, index) => {
           const active = index === activeWord;
           const bounce = cue.preset === 'bounce' && active ? spring({frame: Math.max(0, frame - Math.round((word.startMs - cue.startSeconds * 1000) / 1000 * fps)), fps, config: {damping: 9}}) : 1;
