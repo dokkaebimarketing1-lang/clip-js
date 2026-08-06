@@ -2,8 +2,9 @@ import {z} from 'zod';
 import {sha256} from '../workflow/hash';
 import {type ProjectState} from '@/app/types';
 import {assertSafeRemoteUrl} from '../security/remote-url';
-import {effectTypeSchema, transitionTypeSchema} from '../workflow/schema';
+import {captionKindSchema, captionPositionSchema, captionPresetSchema, effectTypeSchema, transitionTypeSchema} from '../workflow/schema';
 import {transitionProviderFor} from '../workflow/transition-catalog';
+import {buildWordTimings, CAPTION_FONT_FAMILY, isCaptionPresetAllowedForKind} from '../captions/caption-registry';
 
 export const agentCommandSchema = z.discriminatedUnion('type', [
   z.object({
@@ -19,7 +20,18 @@ export const agentCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({type: z.literal('trim_clip'), mediaId: z.string().min(1), startTime: z.number().nonnegative(), endTime: z.number().positive()}),
   z.object({type: z.literal('add_transition'), fromMediaId: z.string().min(1), toMediaId: z.string().min(1), transition: transitionTypeSchema.exclude(['none']), durationSeconds: z.number().min(0).max(3)}),
-  z.object({type: z.literal('add_caption'), text: z.string().min(1).max(500), startSeconds: z.number().nonnegative(), endSeconds: z.number().positive(), preset: z.enum(['clean', 'bold-highlight', 'cinematic', 'shorts']).default('clean')}),
+  z.object({
+    type: z.literal('add_caption'),
+    text: z.string().min(1).max(500),
+    startSeconds: z.number().nonnegative(),
+    endSeconds: z.number().positive(),
+    kind: captionKindSchema.default('dialogue'),
+    preset: captionPresetSchema.default('dialogue-clean'),
+    speaker: z.string().min(1).max(80).optional(),
+    position: captionPositionSchema.default('bottom'),
+    intensity: z.number().min(0).max(1).default(0.5),
+    accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#ffd43b'),
+  }),
   z.object({type: z.literal('set_playback_speed'), mediaId: z.string().min(1), playbackSpeed: z.number().min(0.1).max(4)}),
   z.object({
     type: z.literal('add_effect'),
@@ -152,8 +164,24 @@ export const applyAgentCommand = (project: ProjectState, input: unknown): {proje
     return finalizeAgentChange(next, `Add ${command.effect} effect to ${media.fileName} (${startSeconds}s–${endSeconds}s)`);
   }
   if (command.endSeconds <= command.startSeconds) throw new Error('Caption end must be after start.');
-  next.workflow.captions.push({id: crypto.randomUUID(), text: command.text, startSeconds: command.startSeconds, endSeconds: command.endSeconds, preset: command.preset, emphasis: [], safeArea: true});
-  return finalizeAgentChange(next, `Add caption “${command.text}”`);
+  if (!isCaptionPresetAllowedForKind(command.preset, command.kind)) throw new Error('Caption preset is not allowed for this caption kind.');
+  next.workflow.captions.push({
+    id: crypto.randomUUID(),
+    text: command.text,
+    startSeconds: command.startSeconds,
+    endSeconds: command.endSeconds,
+    kind: command.kind,
+    preset: command.preset,
+    speaker: command.speaker,
+    position: command.position,
+    intensity: command.intensity,
+    accentColor: command.accentColor,
+    fontFamily: CAPTION_FONT_FAMILY,
+    wordTimings: buildWordTimings(command.text, Math.round(command.startSeconds * 1000), Math.round(command.endSeconds * 1000)),
+    emphasis: [],
+    safeArea: true,
+  });
+  return finalizeAgentChange(next, `Add ${command.kind} caption “${command.text}”`);
 };
 
 export const previewAgentCommand = async (project: ProjectState, input: unknown): Promise<AgentChangeSet> => {

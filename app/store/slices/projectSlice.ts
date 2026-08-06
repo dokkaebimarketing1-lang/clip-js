@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { TextElement, MediaFile, ActiveElement, ExportConfig } from '../../types';
 import { ProjectState } from '../../types';
-import {createDefaultWorkflow, type WorkflowState} from '@/app/lib/workflow/schema';
+import {createDefaultWorkflow, type WorkflowState, workflowStateSchema} from '@/app/lib/workflow/schema';
 
 export const initialState: ProjectState = {
     id: crypto.randomUUID(),
@@ -132,14 +132,7 @@ const projectStateSlice = createSlice({
         // Special reducer for rehydrating state from IndexedDB
         rehydrate: (state, action: PayloadAction<ProjectState>) => {
             const workflow = action.payload.workflow ?? createDefaultWorkflow();
-            const normalizedWorkflow = {
-                ...createDefaultWorkflow(),
-                ...workflow,
-                higgsfieldAssets: workflow.higgsfieldAssets ?? [],
-                transitions: workflow.transitions ?? [],
-                effects: workflow.effects ?? [],
-                captions: workflow.captions ?? [],
-            };
+            const normalizedWorkflow = workflowStateSchema.parse(workflow);
             const duration = calculateTotalDuration(
                 action.payload.mediaFiles ?? [],
                 action.payload.textElements ?? [],

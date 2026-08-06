@@ -5,12 +5,13 @@ import toast from 'react-hot-toast';
 import {getFile, useAppDispatch, useAppSelector} from '@/app/store';
 import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {assertVideoGenerationAllowed, invalidateApproval} from '@/app/lib/workflow/approval';
-import {approvalSchema, storyboardSchema, type EffectSpec, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {approvalSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
 import {EFFECT_CATALOG} from '@/app/lib/workflow/effect-catalog';
 import {TRANSITION_CATALOG, transitionProviderFor} from '@/app/lib/workflow/transition-catalog';
 import {assertSafeRemoteUrl} from '@/app/lib/security/remote-url';
 import {downloadProjectDocument, importProjectIntoCurrentProject, parseProjectDocument} from '@/app/lib/workflow/project-file';
 import {parseSrt} from '@/app/lib/captions/srt';
+import {buildWordTimings, CAPTION_CATALOG, CAPTION_FONT_FAMILY} from '@/app/lib/captions/caption-registry';
 import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
 
@@ -28,6 +29,14 @@ export default function WorkflowPanel() {
   const [duration, setDuration] = useState(5);
   const [role, setRole] = useState<HiggsfieldAsset['role']>('clip');
   const [srt, setSrt] = useState('');
+  const [captionText, setCaptionText] = useState('');
+  const [captionKind, setCaptionKind] = useState<CaptionKind>('dialogue');
+  const [captionPreset, setCaptionPreset] = useState<CaptionPreset>('dialogue-clean');
+  const [captionPosition, setCaptionPosition] = useState<CaptionPosition>('bottom');
+  const [captionStart, setCaptionStart] = useState(0);
+  const [captionEnd, setCaptionEnd] = useState(2);
+  const [captionIntensity, setCaptionIntensity] = useState(0.6);
+  const [captionAccent, setCaptionAccent] = useState('#ffd43b');
   const [transitionType, setTransitionType] = useState<TransitionSpec['type']>('fade');
   const [fromMediaId, setFromMediaId] = useState('');
   const [toMediaId, setToMediaId] = useState('');
@@ -141,6 +150,22 @@ export default function WorkflowPanel() {
     }
   };
 
+  const addCaption = () => {
+    if (!captionText.trim()) return toast.error('Enter caption text.');
+    if (captionEnd <= captionStart) return toast.error('Caption end must be after start.');
+    const startMs = Math.round(captionStart * 1000);
+    const endMs = Math.round(captionEnd * 1000);
+    dispatch(setWorkflow({...project.workflow, captions: [...project.workflow.captions, {
+      id: crypto.randomUUID(), text: captionText.trim(), startSeconds: captionStart, endSeconds: captionEnd,
+      kind: captionKind, preset: captionPreset, position: captionPosition, intensity: captionIntensity,
+      accentColor: captionAccent, fontFamily: CAPTION_FONT_FAMILY,
+      wordTimings: buildWordTimings(captionText.trim(), startMs, endMs), emphasis: [], safeArea: true,
+    }]}));
+    dispatch(setIncludeSubtitles(true));
+    setCaptionText('');
+    toast.success(`${captionKind} caption added.`);
+  };
+
   const addTransition = () => {
     if (!fromMediaId || !toMediaId || fromMediaId === toMediaId) return toast.error('Choose two different media clips.');
     const transition: TransitionSpec = {
@@ -223,6 +248,22 @@ export default function WorkflowPanel() {
         <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={project.exportSettings.includeSubtitles} onChange={(event) => dispatch(setIncludeSubtitles(event.target.checked))} /> Include captions in preview and render</label>
         <textarea className={`${fieldClass} min-h-24`} value={srt} onChange={(event) => setSrt(event.target.value)} placeholder={'1\n00:00:00,000 --> 00:00:02,000\n한국어 자막'} />
         <button className={buttonClass} onClick={importSrt} disabled={!srt}>Import SRT</button>
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <h4 className="mb-2 font-semibold">Caption Registry · Noto Sans KR</h4>
+          <input className={fieldClass} value={captionText} onChange={(event) => setCaptionText(event.target.value)} placeholder="대사·효과·예능 자막 문구" />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <select className={fieldClass} value={captionKind} onChange={(event) => { const kind = event.target.value as CaptionKind; setCaptionKind(kind); setCaptionPreset(CAPTION_CATALOG.find((entry) => entry.kind === kind)!.preset); }}>
+              <option value="dialogue">대사자막</option><option value="effect">효과자막</option><option value="variety">예능자막</option>
+            </select>
+            <select className={fieldClass} value={captionPreset} onChange={(event) => setCaptionPreset(event.target.value as CaptionPreset)}>{CAPTION_CATALOG.filter((entry) => entry.kind === captionKind).map((entry) => <option key={entry.preset} value={entry.preset}>{entry.label}</option>)}</select>
+            <select className={fieldClass} value={captionPosition} onChange={(event) => setCaptionPosition(event.target.value as CaptionPosition)}>{['top', 'center', 'bottom', 'lower-third'].map((value) => <option key={value}>{value}</option>)}</select>
+            <input className={fieldClass} type="color" value={captionAccent} onChange={(event) => setCaptionAccent(event.target.value)} aria-label="Caption accent color" />
+            <input className={fieldClass} type="number" min={0} step={0.1} value={captionStart} onChange={(event) => setCaptionStart(Number(event.target.value))} aria-label="Caption start seconds" />
+            <input className={fieldClass} type="number" min={0.1} step={0.1} value={captionEnd} onChange={(event) => setCaptionEnd(Number(event.target.value))} aria-label="Caption end seconds" />
+          </div>
+          <label className="mt-2 block text-xs text-gray-400">Intensity {captionIntensity.toFixed(2)}<input className="w-full" type="range" min={0} max={1} step={0.05} value={captionIntensity} onChange={(event) => setCaptionIntensity(Number(event.target.value))} /></label>
+          <button className={`${buttonClass} mt-2`} onClick={addCaption} disabled={!captionText.trim()}>Add registry caption</button>
+        </div>
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
