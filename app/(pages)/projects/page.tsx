@@ -8,6 +8,7 @@ import { addProject, deleteProject, rehydrateProjects, setCurrentProject } from 
 import { listProjects, storeProject, deleteProject as deleteProjectFromDB } from '../../store';
 import { ProjectState } from '../../types';
 import { toast } from 'react-hot-toast';
+import {createDefaultWorkflow} from '@/app/lib/workflow/schema';
 export default function Projects() {
     const dispatch = useAppDispatch();
     const { projects, currentProjectId } = useAppSelector((state) => state.projects);
@@ -71,8 +72,9 @@ export default function Projects() {
                 speed: 'fastest',
                 fps: 30,
                 format: 'mp4',
-                includeSubtitles: false,
+                includeSubtitles: true,
             },
+            workflow: createDefaultWorkflow(),
         };
 
         await storeProject(newProject);

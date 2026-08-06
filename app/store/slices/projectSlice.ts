@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { TextElement, MediaFile, ActiveElement, ExportConfig } from '../../types';
 import { ProjectState } from '../../types';
+import {createDefaultWorkflow, type WorkflowState} from '@/app/lib/workflow/schema';
 
 export const initialState: ProjectState = {
     id: crypto.randomUUID(),
@@ -30,17 +31,19 @@ export const initialState: ProjectState = {
         speed: 'fastest',
         fps: 30,
         format: 'mp4',
-        includeSubtitles: false,
+        includeSubtitles: true,
     },
+    workflow: createDefaultWorkflow(),
 };
 
 const calculateTotalDuration = (
     mediaFiles: MediaFile[],
-    textElements: TextElement[]
+    textElements: TextElement[],
+    captionEnd = 0
 ): number => {
     const mediaDurations = mediaFiles.map(v => v.positionEnd);
     const textDurations = textElements.map(v => v.positionEnd);
-    return Math.max(0, ...mediaDurations, ...textDurations);
+    return Math.max(0, captionEnd, ...mediaDurations, ...textDurations);
 };
 
 const projectStateSlice = createSlice({
@@ -50,7 +53,8 @@ const projectStateSlice = createSlice({
         setMediaFiles: (state, action: PayloadAction<MediaFile[]>) => {
             state.mediaFiles = action.payload;
             // Calculate duration based on the last video's end time
-            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements);
+            const captionEnd = state.workflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
+            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, captionEnd);
         },
         setProjectName: (state, action: PayloadAction<string>) => {
             state.projectName = action.payload;
@@ -67,7 +71,8 @@ const projectStateSlice = createSlice({
 
         setTextElements: (state, action: PayloadAction<TextElement[]>) => {
             state.textElements = action.payload;
-            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements);
+            const captionEnd = state.workflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
+            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, captionEnd);
         },
         setCurrentTime: (state, action: PayloadAction<number>) => {
             state.currentTime = action.payload;
@@ -93,6 +98,19 @@ const projectStateSlice = createSlice({
         setExportSettings: (state, action: PayloadAction<ExportConfig>) => {
             state.exportSettings = action.payload;
         },
+        setWorkflow: (state, action: PayloadAction<WorkflowState>) => {
+            const storyboardChanged = JSON.stringify(state.workflow.storyboard ?? null) !== JSON.stringify(action.payload.storyboard ?? null);
+            state.workflow = storyboardChanged
+                ? { ...action.payload, approval: { status: 'invalidated' } }
+                : action.payload;
+            const mediaEnd = state.mediaFiles.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
+            const textEnd = state.textElements.reduce((max, item) => Math.max(max, item.positionEnd), 0);
+            const captionEnd = action.payload.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
+            state.duration = Math.max(mediaEnd, textEnd, captionEnd);
+        },
+        setIncludeSubtitles: (state, action: PayloadAction<boolean>) => {
+            state.exportSettings.includeSubtitles = action.payload;
+        },
         setResolution: (state, action: PayloadAction<string>) => {
             state.exportSettings.resolution = action.payload;
         },
@@ -113,7 +131,20 @@ const projectStateSlice = createSlice({
         },
         // Special reducer for rehydrating state from IndexedDB
         rehydrate: (state, action: PayloadAction<ProjectState>) => {
-            return { ...state, ...action.payload };
+            const workflow = action.payload.workflow ?? createDefaultWorkflow();
+            const normalizedWorkflow = {
+                ...createDefaultWorkflow(),
+                ...workflow,
+                higgsfieldAssets: workflow.higgsfieldAssets ?? [],
+                transitions: workflow.transitions ?? [],
+                captions: workflow.captions ?? [],
+            };
+            const duration = calculateTotalDuration(
+                action.payload.mediaFiles ?? [],
+                action.payload.textElements ?? [],
+                normalizedWorkflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0),
+            );
+            return {...state, ...action.payload, workflow: normalizedWorkflow, duration};
         },
         createNewProject: (state) => {
             return { ...initialState };
@@ -129,6 +160,8 @@ export const {
     setIsPlaying,
     setFilesID,
     setExportSettings,
+    setWorkflow,
+    setIncludeSubtitles,
     setResolution,
     setQuality,
     setSpeed,
