@@ -7,8 +7,9 @@ import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/
 import {assertVideoGenerationAllowed, invalidateApproval} from '@/app/lib/workflow/approval';
 import {approvalSchema, storyboardSchema, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
 import {assertSafeRemoteUrl} from '@/app/lib/security/remote-url';
-import {downloadProjectDocument, parseProjectDocument} from '@/app/lib/workflow/project-file';
+import {downloadProjectDocument, importProjectIntoCurrentProject, parseProjectDocument} from '@/app/lib/workflow/project-file';
 import {parseSrt} from '@/app/lib/captions/srt';
+import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
@@ -32,6 +33,7 @@ export default function WorkflowPanel() {
   const [apiToken, setApiToken] = useState('');
   const [approvalToken, setApprovalToken] = useState('');
   const [rendering, setRendering] = useState(false);
+  const [renderDownloadUrl, setRenderDownloadUrl] = useState('');
   const approvalLabel = useMemo(() => project.workflow.approval.status.toUpperCase(), [project.workflow.approval.status]);
 
   const importStoryboard = () => {
@@ -111,7 +113,7 @@ export default function WorkflowPanel() {
 
   const importProject = async (file: File) => {
     try {
-      const parsed = parseProjectDocument(JSON.parse(await file.text()));
+      const parsed = importProjectIntoCurrentProject(parseProjectDocument(JSON.parse(await file.text())), project.id);
       const mediaFiles = await Promise.all(parsed.mediaFiles.map(async (media) => {
         if (media.remoteUrl) return {...media, src: media.remoteUrl};
         const stored = await getFile(media.fileId);
@@ -149,6 +151,7 @@ export default function WorkflowPanel() {
 
   const renderProject = async () => {
     setRendering(true);
+    setRenderDownloadUrl('');
     try {
       await assertVideoGenerationAllowed(project.workflow);
       const response = await fetch('/api/render', {
@@ -158,9 +161,9 @@ export default function WorkflowPanel() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Render failed.');
-      window.open(result.downloadUrl, '_blank', 'noopener,noreferrer');
+      setRenderDownloadUrl(normalizeRenderDownloadUrl(result.downloadUrl, window.location.origin));
       setApiToken('');
-      toast.success('Remotion render completed.');
+      toast.success('Remotion render completed. Use the download link below.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Render failed.');
     } finally {
@@ -217,6 +220,7 @@ export default function WorkflowPanel() {
         <h3 className="font-semibold">Remotion final render</h3>
         <input className={fieldClass} type="password" value={apiToken} onChange={(event) => setApiToken(event.target.value)} placeholder="CLIPJS_AGENT_TOKEN (production)" />
         <button className={buttonClass} onClick={renderProject} disabled={rendering || project.workflow.approval.status !== 'approved'}>{rendering ? 'Rendering…' : 'Render approved project'}</button>
+        {renderDownloadUrl && <a className={`${buttonClass} inline-block`} href={renderDownloadUrl} download>Download rendered MP4</a>}
       </section>
     </div>
   );

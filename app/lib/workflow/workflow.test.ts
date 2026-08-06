@@ -3,10 +3,11 @@ import {approveStoryboard, assertVideoGenerationAllowed, ApprovalRequiredError, 
 import {createDefaultWorkflow, type Storyboard} from './schema';
 import {approveAgentChange, previewAgentCommand} from '../agent/commands';
 import {assertSafeRemoteUrl, isHostnameAllowed} from '../security/remote-url';
-import projectReducer, {initialState, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
-import {parseRenderProjectRequest} from './project-file';
+import projectReducer, {initialState, rehydrate, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
+import {importProjectIntoCurrentProject, parseRenderProjectRequest} from './project-file';
 import {assertRenderLimits} from '../render/limits';
 import {createRenderDownloadToken, verifyRenderDownloadToken} from '../security/api-auth';
+import {normalizeRenderDownloadUrl} from '../render/download-url';
 
 const storyboard: Storyboard = {
   version: 'v1', title: 'Approved test', noBgm: true,
@@ -38,6 +39,11 @@ describe('agent preview/apply', () => {
     await expect(approveAgentChange(runtimeOnlyChange, change, change.token)).resolves.toBeDefined();
     const applied = await approveAgentChange(project, change, change.token);
     expect(applied.workflow.captions[0].text).toBe('안녕하세요');
+  });
+
+  it('rejects a caption whose end is not after its start during preview', async () => {
+    const project = {...structuredClone(initialState), id: 'caption-range'};
+    await expect(previewAgentCommand(project, {type: 'add_caption', text: '잘못된 범위', startSeconds: 2, endSeconds: 2, preset: 'clean'})).rejects.toThrow('Caption end must be after start.');
   });
 
   it('imports storyboard-mapped Higgsfield SFX at the exact shot frame', async () => {
@@ -89,12 +95,37 @@ describe('render request contract', () => {
     project.workflow.captions = [{id: 'cue', text: 'caption', startSeconds: 1, endSeconds: 3, preset: 'clean', emphasis: [], safeArea: true}];
     expect(parseRenderProjectRequest({project}).duration).toBe(3);
   });
+  it('imports another project into the open project ID and invalidates its approval', () => {
+    const imported = structuredClone(initialState);
+    imported.id = 'exported-project';
+    imported.projectName = 'Imported';
+    imported.workflow = {
+      ...createDefaultWorkflow(),
+      storyboard,
+      approval: {status: 'approved', storyboardHash: 'hash', signature: 'signature'},
+    };
+    const normalized = importProjectIntoCurrentProject(imported, 'open-project');
+    expect(normalized.id).toBe('open-project');
+    expect(normalized.projectName).toBe('Imported');
+    expect(normalized.workflow.approval.status).toBe('invalidated');
+
+    const rehydrated = projectReducer({...structuredClone(initialState), id: 'open-project', projectName: 'Open'}, rehydrate(normalized));
+    expect(rehydrated.id).toBe('open-project');
+    expect(rehydrated.projectName).toBe('Imported');
+    expect(rehydrated.workflow.approval.status).toBe('invalidated');
+  });
   it('rejects excessive render duration, fps, and resolution', () => {
     const project = {...structuredClone(initialState), id: 'limits', projectName: 'Limits', duration: 1};
     expect(() => assertRenderLimits(project)).not.toThrow();
     expect(() => assertRenderLimits({...project, duration: 3601})).toThrow('duration');
     expect(() => assertRenderLimits({...project, fps: 120})).toThrow('fps');
     expect(() => assertRenderLimits({...project, resolution: {width: 7680, height: 4320}})).toThrow('resolution');
+  });
+  it('normalizes only same-origin signed render download routes', () => {
+    expect(normalizeRenderDownloadUrl('/api/render/file/render-id?expires=1&token=signed', 'https://clip.example')).toBe('/api/render/file/render-id?expires=1&token=signed');
+    expect(() => normalizeRenderDownloadUrl('https://evil.example/file.mp4', 'https://clip.example')).toThrow('invalid');
+    expect(() => normalizeRenderDownloadUrl('/projects', 'https://clip.example')).toThrow('invalid');
+    expect(() => normalizeRenderDownloadUrl('/api/render/file/render-id/extra', 'https://clip.example')).toThrow('invalid');
   });
   it('signs render downloads and rejects tampered tokens', () => {
     const previous = process.env.CLIPJS_AGENT_TOKEN;
