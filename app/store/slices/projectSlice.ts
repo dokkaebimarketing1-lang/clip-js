@@ -137,6 +137,7 @@ const projectStateSlice = createSlice({
                 ...workflow,
                 higgsfieldAssets: workflow.higgsfieldAssets ?? [],
                 transitions: workflow.transitions ?? [],
+                effects: workflow.effects ?? [],
                 captions: workflow.captions ?? [],
             };
             const duration = calculateTotalDuration(

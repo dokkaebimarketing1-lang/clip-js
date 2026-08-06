@@ -48,13 +48,39 @@ export const higgsfieldAssetSchema = z.object({
   durationSeconds: z.number().positive().optional(),
 });
 
+export const transitionTypeSchema = z.enum([
+  'none', 'fade', 'wipe', 'slide', 'whip-pan', 'flash', 'blur', 'push', 'zoom',
+  'dreamy-zoom', 'film-burn', 'linear-blur',
+  'ripple', 'crosswarp', 'dissolve', 'cross-zoom',
+]);
+
 export const transitionSchema = z.object({
   id: z.string().min(1),
   fromMediaId: z.string().min(1),
   toMediaId: z.string().min(1),
-  type: z.enum(['none', 'fade', 'wipe', 'slide', 'whip-pan', 'flash', 'blur', 'push', 'zoom']),
+  type: transitionTypeSchema,
+  provider: z.enum(['native', 'remotion', 'gl-transitions']).default('native'),
   durationSeconds: z.number().min(0).max(3),
 });
+
+export const effectTypeSchema = z.enum([
+  'blur',
+  'chromatic-aberration',
+  'vignette',
+  'noise',
+  'pixelate',
+  'glow',
+]);
+
+export const effectSpecSchema = z.object({
+  id: z.string().min(1),
+  targetMediaId: z.string().min(1),
+  type: effectTypeSchema,
+  provider: z.literal('remotion').default('remotion'),
+  intensity: z.number().min(0).max(1),
+  startSeconds: z.number().nonnegative(),
+  endSeconds: z.number().positive(),
+}).refine((effect) => effect.endSeconds > effect.startSeconds, 'Effect end must be after start');
 
 export const captionCueSchema = z.object({
   id: z.string().min(1),
@@ -71,6 +97,7 @@ export const workflowStateSchema = z.object({
   approval: approvalSchema.default({status: 'draft'}),
   higgsfieldAssets: z.array(higgsfieldAssetSchema).default([]),
   transitions: z.array(transitionSchema).default([]),
+  effects: z.array(effectSpecSchema).max(1000).default([]),
   captions: z.array(captionCueSchema).default([]),
 });
 
@@ -80,6 +107,8 @@ export type StoryboardShot = z.infer<typeof storyboardShotSchema>;
 export type StoryboardApproval = z.infer<typeof approvalSchema>;
 export type HiggsfieldAsset = z.infer<typeof higgsfieldAssetSchema>;
 export type TransitionSpec = z.infer<typeof transitionSchema>;
+export type EffectType = z.infer<typeof effectTypeSchema>;
+export type EffectSpec = z.infer<typeof effectSpecSchema>;
 export type CaptionCue = z.infer<typeof captionCueSchema>;
 export type WorkflowState = z.infer<typeof workflowStateSchema>;
 
@@ -87,5 +116,6 @@ export const createDefaultWorkflow = (): WorkflowState => ({
   approval: {status: 'draft'},
   higgsfieldAssets: [],
   transitions: [],
+  effects: [],
   captions: [],
 });

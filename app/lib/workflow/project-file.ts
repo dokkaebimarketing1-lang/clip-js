@@ -43,7 +43,19 @@ export const projectStateSchema = z.object({
   mediaFiles: z.array(mediaFileSchema).max(500),
   textElements: z.array(textElementSchema).max(1000),
   workflow: workflowStateSchema,
-}).passthrough();
+}).passthrough().superRefine((project, ctx) => {
+  const mediaById = new Map(project.mediaFiles.map((media) => [media.id, media]));
+  project.workflow.effects.forEach((effect, index) => {
+    const media = mediaById.get(effect.targetMediaId);
+    if (!media || !['video', 'image'].includes(media.type)) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path: ['workflow', 'effects', index, 'targetMediaId'], message: 'Effect target must be visual media.'});
+      return;
+    }
+    if (effect.startSeconds < media.positionStart || effect.endSeconds > media.positionEnd) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path: ['workflow', 'effects', index], message: 'Effect range must stay within the target media timeline range.'});
+    }
+  });
+});
 
 const projectDocumentSchema = z.object({
   kind: z.literal('clipjs-storyboard-project'),
