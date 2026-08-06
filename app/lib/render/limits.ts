@@ -11,7 +11,7 @@ export const assertRenderLimits = (project: ProjectState): void => {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width > 3840 || height > 2160 || width * height > 8_294_400) {
     throw new Error('Render resolution must be positive and no larger than 3840x2160.');
   }
-  if (project.mediaFiles.length > 500 || project.textElements.length > 1000 || project.workflow.captions.length > 5000 || project.workflow.transitions.length > 500) {
+  if (project.mediaFiles.length > 500 || project.textElements.length > 1000 || project.workflow.captions.length > 5000 || project.workflow.transitions.length > 500 || project.workflow.effects.length > 1000) {
     throw new Error('Render project exceeds the supported item count.');
   }
 };

@@ -27,7 +27,23 @@ Supported mutation commands:
 - `trim_clip`
 - `set_playback_speed`
 - `add_transition`
+- `add_effect` — add a bounded official Remotion effect to visual media only
 - `add_caption`
+
+Example effect command:
+
+```json
+{
+  "type": "add_effect",
+  "mediaId": "clip-id",
+  "effect": "chromatic-aberration",
+  "intensity": 0.4,
+  "startSeconds": 2,
+  "endSeconds": 3
+}
+```
+
+Effects are limited to `blur`, `chromatic-aberration`, `vignette`, `noise`, `pixelate`, and `glow`. The range must remain inside the target video or image timeline range. Omitting the range applies the effect to the full clip.
 
 The response is a complete `AgentChangeSet` containing `summary`, `proposedProject`, `baseProjectHash`, a SHA-256 integrity `token`, and an owner-secret-backed `serverSignature`. No state is changed by preview; Apply rejects any payload not signed by the Preview endpoint.
 
@@ -59,4 +75,4 @@ The apply endpoint recomputes the token and rejects stale or modified previews. 
 - a URL is local/private, outside `CLIPJS_MEDIA_HOSTS`, or DNS resolves to a private network;
 - the production API token is absent or invalid.
 
-A successful response returns `{renderId, downloadUrl}`. Download URLs use strict UUID filenames plus a 10-minute HMAC signature. Rendering is capped at 4K, 60fps, one hour, 500 media items, 1,000 text items, 5,000 captions, and 500 transitions.
+A successful response returns `{renderId, downloadUrl}`. Download URLs use strict UUID filenames plus a 10-minute HMAC signature. Rendering is capped at 4K, 60fps, one hour, 500 media items, 1,000 text items, 5,000 captions, 500 transitions, and 1,000 effects.

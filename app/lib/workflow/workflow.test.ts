@@ -46,6 +46,35 @@ describe('agent preview/apply', () => {
     await expect(previewAgentCommand(project, {type: 'add_caption', text: '잘못된 범위', startSeconds: 2, endSeconds: 2, preset: 'clean'})).rejects.toThrow('Caption end must be after start.');
   });
 
+  it('adds a bounded visual effect through agent preview and rejects audio targets', async () => {
+    const project = structuredClone(initialState);
+    project.id = 'project-effect';
+    project.mediaFiles = [
+      {
+        id: 'video-1', fileId: 'video-1', fileName: 'clip.mp4', type: 'video',
+        startTime: 0, endTime: 4, positionStart: 1, positionEnd: 5,
+        includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100,
+      },
+      {
+        id: 'audio-1', fileId: 'audio-1', fileName: 'sound.mp3', type: 'audio',
+        startTime: 0, endTime: 4, positionStart: 1, positionEnd: 5,
+        includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 0, opacity: 100,
+      },
+    ];
+
+    const change = await previewAgentCommand(project, {
+      type: 'add_effect', mediaId: 'video-1', effect: 'chromatic-aberration',
+      intensity: 0.4, startSeconds: 2, endSeconds: 3,
+    });
+    expect(change.proposedProject.workflow.effects[0]).toMatchObject({
+      targetMediaId: 'video-1', type: 'chromatic-aberration', intensity: 0.4,
+      startSeconds: 2, endSeconds: 3, provider: 'remotion',
+    });
+    await expect(previewAgentCommand(project, {
+      type: 'add_effect', mediaId: 'audio-1', effect: 'blur', intensity: 0.5,
+    })).rejects.toThrow('visual media');
+  });
+
   it('imports storyboard-mapped Higgsfield SFX at the exact shot frame', async () => {
     const project = structuredClone(initialState);
     project.id = 'project-sfx';

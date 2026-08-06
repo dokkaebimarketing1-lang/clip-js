@@ -5,7 +5,9 @@ import toast from 'react-hot-toast';
 import {getFile, useAppDispatch, useAppSelector} from '@/app/store';
 import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {assertVideoGenerationAllowed, invalidateApproval} from '@/app/lib/workflow/approval';
-import {approvalSchema, storyboardSchema, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {approvalSchema, storyboardSchema, type EffectSpec, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {EFFECT_CATALOG} from '@/app/lib/workflow/effect-catalog';
+import {TRANSITION_CATALOG, transitionProviderFor} from '@/app/lib/workflow/transition-catalog';
 import {assertSafeRemoteUrl} from '@/app/lib/security/remote-url';
 import {downloadProjectDocument, importProjectIntoCurrentProject, parseProjectDocument} from '@/app/lib/workflow/project-file';
 import {parseSrt} from '@/app/lib/captions/srt';
@@ -30,6 +32,9 @@ export default function WorkflowPanel() {
   const [fromMediaId, setFromMediaId] = useState('');
   const [toMediaId, setToMediaId] = useState('');
   const [transitionDuration, setTransitionDuration] = useState(0.35);
+  const [effectType, setEffectType] = useState<EffectSpec['type']>('chromatic-aberration');
+  const [effectMediaId, setEffectMediaId] = useState('');
+  const [effectIntensity, setEffectIntensity] = useState(0.4);
   const [apiToken, setApiToken] = useState('');
   const [approvalToken, setApprovalToken] = useState('');
   const [rendering, setRendering] = useState(false);
@@ -141,12 +146,33 @@ export default function WorkflowPanel() {
     const transition: TransitionSpec = {
       id: crypto.randomUUID(),
       type: transitionType,
+      provider: transitionProviderFor(transitionType),
       fromMediaId,
       toMediaId,
       durationSeconds: transitionDuration,
     };
     dispatch(setWorkflow({...project.workflow, transitions: [...project.workflow.transitions, transition]}));
     toast.success(`${transitionType} transition added.`);
+  };
+
+  const addEffect = () => {
+    const media = project.mediaFiles.find((item) => item.id === effectMediaId);
+    if (!media || !['video', 'image'].includes(media.type)) return toast.error('Choose a visual media clip.');
+    const effect: EffectSpec = {
+      id: crypto.randomUUID(),
+      targetMediaId: media.id,
+      type: effectType,
+      provider: 'remotion',
+      intensity: effectIntensity,
+      startSeconds: media.positionStart,
+      endSeconds: media.positionEnd,
+    };
+    dispatch(setWorkflow({...project.workflow, effects: [...project.workflow.effects, effect]}));
+    toast.success(`${effectType} effect added to ${media.fileName}.`);
+  };
+
+  const removeEffect = (effectId: string) => {
+    dispatch(setWorkflow({...project.workflow, effects: project.workflow.effects.filter((effect) => effect.id !== effectId)}));
   };
 
   const renderProject = async () => {
@@ -201,13 +227,30 @@ export default function WorkflowPanel() {
 
       <section className="space-y-2 rounded border border-white/10 p-3">
         <h3 className="font-semibold">Frame-accurate transition</h3>
-        <select className={fieldClass} value={transitionType} onChange={(event) => setTransitionType(event.target.value as TransitionSpec['type'])}>{['fade', 'wipe', 'slide', 'whip-pan', 'flash', 'blur', 'push', 'zoom'].map((type) => <option key={type}>{type}</option>)}</select>
+        <select className={fieldClass} value={transitionType} onChange={(event) => setTransitionType(event.target.value as TransitionSpec['type'])}>{TRANSITION_CATALOG.map((entry) => <option key={entry.type} value={entry.type}>{entry.label} · {entry.provider}</option>)}</select>
         <div className="grid grid-cols-2 gap-2">
           <select className={fieldClass} value={fromMediaId} onChange={(event) => setFromMediaId(event.target.value)}><option value="">From clip</option>{project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}</select>
           <select className={fieldClass} value={toMediaId} onChange={(event) => setToMediaId(event.target.value)}><option value="">To clip</option>{project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}</select>
         </div>
         <input className={fieldClass} type="number" min={0.05} max={3} step={0.05} value={transitionDuration} onChange={(event) => setTransitionDuration(Number(event.target.value))} />
         <button className={buttonClass} onClick={addTransition} disabled={!fromMediaId || !toMediaId}>Add transition</button>
+      </section>
+
+      <section className="space-y-2 rounded border border-white/10 p-3">
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Remotion effects</h3><span className="text-xs text-gray-400">{project.workflow.effects.length}/1000</span></div>
+        <select className={fieldClass} value={effectType} onChange={(event) => setEffectType(event.target.value as EffectSpec['type'])}>
+          {EFFECT_CATALOG.map((effect) => <option key={effect.type} value={effect.type}>{effect.label}</option>)}
+        </select>
+        <select className={fieldClass} value={effectMediaId} onChange={(event) => setEffectMediaId(event.target.value)}>
+          <option value="">Target clip</option>
+          {project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}
+        </select>
+        <label className="block text-xs text-gray-400">Intensity {effectIntensity.toFixed(2)}<input className="w-full" type="range" min={0} max={1} step={0.05} value={effectIntensity} onChange={(event) => setEffectIntensity(Number(event.target.value))} /></label>
+        <button className={buttonClass} onClick={addEffect} disabled={!effectMediaId}>Add effect to full clip</button>
+        {project.workflow.effects.length > 0 && <div className="space-y-1 pt-1">{project.workflow.effects.map((effect) => {
+          const media = project.mediaFiles.find((item) => item.id === effect.targetMediaId);
+          return <div key={effect.id} className="flex items-center justify-between rounded bg-white/5 px-2 py-1 text-xs"><span>{effect.type} · {media?.fileName ?? effect.targetMediaId} · {effect.intensity.toFixed(2)}</span><button className="text-red-300 hover:text-red-200" onClick={() => removeEffect(effect.id)}>Remove</button></div>;
+        })}</div>}
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">

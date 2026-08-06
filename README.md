@@ -10,7 +10,9 @@ A browser video editor built with Next.js, React, Remotion, IndexedDB and FFmpeg
 - Automatic SFX placement at the mapped storyboard cut/shot time
 - Persistent project JSON (`*.clipjs.json`)
 - Korean SRT captions with Pretendard/Noto Sans KR-safe rendering and emphasis
-- Frame-accurate clip-to-clip fade, wipe, slide, whip-pan, flash, blur, push and zoom transitions
+- Frame-accurate native transitions plus Remotion Dreamy Zoom, Film Burn and Linear Blur
+- MIT gl-transitions-derived Ripple, Crosswarp, Dissolve and Cross Zoom through Remotion's WebGL2 presentations
+- Timeline-bounded official Remotion Blur, Chromatic Aberration, Vignette, Film Noise, Pixelate and Glow effects
 - Media playback speed from 0.1× to 4×
 - One pure Remotion Composition shared by editor preview and final render
 - Server-side H.264/AAC MP4 rendering through `@remotion/renderer`
@@ -49,7 +51,7 @@ npm start
 3. Import the approved JSON from [`docs/storyboard-example.json`](docs/storyboard-example.json).
 4. Click **Approve exact version**. Any different storyboard import invalidates approval.
 5. Generate the approved shots with Higgsfield/Seedance and import their HTTPS result URLs.
-6. Import Korean SRT captions, SFX/audio and transitions.
+6. Import Korean SRT captions and SFX/audio, then add transitions and timeline-bounded effects.
 7. Preview with the same Composition used by the final renderer.
 8. Render. The endpoint refuses an unapproved or modified storyboard.
 
@@ -79,6 +81,7 @@ npm run build     # Remotion prebundle + Next production build
 - Rendering is intended for a self-hosted Node server. Remotion does not support placing `@remotion/bundler` inside a Next API route, so this project prebundles the Composition during build.
 - For Vercel/cloud rendering, replace the local renderer with Remotion Lambda or the official Remotion-on-Vercel architecture.
 - Review the [Remotion license](https://www.remotion.dev/license) for your organization size and usage.
+- `gl-transitions` is MIT-licensed; the selected shaders are rendered through Remotion's maintained WebGL2 presentation wrappers.
 - The upstream ClipJS code and this fork remain subject to the repository's MIT license.
 
 ## Upstream editor features

@@ -2,6 +2,8 @@ import {z} from 'zod';
 import {sha256} from '../workflow/hash';
 import {type ProjectState} from '@/app/types';
 import {assertSafeRemoteUrl} from '../security/remote-url';
+import {effectTypeSchema, transitionTypeSchema} from '../workflow/schema';
+import {transitionProviderFor} from '../workflow/transition-catalog';
 
 export const agentCommandSchema = z.discriminatedUnion('type', [
   z.object({
@@ -16,9 +18,17 @@ export const agentCommandSchema = z.discriminatedUnion('type', [
     jobId: z.string().optional(),
   }),
   z.object({type: z.literal('trim_clip'), mediaId: z.string().min(1), startTime: z.number().nonnegative(), endTime: z.number().positive()}),
-  z.object({type: z.literal('add_transition'), fromMediaId: z.string().min(1), toMediaId: z.string().min(1), transition: z.enum(['fade', 'wipe', 'slide', 'whip-pan', 'flash', 'blur', 'push', 'zoom']), durationSeconds: z.number().min(0).max(3)}),
+  z.object({type: z.literal('add_transition'), fromMediaId: z.string().min(1), toMediaId: z.string().min(1), transition: transitionTypeSchema.exclude(['none']), durationSeconds: z.number().min(0).max(3)}),
   z.object({type: z.literal('add_caption'), text: z.string().min(1).max(500), startSeconds: z.number().nonnegative(), endSeconds: z.number().positive(), preset: z.enum(['clean', 'bold-highlight', 'cinematic', 'shorts']).default('clean')}),
   z.object({type: z.literal('set_playback_speed'), mediaId: z.string().min(1), playbackSpeed: z.number().min(0.1).max(4)}),
+  z.object({
+    type: z.literal('add_effect'),
+    mediaId: z.string().min(1),
+    effect: effectTypeSchema,
+    intensity: z.number().min(0).max(1),
+    startSeconds: z.number().nonnegative().optional(),
+    endSeconds: z.number().positive().optional(),
+  }),
 ]);
 
 export type AgentCommand = z.infer<typeof agentCommandSchema>;
@@ -117,8 +127,29 @@ export const applyAgentCommand = (project: ProjectState, input: unknown): {proje
     const to = next.mediaFiles.find((item) => item.id === command.toMediaId);
     if (!from || !to) throw new Error('Transition media clip not found.');
     if (!['video', 'image'].includes(from.type) || !['video', 'image'].includes(to.type)) throw new Error('Transitions require visual media clips.');
-    next.workflow.transitions.push({id: crypto.randomUUID(), fromMediaId: from.id, toMediaId: to.id, type: command.transition, durationSeconds: command.durationSeconds});
+    next.workflow.transitions.push({id: crypto.randomUUID(), fromMediaId: from.id, toMediaId: to.id, type: command.transition, provider: transitionProviderFor(command.transition), durationSeconds: command.durationSeconds});
     return finalizeAgentChange(next, `Add ${command.transition} transition (${command.durationSeconds}s)`);
+  }
+  if (command.type === 'add_effect') {
+    const media = next.mediaFiles.find((item) => item.id === command.mediaId);
+    if (!media) throw new Error('Effect media clip not found.');
+    if (!['video', 'image'].includes(media.type)) throw new Error('Effects require visual media clips.');
+    const startSeconds = command.startSeconds ?? media.positionStart;
+    const endSeconds = command.endSeconds ?? media.positionEnd;
+    if (endSeconds <= startSeconds) throw new Error('Effect end must be after start.');
+    if (startSeconds < media.positionStart || endSeconds > media.positionEnd) {
+      throw new Error('Effect range must stay within the target media timeline range.');
+    }
+    next.workflow.effects.push({
+      id: crypto.randomUUID(),
+      targetMediaId: media.id,
+      type: command.effect,
+      provider: 'remotion',
+      intensity: command.intensity,
+      startSeconds,
+      endSeconds,
+    });
+    return finalizeAgentChange(next, `Add ${command.effect} effect to ${media.fileName} (${startSeconds}s–${endSeconds}s)`);
   }
   if (command.endSeconds <= command.startSeconds) throw new Error('Caption end must be after start.');
   next.workflow.captions.push({id: crypto.randomUUID(), text: command.text, startSeconds: command.startSeconds, endSeconds: command.endSeconds, preset: command.preset, emphasis: [], safeArea: true});
