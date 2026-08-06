@@ -2,6 +2,7 @@ import {z} from 'zod';
 import type {ProjectState} from '@/app/types';
 import {initialState} from '@/app/store/slices/projectSlice';
 import {workflowStateSchema} from './schema';
+import {invalidateApproval} from './approval';
 
 export const PROJECT_FILE_VERSION = 2 as const;
 
@@ -94,6 +95,19 @@ export const parseProjectState = (input: unknown): ProjectState => {
     future: [],
     currentTime: project.currentTime ?? 0,
     isPlaying: project.isPlaying ?? false,
+  };
+};
+
+export const importProjectIntoCurrentProject = (input: unknown, currentProjectId: string): ProjectState => {
+  const imported = parseProjectState(input);
+  if (imported.id === currentProjectId) return imported;
+  return {
+    ...imported,
+    id: currentProjectId,
+    workflow: {
+      ...imported.workflow,
+      approval: invalidateApproval(imported.workflow.approval),
+    },
   };
 };
 

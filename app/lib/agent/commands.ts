@@ -120,6 +120,7 @@ export const applyAgentCommand = (project: ProjectState, input: unknown): {proje
     next.workflow.transitions.push({id: crypto.randomUUID(), fromMediaId: from.id, toMediaId: to.id, type: command.transition, durationSeconds: command.durationSeconds});
     return finalizeAgentChange(next, `Add ${command.transition} transition (${command.durationSeconds}s)`);
   }
+  if (command.endSeconds <= command.startSeconds) throw new Error('Caption end must be after start.');
   next.workflow.captions.push({id: crypto.randomUUID(), text: command.text, startSeconds: command.startSeconds, endSeconds: command.endSeconds, preset: command.preset, emphasis: [], safeArea: true});
   return finalizeAgentChange(next, `Add caption “${command.text}”`);
 };
