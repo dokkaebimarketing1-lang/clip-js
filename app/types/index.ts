@@ -1,3 +1,5 @@
+import type {WorkflowState} from '@/app/lib/workflow/schema';
+
 export type MediaType = 'video' | 'audio' | 'image' | 'unknown';
 
 export interface UploadedFile {
@@ -32,6 +34,16 @@ export interface MediaFile {
 
     // Effects
     crop?: { x: number; y: number; width: number; height: number };
+
+    // Workflow provenance. Remote URLs are persisted for deterministic
+    // Remotion rendering; `src` remains a browser-only object URL.
+    remoteUrl?: string;
+    provider?: 'local' | 'higgsfield';
+    model?: string;
+    jobId?: string;
+    cutId?: string;
+    shotId?: string;
+    storyboardRole?: 'start' | 'end' | 'clip' | 'audio' | 'storyboard-sheet';
 }
 
 export interface TextElement {
@@ -80,7 +92,7 @@ export interface ExportConfig {
     includeSubtitles: boolean; // TODO: add this as an option
 }
 
-export type ActiveElement = 'media' | 'text' | 'export';
+export type ActiveElement = 'media' | 'text' | 'workflow' | 'export';
 
 
 export interface ProjectState {
@@ -108,6 +120,7 @@ export interface ProjectState {
     history: ProjectState[]; // stack for undo
     future: ProjectState[]; // stack for redo
     exportSettings: ExportConfig;
+    workflow: WorkflowState;
 }
 
 export const mimeToExt = {

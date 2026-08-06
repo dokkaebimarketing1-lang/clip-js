@@ -111,9 +111,8 @@ export const TextSequenceItem: React.FC<{ item: TextElement; options: SequenceIt
                 onMouseDown={handleMouseDown}
                 // onMouseMove={handleMouseMove}
                 // onMouseUp={handleMouseUp}
-                dangerouslySetInnerHTML={{ __html: item.text }}
                 className="designcombo_textLayer"
-            />
+            >{item.text}</div>
         </Sequence>
     );
 };

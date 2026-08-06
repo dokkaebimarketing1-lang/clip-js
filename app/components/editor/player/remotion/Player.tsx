@@ -1,15 +1,17 @@
 import { Player, PlayerRef } from "@remotion/player";
-import Composition from "./sequence/composition";
-import { useAppSelector, useAppDispatch } from "@/app/store";
-import { useRef, useState, useEffect } from "react";
+import {ProjectComposition} from "@/remotion/ProjectComposition";
+import { useAppSelector } from "@/app/store";
+import { useRef, useEffect } from "react";
 import { setIsPlaying } from "@/app/store/slices/projectSlice";
 import { useDispatch } from "react-redux";
-
-const fps = 30;
 
 export const PreviewPlayer = () => {
     const projectState = useAppSelector((state) => state.projectState);
     const { duration, currentTime, isPlaying, isMuted } = projectState;
+    const fps = Number.isFinite(projectState.fps) && projectState.fps > 0 ? projectState.fps : 30;
+    const width = Number.isFinite(projectState.resolution?.width) && projectState.resolution.width > 0 ? projectState.resolution.width : 1920;
+    const height = Number.isFinite(projectState.resolution?.height) && projectState.resolution.height > 0 ? projectState.resolution.height : 1080;
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 1 / fps;
     const playerRef = useRef<PlayerRef>(null);
     const dispatch = useDispatch();
 
@@ -20,24 +22,20 @@ export const PreviewPlayer = () => {
             playerRef.current.pause();
             playerRef.current.seekTo(frame);
         }
-    }, [currentTime, fps]);
+    }, [currentTime, fps, isPlaying]);
 
     useEffect(() => {
-        playerRef?.current?.addEventListener("play", () => {
-            dispatch(setIsPlaying(true));
-        });
-        playerRef?.current?.addEventListener("pause", () => {
-            dispatch(setIsPlaying(false));
-        });
+        const player = playerRef.current;
+        if (!player) return;
+        const onPlay = () => dispatch(setIsPlaying(true));
+        const onPause = () => dispatch(setIsPlaying(false));
+        player.addEventListener("play", onPlay);
+        player.addEventListener("pause", onPause);
         return () => {
-            playerRef?.current?.removeEventListener("play", () => {
-                dispatch(setIsPlaying(true));
-            });
-            playerRef?.current?.removeEventListener("pause", () => {
-                dispatch(setIsPlaying(false));
-            });
+            player.removeEventListener("play", onPlay);
+            player.removeEventListener("pause", onPause);
         };
-    }, [playerRef]);
+    }, [dispatch]);
 
     // to control with keyboard
     useEffect(() => {
@@ -61,11 +59,11 @@ export const PreviewPlayer = () => {
     return (
         <Player
             ref={playerRef}
-            component={Composition}
-            inputProps={{}}
-            durationInFrames={Math.floor(duration * fps) + 1}
-            compositionWidth={1920}
-            compositionHeight={1080}
+            component={ProjectComposition}
+            inputProps={{project: projectState}}
+            durationInFrames={Math.max(1, Math.ceil(safeDuration * fps))}
+            compositionWidth={width}
+            compositionHeight={height}
             fps={fps}
             style={{ width: "100%", height: "100%" }}
             controls

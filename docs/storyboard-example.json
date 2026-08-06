@@ -1,0 +1,26 @@
+{
+  "version": "v1",
+  "title": "User-approved video topic",
+  "noBgm": true,
+  "cuts": [
+    {
+      "id": "CUT01",
+      "title": "Opening hook",
+      "absoluteStartSeconds": 0,
+      "absoluteEndSeconds": 5,
+      "shots": [
+        {
+          "id": "S1",
+          "startSeconds": 0,
+          "endSeconds": 5,
+          "startFrame": "Approved START frame description",
+          "endFrame": "Approved END frame description",
+          "camera": "Slow push-in",
+          "action": "Subject performs the approved action",
+          "dialogue": "—",
+          "sfx": "Impact at 00:00:00.400"
+        }
+      ]
+    }
+  ]
+}

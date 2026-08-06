@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { getFile, storeProject, useAppDispatch, useAppSelector } from "../../../store";
 import { getProject } from "../../../store";
 import { setCurrentProject, updateProject } from "../../../store/slices/projectsSlice";
@@ -19,11 +19,12 @@ import TextProperties from "../../../components/editor/PropertiesSection/TextPro
 import { Timeline } from "../../../components/editor/timeline/Timline";
 import { PreviewPlayer } from "../../../components/editor/player/remotion/Player";
 import { MediaFile } from "@/app/types";
-import ExportList from "../../../components/editor/AssetsPanel/tools-section/ExportList";
+
 import Image from "next/image";
 import ProjectName from "../../../components/editor/player/ProjectName";
-export default function Project({ params }: { params: { id: string } }) {
-    const { id } = params;
+import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
+export default function Project({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
     const dispatch = useAppDispatch();
     const projectState = useAppSelector((state) => state.projectState);
     const { currentProjectId } = useAppSelector((state) => state.projects);
@@ -46,7 +47,7 @@ export default function Project({ params }: { params: { id: string } }) {
             }
         };
         loadProject();
-    }, [id, dispatch]);
+    }, [id, dispatch, router]);
 
     // set project state from with the current project id
     useEffect(() => {
@@ -59,7 +60,7 @@ export default function Project({ params }: { params: { id: string } }) {
                     dispatch(setMediaFiles(await Promise.all(
                         project.mediaFiles.map(async (media: MediaFile) => {
                             const file = await getFile(media.fileId);
-                            return { ...media, src: URL.createObjectURL(file) };
+                            return { ...media, src: file ? URL.createObjectURL(file) : media.remoteUrl };
                         })
                     )));
                 }
@@ -77,10 +78,10 @@ export default function Project({ params }: { params: { id: string } }) {
             dispatch(updateProject(projectState));
         };
         saveProject();
-    }, [projectState, dispatch]);
+    }, [projectState, dispatch, currentProjectId]);
 
 
-    const handleFocus = (section: "media" | "text" | "export") => {
+    const handleFocus = (section: "media" | "text" | "workflow" | "export") => {
         dispatch(setActiveSection(section));
     };
 
@@ -99,19 +100,25 @@ export default function Project({ params }: { params: { id: string } }) {
             }
             <div className="flex flex-1 overflow-hidden">
                 {/* Left Sidebar - Buttons */}
-                <div className="flex-[0.1] min-w-[60px] max-w-[100px] border-r border-gray-700 overflow-y-auto p-4">
+                <div className="relative z-50 flex-[0.1] min-w-[60px] max-w-[100px] border-r border-gray-700 bg-black overflow-y-auto p-4">
                     <div className="flex flex-col space-y-2">
                         <HomeButton />
+                        <button
+                            aria-label="Production workflow"
+                            title="Production workflow"
+                            onClick={() => handleFocus("workflow")}
+                            className="flex h-12 w-full shrink-0 items-center justify-center rounded border border-white/10 text-xs font-bold hover:bg-white/10"
+                        >WF</button>
                         <TextButton onClick={() => handleFocus("text")} />
                         <LibraryButton onClick={() => handleFocus("media")} />
-                        <ExportButton onClick={() => handleFocus("export")} />
+                        <ExportButton onClick={() => handleFocus("workflow")} />
                         {/* TODO: add shortcuts guide but in a better way */}
                         {/* <ShortcutsButton onClick={() => handleFocus("export")} /> */}
                     </div>
                 </div>
 
                 {/* Add media and text */}
-                <div className="flex-[0.3] min-w-[200px] border-r border-gray-800 overflow-y-auto p-4">
+                <div className="relative z-40 flex-[0.3] min-w-[200px] border-r border-gray-800 bg-black overflow-y-auto p-4">
                     {activeSection === "media" && (
                         <div>
                             <h2 className="text-lg flex flex-row gap-2 items-center justify-center font-semibold mb-2">
@@ -125,10 +132,15 @@ export default function Project({ params }: { params: { id: string } }) {
                             <AddText />
                         </div>
                     )}
+                    {activeSection === "workflow" && (
+                        <div>
+                            <h2 className="text-lg font-semibold mb-4">Higgsfield Workflow</h2>
+                            <WorkflowPanel />
+                        </div>
+                    )}
                     {activeSection === "export" && (
                         <div>
-                            <h2 className="text-lg font-semibold mb-4">Export</h2>
-                            <ExportList />
+                            <WorkflowPanel />
                         </div>
                     )}
                 </div>

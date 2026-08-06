@@ -169,19 +169,24 @@ export default function MediaProperties() {
                                 className="w-full bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:border-white-500"
                             />
                         </div>
-                        {/* TODO: Add playback speed */}
-                        {/* <div>
-                            <label className="block text-sm">Speed</label>
+                        <div>
+                            <label className="block text-sm">Playback speed</label>
                             <input
                                 type="number"
                                 min="0.1"
                                 max="4"
                                 step="0.1"
                                 value={mediaFile.playbackSpeed || 1}
-                                onChange={(e) => onUpdateMedia(mediaFile.id, { playbackSpeed: Number(e.target.value) })}
+                                onChange={(e) => {
+                                    const playbackSpeed = Math.min(4, Math.max(0.1, Number(e.target.value)));
+                                    onUpdateMedia(mediaFile.id, {
+                                        playbackSpeed,
+                                        positionEnd: mediaFile.positionStart + (mediaFile.endTime - mediaFile.startTime) / playbackSpeed,
+                                    });
+                                }}
                                 className="w-full p-2 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:ring-2 focus:ring-white-500 focus:border-white-500"
                             />
-                        </div> */}
+                        </div>
                     </div>
                 </div>}
                 <div >
