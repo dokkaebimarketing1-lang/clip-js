@@ -14,7 +14,7 @@ import {parseSrt} from '@/app/lib/captions/srt';
 import {buildWordTimings, CAPTION_CATALOG, CAPTION_FONT_FAMILY} from '@/app/lib/captions/caption-registry';
 import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
-import {compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
+import {buildTakeClipMedia, compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
@@ -277,25 +277,20 @@ export default function WorkflowPanel() {
 
   const addTakeToTimeline = (takeId: string) => {
     const take = project.workflow.production.takes.find((item) => item.id === takeId);
-    if (!take?.outputAssetId) return;
-    const existing = project.mediaFiles.find((media) => media.id === take.outputAssetId);
-    if (existing) { toast.success(`Take clip is already on the timeline at ${existing.positionStart.toFixed(2)}s.`); return; }
-    const asset = project.workflow.higgsfieldAssets.find((item) => item.id === take.outputAssetId);
-    if (!asset) { toast.error('Take has no clip URL — import it with the Higgsfield importer first.'); return; }
+    if (!take) return;
     const shot = project.workflow.production.shotSpecs.find((item) => item.id === take.shotSpecId);
     const cut = project.workflow.storyboard?.cuts.find((item) => item.id === shot?.cutId);
     const storyboardShot = cut?.shots.find((item) => item.id === shot?.shotId);
-    const positionStart = storyboardShot && cut ? cut.absoluteStartSeconds + storyboardShot.startSeconds : project.mediaFiles.reduce((max, item) => Math.max(max, item.positionEnd), 0);
-    const durationSeconds = shot?.durationSeconds ?? asset.durationSeconds ?? 5;
-    const media: MediaFile = {
-      id: asset.id, fileId: asset.id, fileName: `${asset.cutId}-${asset.shotId}-${asset.model}.mp4`, type: 'video',
-      startTime: 0, endTime: durationSeconds, positionStart, positionEnd: positionStart + durationSeconds,
-      includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100,
-      src: asset.url, remoteUrl: asset.url, provider: 'higgsfield', model: asset.model,
-      cutId: asset.cutId, shotId: asset.shotId, storyboardRole: 'clip',
-    };
-    dispatch(setMediaFiles([...project.mediaFiles, media]));
-    toast.success(`Take clip placed on the timeline at ${positionStart.toFixed(2)}s.`);
+    const asset = project.workflow.higgsfieldAssets.find((item) => item.id === take.outputAssetId);
+    const result = buildTakeClipMedia({take, shot, cut, storyboardShot, asset, mediaFiles: project.mediaFiles});
+    if (result.alreadyOnTimeline) {
+      const media = project.mediaFiles.find((item) => item.id === take.outputAssetId);
+      toast.success(`Take clip is already on the timeline at ${media?.positionStart.toFixed(2)}s.`);
+      return;
+    }
+    if (!result.media) { toast.error('Take has no clip URL — import it with the Higgsfield importer first.'); return; }
+    dispatch(setMediaFiles([...project.mediaFiles, result.media]));
+    toast.success(`Take clip placed on the timeline at ${result.media.positionStart.toFixed(2)}s.`);
   };
 
   const renderProject = async () => {

@@ -7,7 +7,9 @@ import {
   type ProductionManifest,
   type Storyboard,
 } from './schema';
-import {compileShotPrompt, createGenerationTake} from './production';
+import {buildTakeClipMedia, compileShotPrompt, createGenerationTake} from './production';
+import type {HiggsfieldAsset} from './schema';
+import type {MediaFile} from '@/app/types';
 import {previewAgentCommand} from '../agent/commands';
 
 const storyboard: Storyboard = {
@@ -169,5 +171,36 @@ describe('Hell Grind production manifest', () => {
     const takeId = recorded.proposedProject.workflow.production.takes[0].id;
     await expect(previewAgentCommand(recorded.proposedProject, {type: 'select_generation_take', takeId}))
       .rejects.toThrow(/accepted/i);
+  });
+
+  it('fails closed when the compiled prompt exceeds the 50KB safety limit', async () => {
+    const oversized = structuredClone(production);
+    oversized.shotSpecs[0].acting = Array.from({length: 20}, (_, index) => ({
+      assetId: 'asset-roco',
+      beats: Array.from({length: 20}, () => `beat ${index} `.padEnd(500, 'x')),
+    }));
+    expect(() => compileShotPrompt(oversized, 'shot-spec-1')).toThrow(/50KB/i);
+  });
+
+  it('maps a take clip to the storyboard shot position and falls back to the end of the timeline', async () => {
+    const shot = production.shotSpecs[0];
+    const cut = storyboard.cuts[0];
+    const storyboardShot = cut.shots[0];
+    const asset: HiggsfieldAsset = {
+      id: 'clip-1', provider: 'higgsfield', model: 'seedance_2_0', url: 'https://cdn.example.com/clip.mp4',
+      cutId: 'CUT01', shotId: 'S1', role: 'clip', durationSeconds: 4,
+    };
+    const take = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted', outputAssetId: 'clip-1',
+    });
+    const mapped = buildTakeClipMedia({take, shot, cut, storyboardShot, asset, mediaFiles: []});
+    expect(mapped.media?.positionStart).toBe(cut.absoluteStartSeconds + storyboardShot.startSeconds);
+    expect(mapped.media?.positionEnd).toBe(mapped.media!.positionStart + 4);
+    const timeline: MediaFile[] = [{id: 'other', fileId: 'other', fileName: 'a.mp4', type: 'video', startTime: 0, endTime: 7, positionStart: 0, positionEnd: 7, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100}];
+    const fallback = buildTakeClipMedia({take, shot, asset, mediaFiles: timeline});
+    expect(fallback.media?.positionStart).toBe(7);
+    const existing = buildTakeClipMedia({take, shot, asset, mediaFiles: [mapped.media!]});
+    expect(existing.alreadyOnTimeline).toBe(true);
+    expect(buildTakeClipMedia({take, shot, mediaFiles: []}).media).toBeUndefined();
   });
 });
