@@ -15,6 +15,7 @@ import {buildWordTimings, CAPTION_CATALOG, CAPTION_FONT_FAMILY} from '@/app/lib/
 import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
 import {buildTakeClipMedia, compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
+import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
@@ -87,6 +88,13 @@ export default function WorkflowPanel() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Invalid production manifest JSON.');
     }
+  };
+
+  const generateFromStoryboard = () => {
+    if (!project.workflow.storyboard) { toast.error('Import a storyboard first.'); return; }
+    const derived = deriveProductionFromStoryboard(project.workflow.storyboard, project.workflow.production);
+    setProductionJson(JSON.stringify(derived, null, 2));
+    toast.success(`Generated ${derived.shotSpecs.length} shot specs and ${derived.continuityLocks.length} continuity locks — review, then Apply.`);
   };
 
   const approve = async () => {
@@ -331,6 +339,7 @@ export default function WorkflowPanel() {
         <textarea className={`${fieldClass} min-h-32 font-mono text-xs`} value={productionJson} onChange={(event) => setProductionJson(event.target.value)} placeholder='{"assets":[],"continuityLocks":[],"shotSpecs":[],"takes":[]}' />
         <div className="flex flex-wrap gap-2">
           <button className={buttonClass} onClick={() => setProductionJson(JSON.stringify(project.workflow.production, null, 2))}>Load current JSON</button>
+          <button className={buttonClass} onClick={generateFromStoryboard} disabled={!project.workflow.storyboard}>Generate from storyboard</button>
           <button className={buttonClass} onClick={importProductionManifest} disabled={!productionJson.trim()}>Apply manifest</button>
         </div>
         <select className={fieldClass} value={selectedShotSpecId} onChange={(event) => setSelectedShotSpecId(event.target.value)}>
