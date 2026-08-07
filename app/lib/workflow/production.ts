@@ -1,5 +1,7 @@
 import {sha256} from './hash';
-import {productionManifestSchema, type GenerationTake, type ProductionManifest} from './production-schema';
+import {productionManifestSchema, type GenerationTake, type ProductionManifest, type ShotGenerationSpec} from './production-schema';
+import type {HiggsfieldAsset, StoryboardCut, StoryboardShot} from './schema';
+import type {MediaFile} from '@/app/types';
 
 const pluralizedCharacter = (count: number): string => `${count} CHARACTER${count === 1 ? '' : 'S'}`;
 
@@ -81,7 +83,39 @@ export const compileShotPrompt = (input: ProductionManifest, shotSpecId: string)
     'POSITIVE CONSTRAINTS',
     ...(shot.positiveConstraints.length ? shot.positiveConstraints : ['preserve all locked production facts']),
   ].join('\n');
+  if (prompt.length > 50_000) throw new Error('Compiled prompt exceeds the 50KB safety limit.');
   return prompt;
+};
+
+export type TakeClipMediaInput = {
+  take: GenerationTake;
+  shot?: ShotGenerationSpec;
+  cut?: StoryboardCut;
+  storyboardShot?: StoryboardShot;
+  asset?: HiggsfieldAsset;
+  mediaFiles: MediaFile[];
+};
+
+export const buildTakeClipMedia = (input: TakeClipMediaInput): {media?: MediaFile; alreadyOnTimeline: boolean} => {
+  const {take, shot, cut, storyboardShot, asset, mediaFiles} = input;
+  if (!take.outputAssetId) return {alreadyOnTimeline: false};
+  const existing = mediaFiles.find((media) => media.id === take.outputAssetId);
+  if (existing) return {alreadyOnTimeline: true};
+  if (!asset) return {alreadyOnTimeline: false};
+  const positionStart = storyboardShot && cut
+    ? cut.absoluteStartSeconds + storyboardShot.startSeconds
+    : mediaFiles.reduce((max, media) => Math.max(max, media.positionEnd), 0);
+  const durationSeconds = shot?.durationSeconds ?? asset.durationSeconds ?? 5;
+  return {
+    alreadyOnTimeline: false,
+    media: {
+      id: asset.id, fileId: asset.id, fileName: `${asset.cutId}-${asset.shotId}-${asset.model}.mp4`, type: 'video',
+      startTime: 0, endTime: durationSeconds, positionStart, positionEnd: positionStart + durationSeconds,
+      includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100,
+      src: asset.url, remoteUrl: asset.url, provider: 'higgsfield', model: asset.model,
+      cutId: asset.cutId, shotId: asset.shotId, storyboardRole: 'clip',
+    },
+  };
 };
 
 export const computeProductionHash = async (manifest: ProductionManifest): Promise<string> =>

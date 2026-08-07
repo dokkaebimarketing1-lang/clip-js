@@ -116,7 +116,20 @@ describe('agent preview/apply', () => {
 });
 
 describe('remote media URL guard', () => {
-  it.each(['http://example.com/video.mp4', 'https://localhost/video.mp4', 'https://127.0.0.1/video.mp4', 'https://192.168.1.2/video.mp4'])('blocks unsafe URL %s', (url) => {
+  it.each([
+    'http://example.com/video.mp4',
+    'https://localhost/video.mp4',
+    'https://127.0.0.1/video.mp4',
+    'https://192.168.1.2/video.mp4',
+    'https://10.0.0.1/video.mp4',
+    'https://172.16.0.1/video.mp4',
+    'https://169.254.169.254/latest/meta-data/',
+    'https://[::1]/video.mp4',
+    'https://[fd00::1]/video.mp4',
+    'https://studio.local/video.mp4',
+    'https://user:pass@cdn.example.com/video.mp4',
+    `https://cdn.example.com/${'x'.repeat(4096)}.mp4`,
+  ])('blocks unsafe URL %s', (url) => {
     expect(() => assertSafeRemoteUrl(url)).toThrow();
   });
   it('accepts public HTTPS media', () => {
@@ -203,5 +216,25 @@ describe('project reducer workflow invariants', () => {
     const changedStoryboard = {...storyboard, title: 'Changed'};
     const afterStoryboard = projectReducer(afterMedia, setWorkflow({...afterMedia.workflow, storyboard: changedStoryboard, approval: {status: 'approved', storyboardHash: 'forged'}}));
     expect(afterStoryboard.workflow.approval.status).toBe('invalidated');
+  });
+
+  it('invalidates approval when production data changes and preserves it for caption-only edits', () => {
+    const base = structuredClone(initialState);
+    base.workflow = {
+      ...createDefaultWorkflow(), storyboard,
+      approval: {status: 'approved', storyboardHash: 'signed-hash', productionHash: 'a'.repeat(64)},
+    };
+    const captionOnly = projectReducer(base, setWorkflow({...base.workflow, captions: [{id: 'cue', text: '끝', startSeconds: 1, endSeconds: 2, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}]}));
+    expect(captionOnly.workflow.approval.status).toBe('approved');
+    const changedProduction = {
+      ...base.workflow.production,
+      assets: [{
+        id: 'asset-roco', tag: '@roco', type: 'character' as const, state: 'base', descriptor: 'Roco.',
+        referenceUrl: 'https://cdn.example.com/roco.png', referenceHash: 'a'.repeat(64),
+        editMode: 'original' as const, status: 'draft' as const, stressTests: [],
+      }],
+    };
+    const afterProduction = projectReducer(base, setWorkflow({...base.workflow, production: changedProduction}));
+    expect(afterProduction.workflow.approval.status).toBe('invalidated');
   });
 });

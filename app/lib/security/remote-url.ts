@@ -17,7 +17,7 @@ export const assertSafeRemoteUrl = (rawUrl: string): URL => {
     throw new Error('Invalid media URL.');
   }
   if (url.protocol !== 'https:') throw new Error('Only HTTPS media URLs are allowed.');
-  const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '');
   if (blockedHostnames.has(hostname) || hostname.endsWith('.local')) throw new Error('Local network media URLs are blocked.');
   const looksLikeIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
   if (looksLikeIp) {
