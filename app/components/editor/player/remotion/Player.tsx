@@ -61,7 +61,7 @@ export const PreviewPlayer = () => {
             ref={playerRef}
             component={ProjectComposition}
             inputProps={{project: projectState}}
-            durationInFrames={Math.max(1, Math.ceil(safeDuration * fps))}
+            durationInFrames={Math.max(2, Math.ceil(safeDuration * fps))}
             compositionWidth={width}
             compositionHeight={height}
             fps={fps}

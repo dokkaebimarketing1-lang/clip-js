@@ -58,6 +58,10 @@ export const agentCommandSchema = z.discriminatedUnion('type', [
     previousValue: z.string().max(4000).optional(),
     newValue: z.string().max(4000).optional(),
   }),
+  z.object({
+    type: z.literal('select_generation_take'),
+    takeId: z.string().min(1).max(128),
+  }),
 ]);
 
 export type AgentCommand = z.infer<typeof agentCommandSchema>;
@@ -112,6 +116,17 @@ export const applyAgentCommand = async (project: ProjectState, input: unknown): 
     next.workflow.production = productionManifestSchema.parse({...next.workflow.production, takes: [...next.workflow.production.takes, take]});
     next.workflow.approval = invalidateApproval(next.workflow.approval);
     return finalizeAgentChange(next, `Record ${command.verdict} take for ${command.shotSpecId}`);
+  }
+  if (command.type === 'select_generation_take') {
+    const take = next.workflow.production.takes.find((item) => item.id === command.takeId);
+    if (!take) throw new Error('Generation take not found.');
+    if (take.verdict !== 'accepted') throw new Error('Only accepted takes can be promoted to the timeline.');
+    const takes = next.workflow.production.takes.map((item) => item.id === command.takeId
+      ? {...item, selected: true}
+      : item.shotSpecId === take.shotSpecId ? {...item, selected: false} : item);
+    next.workflow.production = productionManifestSchema.parse({...next.workflow.production, takes});
+    next.workflow.approval = invalidateApproval(next.workflow.approval);
+    return finalizeAgentChange(next, `Select accepted take ${command.takeId} for ${take.shotSpecId}`);
   }
   if (command.type === 'import_clip') {
     const url = assertSafeRemoteUrl(command.url).toString();
