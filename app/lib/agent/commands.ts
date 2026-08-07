@@ -2,9 +2,11 @@ import {z} from 'zod';
 import {sha256} from '../workflow/hash';
 import {type ProjectState} from '@/app/types';
 import {assertSafeRemoteUrl} from '../security/remote-url';
-import {captionKindSchema, captionPositionSchema, captionPresetSchema, effectTypeSchema, transitionTypeSchema} from '../workflow/schema';
+import {captionKindSchema, captionPositionSchema, captionPresetSchema, effectTypeSchema, productionAssetSchema, productionManifestSchema, sceneContinuityLockSchema, shotGenerationSpecSchema, transitionTypeSchema} from '../workflow/schema';
 import {transitionProviderFor} from '../workflow/transition-catalog';
 import {buildWordTimings, CAPTION_FONT_FAMILY, isCaptionPresetAllowedForKind} from '../captions/caption-registry';
+import {createGenerationTake} from '../workflow/production';
+import {invalidateApproval} from '../workflow/approval';
 
 export const agentCommandSchema = z.discriminatedUnion('type', [
   z.object({
@@ -41,6 +43,21 @@ export const agentCommandSchema = z.discriminatedUnion('type', [
     startSeconds: z.number().nonnegative().optional(),
     endSeconds: z.number().positive().optional(),
   }),
+  z.object({type: z.literal('upsert_production_asset'), asset: productionAssetSchema}),
+  z.object({type: z.literal('upsert_continuity_lock'), continuityLock: sceneContinuityLockSchema}),
+  z.object({type: z.literal('upsert_shot_spec'), shotSpec: shotGenerationSpecSchema}),
+  z.object({
+    type: z.literal('record_generation_take'),
+    shotSpecId: z.string().min(1).max(128),
+    parentTakeId: z.string().min(1).max(128).optional(),
+    provider: z.string().min(1).max(100),
+    model: z.string().min(1).max(200),
+    outputAssetId: z.string().min(1).max(128).optional(),
+    verdict: z.enum(['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected']),
+    changedPath: z.string().min(1).max(500).optional(),
+    previousValue: z.string().max(4000).optional(),
+    newValue: z.string().max(4000).optional(),
+  }),
 ]);
 
 export type AgentCommand = z.infer<typeof agentCommandSchema>;
@@ -69,9 +86,33 @@ const finalizeAgentChange = (project: ProjectState, summary: string): {project: 
   return {project, summary};
 };
 
-export const applyAgentCommand = (project: ProjectState, input: unknown): {project: ProjectState; summary: string} => {
+export const applyAgentCommand = async (project: ProjectState, input: unknown): Promise<{project: ProjectState; summary: string}> => {
   const command = agentCommandSchema.parse(input);
   const next = cloneProject(project);
+  if (command.type === 'upsert_production_asset') {
+    const assets = next.workflow.production.assets.filter((asset) => asset.id !== command.asset.id);
+    next.workflow.production = productionManifestSchema.parse({...next.workflow.production, assets: [...assets, command.asset]});
+    next.workflow.approval = invalidateApproval(next.workflow.approval);
+    return finalizeAgentChange(next, `Upsert production asset ${command.asset.tag} (${command.asset.state})`);
+  }
+  if (command.type === 'upsert_continuity_lock') {
+    const continuityLocks = next.workflow.production.continuityLocks.filter((lock) => lock.id !== command.continuityLock.id);
+    next.workflow.production = productionManifestSchema.parse({...next.workflow.production, continuityLocks: [...continuityLocks, command.continuityLock]});
+    next.workflow.approval = invalidateApproval(next.workflow.approval);
+    return finalizeAgentChange(next, `Upsert continuity lock ${command.continuityLock.id}`);
+  }
+  if (command.type === 'upsert_shot_spec') {
+    const shotSpecs = next.workflow.production.shotSpecs.filter((shot) => shot.id !== command.shotSpec.id);
+    next.workflow.production = productionManifestSchema.parse({...next.workflow.production, shotSpecs: [...shotSpecs, command.shotSpec]});
+    next.workflow.approval = invalidateApproval(next.workflow.approval);
+    return finalizeAgentChange(next, `Upsert shot generation spec ${command.shotSpec.id}`);
+  }
+  if (command.type === 'record_generation_take') {
+    const take = await createGenerationTake(next.workflow.production, command);
+    next.workflow.production = productionManifestSchema.parse({...next.workflow.production, takes: [...next.workflow.production.takes, take]});
+    next.workflow.approval = invalidateApproval(next.workflow.approval);
+    return finalizeAgentChange(next, `Record ${command.verdict} take for ${command.shotSpecId}`);
+  }
   if (command.type === 'import_clip') {
     const url = assertSafeRemoteUrl(command.url).toString();
     const cut = next.workflow.storyboard?.cuts.find((item) => item.id === command.cutId);
@@ -186,7 +227,7 @@ export const applyAgentCommand = (project: ProjectState, input: unknown): {proje
 
 export const previewAgentCommand = async (project: ProjectState, input: unknown): Promise<AgentChangeSet> => {
   const command = agentCommandSchema.parse(input);
-  const {project: proposedProject, summary} = applyAgentCommand(project, command);
+  const {project: proposedProject, summary} = await applyAgentCommand(project, command);
   const baseProjectHash = await sha256(editableProjectFingerprint(project));
   const token = await sha256({projectId: project.id, baseProjectHash, command, proposedProject});
   return {token, baseProjectHash, summary, command, proposedProject};

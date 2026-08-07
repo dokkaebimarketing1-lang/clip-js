@@ -22,6 +22,8 @@ A browser video editor built with Next.js, React, Remotion, IndexedDB and FFmpeg
 - SSRF protection, including private-IP/DNS checks and a production media-host allowlist
 - Production bearer-token protection
 - HMAC-signed 10-minute render downloads and bounded render resources
+- Hell Grind-inspired Asset Registry V2, scene continuity locks, structured shot prompt compiler and generation Take Ledger
+- Owner approval binds both the storyboard and exact production manifest hash
 
 ## Installation
 
@@ -50,11 +52,12 @@ npm start
 1. The user chooses the video topic and core concept.
 2. Produce the cut-by-cut storyboard-v2 document and exact storyboard sheets.
 3. Import the approved JSON from [`docs/storyboard-example.json`](docs/storyboard-example.json).
-4. Click **Approve exact version**. Any different storyboard import invalidates approval.
-5. Generate the approved shots with Higgsfield/Seedance and import their HTTPS result URLs.
-6. Import Korean SRT captions and SFX/audio, then add transitions and timeline-bounded effects.
-7. Preview with the same Composition used by the final renderer.
-8. Render. The endpoint refuses an unapproved or modified storyboard.
+4. Build the production blueprint: lock stress-tested asset states, scene geometry/lighting, and structured shot specs.
+5. Preview the deterministically compiled prompt, then click **Approve exact version**. Any storyboard or production-manifest change invalidates approval.
+6. Generate the approved shots with Higgsfield/Seedance, record each take and import accepted HTTPS result URLs.
+7. Import Korean SRT captions and SFX/audio, then add transitions and timeline-bounded effects.
+8. Preview with the same Composition used by the final renderer.
+9. Render. The endpoint refuses an unapproved or modified storyboard/production manifest.
 
 ### Caption Registry
 

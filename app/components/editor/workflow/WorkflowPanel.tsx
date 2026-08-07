@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {getFile, useAppDispatch, useAppSelector} from '@/app/store';
 import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {assertVideoGenerationAllowed, invalidateApproval} from '@/app/lib/workflow/approval';
-import {approvalSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {approvalSchema, productionManifestSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
 import {EFFECT_CATALOG} from '@/app/lib/workflow/effect-catalog';
 import {TRANSITION_CATALOG, transitionProviderFor} from '@/app/lib/workflow/transition-catalog';
 import {assertSafeRemoteUrl} from '@/app/lib/security/remote-url';
@@ -14,6 +14,7 @@ import {parseSrt} from '@/app/lib/captions/srt';
 import {buildWordTimings, CAPTION_CATALOG, CAPTION_FONT_FAMILY} from '@/app/lib/captions/caption-registry';
 import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
+import {compileShotPrompt} from '@/app/lib/workflow/production';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
@@ -22,6 +23,8 @@ export default function WorkflowPanel() {
   const project = useAppSelector((state) => state.projectState);
   const dispatch = useAppDispatch();
   const [storyboardJson, setStoryboardJson] = useState('');
+  const [productionJson, setProductionJson] = useState('');
+  const [selectedShotSpecId, setSelectedShotSpecId] = useState('');
   const [url, setUrl] = useState('');
   const [model, setModel] = useState('seedance_2_0');
   const [cutId, setCutId] = useState('CUT01');
@@ -49,6 +52,14 @@ export default function WorkflowPanel() {
   const [rendering, setRendering] = useState(false);
   const [renderDownloadUrl, setRenderDownloadUrl] = useState('');
   const approvalLabel = useMemo(() => project.workflow.approval.status.toUpperCase(), [project.workflow.approval.status]);
+  const compiledPrompt = useMemo(() => {
+    if (!selectedShotSpecId) return '';
+    try {
+      return compileShotPrompt(project.workflow.production, selectedShotSpecId);
+    } catch (error) {
+      return error instanceof Error ? `Not generation-ready: ${error.message}` : 'Not generation-ready.';
+    }
+  }, [project.workflow.production, selectedShotSpecId]);
 
   const importStoryboard = () => {
     try {
@@ -60,20 +71,31 @@ export default function WorkflowPanel() {
     }
   };
 
+  const importProductionManifest = () => {
+    try {
+      const production = productionManifestSchema.parse(JSON.parse(productionJson));
+      dispatch(setWorkflow({...project.workflow, production, approval: invalidateApproval(project.workflow.approval)}));
+      setSelectedShotSpecId(production.shotSpecs[0]?.id ?? '');
+      toast.success('Production manifest applied. Previous approval was invalidated.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Invalid production manifest JSON.');
+    }
+  };
+
   const approve = async () => {
     if (!project.workflow.storyboard) return toast.error('Import a storyboard first.');
     try {
       const response = await fetch('/api/approval/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
-        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard}),
+        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard, production: project.workflow.production}),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Approval failed.');
       const approval = approvalSchema.parse(result);
       dispatch(setWorkflow({...project.workflow, approval}));
       setApprovalToken('');
-      toast.success('The exact current storyboard is owner-approved and server-signed.');
+      toast.success('The exact storyboard and production manifest are owner-approved and server-signed.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Approval failed.');
     }
@@ -229,7 +251,23 @@ export default function WorkflowPanel() {
         <textarea className={`${fieldClass} min-h-32`} value={storyboardJson} onChange={(event) => setStoryboardJson(event.target.value)} placeholder="Paste storyboard-v2 JSON" />
         <div className="flex gap-2"><button className={buttonClass} onClick={importStoryboard}>Import storyboard</button><button className={buttonClass} onClick={approve} disabled={!project.workflow.storyboard}>Approve exact version</button></div>
         <input className={fieldClass} type="password" autoComplete="off" value={approvalToken} onChange={(event) => setApprovalToken(event.target.value)} placeholder="Owner approval token (production)" />
-        <p className="text-xs text-gray-400">Any storyboard change invalidates approval. Video rendering is fail-closed.</p>
+        <p className="text-xs text-gray-400">Any storyboard or production manifest change invalidates approval. Video rendering is fail-closed.</p>
+      </section>
+
+      <section className="space-y-2 rounded border border-white/10 p-3">
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Production blueprint</h3><span className="text-xs text-gray-400">{project.workflow.production.assets.length} assets · {project.workflow.production.shotSpecs.length} shots</span></div>
+        <p className="text-xs text-gray-400">Bounded Asset Registry V2, continuity locks, structured shot specs, and take provenance.</p>
+        <textarea className={`${fieldClass} min-h-32 font-mono text-xs`} value={productionJson} onChange={(event) => setProductionJson(event.target.value)} placeholder='{"assets":[],"continuityLocks":[],"shotSpecs":[],"takes":[]}' />
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={() => setProductionJson(JSON.stringify(project.workflow.production, null, 2))}>Load current JSON</button>
+          <button className={buttonClass} onClick={importProductionManifest} disabled={!productionJson.trim()}>Apply manifest</button>
+        </div>
+        <select className={fieldClass} value={selectedShotSpecId} onChange={(event) => setSelectedShotSpecId(event.target.value)}>
+          <option value="">Select generation-ready shot</option>
+          {project.workflow.production.shotSpecs.map((shot) => <option key={shot.id} value={shot.id}>{shot.id} · {shot.durationSeconds}s</option>)}
+        </select>
+        {selectedShotSpecId && <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs text-gray-200">{compiledPrompt}</pre>}
+        {project.workflow.production.takes.length > 0 && <div className="space-y-1">{project.workflow.production.takes.slice(-5).reverse().map((take) => <div key={take.id} className="rounded bg-white/5 px-2 py-1 text-xs"><span className="font-semibold">{take.verdict}</span> · {take.shotSpecId} · {take.model}<br /><span className="text-gray-500">prompt {take.compiledPromptHash.slice(0, 10)}…</span></div>)}</div>}
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">

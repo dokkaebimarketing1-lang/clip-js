@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {createDefaultProductionManifest, productionManifestSchema} from './production-schema';
+export * from './production-schema';
 
 export const storyboardShotSchema = z.object({
   id: z.string().min(1),
@@ -31,6 +33,7 @@ export const storyboardSchema = z.object({
 export const approvalSchema = z.object({
   status: z.enum(['draft', 'approved', 'invalidated']),
   storyboardHash: z.string().optional(),
+  productionHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   approvedAt: z.string().datetime().optional(),
   approvedBy: z.string().optional(),
   signature: z.string().optional(),
@@ -134,6 +137,7 @@ export const workflowStateSchema = z.object({
   transitions: z.array(transitionSchema).default([]),
   effects: z.array(effectSpecSchema).max(1000).default([]),
   captions: z.array(captionCueSchema).max(5000).default([]),
+  production: productionManifestSchema.default(createDefaultProductionManifest()),
 });
 
 export type Storyboard = z.infer<typeof storyboardSchema>;
@@ -157,4 +161,5 @@ export const createDefaultWorkflow = (): WorkflowState => ({
   transitions: [],
   effects: [],
   captions: [],
+  production: createDefaultProductionManifest(),
 });
