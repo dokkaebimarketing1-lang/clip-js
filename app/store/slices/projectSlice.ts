@@ -100,7 +100,8 @@ const projectStateSlice = createSlice({
         },
         setWorkflow: (state, action: PayloadAction<WorkflowState>) => {
             const storyboardChanged = JSON.stringify(state.workflow.storyboard ?? null) !== JSON.stringify(action.payload.storyboard ?? null);
-            state.workflow = storyboardChanged
+            const productionChanged = JSON.stringify(state.workflow.production) !== JSON.stringify(action.payload.production);
+            state.workflow = storyboardChanged || productionChanged
                 ? { ...action.payload, approval: { status: 'invalidated' } }
                 : action.payload;
             const mediaEnd = state.mediaFiles.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
