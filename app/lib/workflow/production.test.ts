@@ -112,11 +112,62 @@ describe('Hell Grind production manifest', () => {
       provider: 'higgsfield',
       model: 'seedance_2_0',
       verdict: 'bad-roll' as const,
+      selected: false,
       createdAt: new Date(index * 1000).toISOString(),
     }));
     const take = await createGenerationTake(failed, {
       shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'bad-roll',
     });
     expect(take.verdict).toBe('simplify-shot');
+  });
+
+  it('fails closed when two takes for the same shot are selected', async () => {
+    const first = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted',
+    });
+    const second = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted',
+    });
+    expect(() => productionManifestSchema.parse({...production, takes: [{...first, selected: true}, {...second, selected: true}]}))
+      .toThrow(/more than one selected take/i);
+  });
+
+  it('promotes only accepted takes and keeps one selection per shot spec', async () => {
+    const project = structuredClone(initialState);
+    project.workflow = {...createDefaultWorkflow(), storyboard, production};
+    project.workflow.approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), production);
+    const first = await previewAgentCommand(project, {
+      type: 'record_generation_take', shotSpecId: 'shot-spec-1',
+      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted', outputAssetId: 'clip-1',
+    });
+    const second = await previewAgentCommand(first.proposedProject, {
+      type: 'record_generation_take', shotSpecId: 'shot-spec-1',
+      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted', outputAssetId: 'clip-2',
+    });
+    const firstTakeId = first.proposedProject.workflow.production.takes[0].id;
+    const promoted = await previewAgentCommand(second.proposedProject, {type: 'select_generation_take', takeId: firstTakeId});
+    let takes = promoted.proposedProject.workflow.production.takes;
+    expect(takes.filter((take) => take.selected)).toHaveLength(1);
+    expect(takes.find((take) => take.id === firstTakeId)?.selected).toBe(true);
+    expect(promoted.proposedProject.workflow.approval.status).toBe('invalidated');
+    const switched = await previewAgentCommand(promoted.proposedProject, {
+      type: 'select_generation_take', takeId: second.proposedProject.workflow.production.takes[1].id,
+    });
+    takes = switched.proposedProject.workflow.production.takes;
+    expect(takes.filter((take) => take.selected)).toHaveLength(1);
+    expect(takes.find((take) => take.id === firstTakeId)?.selected).toBe(false);
+    expect(takes.find((take) => take.id === second.proposedProject.workflow.production.takes[1].id)?.selected).toBe(true);
+  });
+
+  it('rejects promotion of a non-accepted take', async () => {
+    const project = structuredClone(initialState);
+    project.workflow = {...createDefaultWorkflow(), storyboard, production};
+    const recorded = await previewAgentCommand(project, {
+      type: 'record_generation_take', shotSpecId: 'shot-spec-1',
+      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'bad-roll',
+    });
+    const takeId = recorded.proposedProject.workflow.production.takes[0].id;
+    await expect(previewAgentCommand(recorded.proposedProject, {type: 'select_generation_take', takeId}))
+      .rejects.toThrow(/accepted/i);
   });
 });

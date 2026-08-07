@@ -103,6 +103,7 @@ export const generationTakeSchema = z.object({
   model: z.string().min(1).max(200),
   outputAssetId: boundedId.optional(),
   verdict: z.enum(['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected']),
+  selected: z.boolean().default(false),
   createdAt: z.string().datetime(),
 }).superRefine((take, ctx) => {
   const hasDiffHashes = Boolean(take.previousValueHash && take.newValueHash);
@@ -140,6 +141,13 @@ export const productionManifestSchema = z.object({
   manifest.takes.forEach((take, index) => {
     if (!shotIds.has(take.shotSpecId)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes', index, 'shotSpecId'], message: 'Take shot spec does not exist.'});
     if (take.parentTakeId && (!takeIds.has(take.parentTakeId) || take.parentTakeId === take.id)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes', index, 'parentTakeId'], message: 'Take parent must reference another take.'});
+  });
+  const selectedPerShot = new Map<string, number>();
+  manifest.takes.forEach((take) => {
+    if (take.selected) selectedPerShot.set(take.shotSpecId, (selectedPerShot.get(take.shotSpecId) ?? 0) + 1);
+  });
+  selectedPerShot.forEach((count, shotSpecId) => {
+    if (count > 1) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes'], message: `Shot spec ${shotSpecId} has more than one selected take.`});
   });
 });
 

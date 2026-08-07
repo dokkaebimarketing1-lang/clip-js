@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {getFile, useAppDispatch, useAppSelector} from '@/app/store';
 import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {assertVideoGenerationAllowed, invalidateApproval} from '@/app/lib/workflow/approval';
-import {approvalSchema, productionManifestSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {approvalSchema, productionManifestSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type GenerationTake, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
 import {EFFECT_CATALOG} from '@/app/lib/workflow/effect-catalog';
 import {TRANSITION_CATALOG, transitionProviderFor} from '@/app/lib/workflow/transition-catalog';
 import {assertSafeRemoteUrl} from '@/app/lib/security/remote-url';
@@ -14,7 +14,7 @@ import {parseSrt} from '@/app/lib/captions/srt';
 import {buildWordTimings, CAPTION_CATALOG, CAPTION_FONT_FAMILY} from '@/app/lib/captions/caption-registry';
 import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
-import {compileShotPrompt} from '@/app/lib/workflow/production';
+import {compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
@@ -31,6 +31,13 @@ export default function WorkflowPanel() {
   const [shotId, setShotId] = useState('S1');
   const [duration, setDuration] = useState(5);
   const [role, setRole] = useState<HiggsfieldAsset['role']>('clip');
+  const [takeShotSpecId, setTakeShotSpecId] = useState('');
+  const [takeProvider, setTakeProvider] = useState('higgsfield');
+  const [takeModel, setTakeModel] = useState('seedance_2_0');
+  const [takeVerdict, setTakeVerdict] = useState<GenerationTake['verdict']>('accepted');
+  const [takeParentId, setTakeParentId] = useState('');
+  const [takeOutputAssetId, setTakeOutputAssetId] = useState('');
+  const [takeUrl, setTakeUrl] = useState('');
   const [srt, setSrt] = useState('');
   const [captionText, setCaptionText] = useState('');
   const [captionKind, setCaptionKind] = useState<CaptionKind>('dialogue');
@@ -222,6 +229,75 @@ export default function WorkflowPanel() {
     dispatch(setWorkflow({...project.workflow, effects: project.workflow.effects.filter((effect) => effect.id !== effectId)}));
   };
 
+  const recordTake = async () => {
+    if (!takeShotSpecId) { toast.error('Choose a generation-ready shot first.'); return; }
+    try {
+      const shot = project.workflow.production.shotSpecs.find((item) => item.id === takeShotSpecId);
+      const outputAssetId = takeOutputAssetId || crypto.randomUUID();
+      const take = await createGenerationTake(project.workflow.production, {
+        shotSpecId: takeShotSpecId,
+        parentTakeId: takeParentId || undefined,
+        provider: takeProvider,
+        model: takeModel,
+        outputAssetId,
+        verdict: takeVerdict,
+      });
+      const takes = [...project.workflow.production.takes, take];
+      const higgsfieldAssets = takeUrl && shot
+        ? [...project.workflow.higgsfieldAssets.filter((asset) => asset.id !== outputAssetId), {
+            id: outputAssetId, provider: 'higgsfield', model: takeModel, url: assertSafeRemoteUrl(takeUrl).toString(),
+            cutId: shot.cutId, shotId: shot.shotId, role: 'clip', durationSeconds: shot.durationSeconds,
+          } satisfies HiggsfieldAsset]
+        : project.workflow.higgsfieldAssets;
+      dispatch(setWorkflow({...project.workflow, production: {...project.workflow.production, takes}, higgsfieldAssets}));
+      setTakeParentId(''); setTakeOutputAssetId(''); setTakeUrl('');
+      toast.success(`${takeVerdict} take recorded for ${takeShotSpecId}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not record take.');
+    }
+  };
+
+  const selectTake = (takeId: string) => {
+    const take = project.workflow.production.takes.find((item) => item.id === takeId);
+    if (!take || take.verdict !== 'accepted') return;
+    const takes = project.workflow.production.takes.map((item) => item.id === takeId
+      ? {...item, selected: true}
+      : item.shotSpecId === take.shotSpecId ? {...item, selected: false} : item);
+    dispatch(setWorkflow({...project.workflow, production: {...project.workflow.production, takes}}));
+    toast.success(`Take ${take.id.slice(0, 8)}… promoted. Re-approve before rendering.`);
+  };
+
+  const retakeTake = (takeId: string) => {
+    const take = project.workflow.production.takes.find((item) => item.id === takeId);
+    if (!take) return;
+    setTakeShotSpecId(take.shotSpecId);
+    setTakeParentId(take.id);
+    toast.success(`Retake form pre-filled for ${take.shotSpecId} (parent ${take.id.slice(0, 8)}…).`);
+  };
+
+  const addTakeToTimeline = (takeId: string) => {
+    const take = project.workflow.production.takes.find((item) => item.id === takeId);
+    if (!take?.outputAssetId) return;
+    const existing = project.mediaFiles.find((media) => media.id === take.outputAssetId);
+    if (existing) { toast.success(`Take clip is already on the timeline at ${existing.positionStart.toFixed(2)}s.`); return; }
+    const asset = project.workflow.higgsfieldAssets.find((item) => item.id === take.outputAssetId);
+    if (!asset) { toast.error('Take has no clip URL — import it with the Higgsfield importer first.'); return; }
+    const shot = project.workflow.production.shotSpecs.find((item) => item.id === take.shotSpecId);
+    const cut = project.workflow.storyboard?.cuts.find((item) => item.id === shot?.cutId);
+    const storyboardShot = cut?.shots.find((item) => item.id === shot?.shotId);
+    const positionStart = storyboardShot && cut ? cut.absoluteStartSeconds + storyboardShot.startSeconds : project.mediaFiles.reduce((max, item) => Math.max(max, item.positionEnd), 0);
+    const durationSeconds = shot?.durationSeconds ?? asset.durationSeconds ?? 5;
+    const media: MediaFile = {
+      id: asset.id, fileId: asset.id, fileName: `${asset.cutId}-${asset.shotId}-${asset.model}.mp4`, type: 'video',
+      startTime: 0, endTime: durationSeconds, positionStart, positionEnd: positionStart + durationSeconds,
+      includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100,
+      src: asset.url, remoteUrl: asset.url, provider: 'higgsfield', model: asset.model,
+      cutId: asset.cutId, shotId: asset.shotId, storyboardRole: 'clip',
+    };
+    dispatch(setMediaFiles([...project.mediaFiles, media]));
+    toast.success(`Take clip placed on the timeline at ${positionStart.toFixed(2)}s.`);
+  };
+
   const renderProject = async () => {
     setRendering(true);
     setRenderDownloadUrl('');
@@ -255,7 +331,7 @@ export default function WorkflowPanel() {
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Production blueprint</h3><span className="text-xs text-gray-400">{project.workflow.production.assets.length} assets · {project.workflow.production.shotSpecs.length} shots</span></div>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Production blueprint</h3><span className="text-xs text-gray-400">{project.workflow.production.assets.length} assets · {project.workflow.production.continuityLocks.length} locks · {project.workflow.production.shotSpecs.length} shots · {project.workflow.production.takes.length} takes</span></div>
         <p className="text-xs text-gray-400">Bounded Asset Registry V2, continuity locks, structured shot specs, and take provenance.</p>
         <textarea className={`${fieldClass} min-h-32 font-mono text-xs`} value={productionJson} onChange={(event) => setProductionJson(event.target.value)} placeholder='{"assets":[],"continuityLocks":[],"shotSpecs":[],"takes":[]}' />
         <div className="flex flex-wrap gap-2">
@@ -267,7 +343,71 @@ export default function WorkflowPanel() {
           {project.workflow.production.shotSpecs.map((shot) => <option key={shot.id} value={shot.id}>{shot.id} · {shot.durationSeconds}s</option>)}
         </select>
         {selectedShotSpecId && <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs text-gray-200">{compiledPrompt}</pre>}
-        {project.workflow.production.takes.length > 0 && <div className="space-y-1">{project.workflow.production.takes.slice(-5).reverse().map((take) => <div key={take.id} className="rounded bg-white/5 px-2 py-1 text-xs"><span className="font-semibold">{take.verdict}</span> · {take.shotSpecId} · {take.model}<br /><span className="text-gray-500">prompt {take.compiledPromptHash.slice(0, 10)}…</span></div>)}</div>}
+        <div className="space-y-1">
+          {project.workflow.production.assets.map((asset) => {
+            const passed = asset.stressTests.filter((test) => test.verdict === 'pass').length;
+            const ready = asset.status === 'locked' && passed === 10;
+            return (
+              <details key={asset.id} className="rounded bg-white/5 px-2 py-1 text-xs">
+                <summary className="cursor-pointer list-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>{ready ? '🔒' : asset.status === 'locked' ? '⚠️' : '◌'} {asset.tag} · {asset.type} · {asset.state}</span>
+                    <span className={ready ? 'text-green-400' : 'text-red-300'}>{passed}/10 stress</span>
+                  </span>
+                </summary>
+                {asset.stressTests.length === 0 ? <p className="mt-1 text-gray-500">No stress tests yet — locked assets require 10/10 passes.</p> : (
+                  <ul className="mt-1 space-y-0.5">
+                    {asset.stressTests.map((test) => (
+                      <li key={test.id} className="flex justify-between gap-2">
+                        <span>{test.pose} · {test.lighting}{test.coAssetIds.length ? ` · co: ${test.coAssetIds.join(', ')}` : ''}</span>
+                        <span className={test.verdict === 'pass' ? 'text-green-400' : test.verdict === 'reject' ? 'text-red-400' : 'text-yellow-300'}>{test.verdict}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+            );
+          })}
+        </div>
+        <div className="space-y-2 border-t border-white/10 pt-2">
+          <h4 className="font-semibold text-xs">Generation take ledger</h4>
+          <div className="grid grid-cols-2 gap-2">
+            <select className={fieldClass} value={takeShotSpecId} onChange={(event) => setTakeShotSpecId(event.target.value)}>
+              <option value="">Shot spec</option>
+              {project.workflow.production.shotSpecs.map((shot) => <option key={shot.id} value={shot.id}>{shot.id}</option>)}
+            </select>
+            <select className={fieldClass} value={takeVerdict} onChange={(event) => setTakeVerdict(event.target.value as GenerationTake['verdict'])}>
+              {['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected'].map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+            <input className={fieldClass} value={takeProvider} onChange={(event) => setTakeProvider(event.target.value)} placeholder="provider (higgsfield)" />
+            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="model (seedance_2_0)" />
+            <input className={fieldClass} value={takeOutputAssetId} onChange={(event) => setTakeOutputAssetId(event.target.value)} placeholder="output asset id (optional)" />
+            <input className={fieldClass} value={takeParentId} onChange={(event) => setTakeParentId(event.target.value)} placeholder="parent take id (retake)" />
+          </div>
+          <input className={fieldClass} value={takeUrl} onChange={(event) => setTakeUrl(event.target.value)} placeholder="generated clip URL (optional, registers the asset)" />
+          <button className={buttonClass} onClick={recordTake} disabled={!takeShotSpecId}>Record take</button>
+        </div>
+        {project.workflow.production.takes.length > 0 && <div className="space-y-1">
+          {project.workflow.production.takes.slice(-8).reverse().map((take) => {
+            const media = take.outputAssetId ? project.mediaFiles.find((item) => item.id === take.outputAssetId) : undefined;
+            const asset = take.outputAssetId ? project.workflow.higgsfieldAssets.find((item) => item.id === take.outputAssetId) : undefined;
+            return (
+              <div key={take.id} className={`rounded px-2 py-1 text-xs ${take.selected ? 'bg-white/15 ring-1 ring-white/30' : 'bg-white/5'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{take.verdict}{take.selected ? ' ●' : ''}</span>
+                  <span className="flex items-center gap-2">
+                    <button className="text-blue-300 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-30" disabled={take.verdict !== 'accepted'} onClick={() => selectTake(take.id)} title="Promote the accepted take">{take.selected ? 'selected' : 'select'}</button>
+                    <button className="text-yellow-300 hover:text-yellow-200" onClick={() => retakeTake(take.id)}>retake</button>
+                    {media ? <span className="text-gray-400">@ {media.positionStart.toFixed(1)}s</span>
+                      : asset ? <button className="text-green-300 hover:text-green-200" onClick={() => addTakeToTimeline(take.id)}>+ timeline</button>
+                      : <span className="text-gray-500">no clip</span>}
+                  </span>
+                </div>
+                <div className="text-gray-500">{take.shotSpecId} · {take.model}{take.parentTakeId ? ` · child of ${take.parentTakeId.slice(0, 8)}…` : ''}</div>
+              </div>
+            );
+          })}
+        </div>}
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">

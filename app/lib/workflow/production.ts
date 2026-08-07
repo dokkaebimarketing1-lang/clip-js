@@ -135,6 +135,7 @@ export const createGenerationTake = async (
     model: input.model,
     outputAssetId: input.outputAssetId,
     verdict,
+    selected: false,
     createdAt: now.toISOString(),
   };
 };
