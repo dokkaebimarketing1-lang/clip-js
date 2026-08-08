@@ -13,8 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "*",
-    "@ffmpeg/util": "*",
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "@ffmpeg/util": "0.12.2",
     "@fontsource-variable/noto-sans-kr": "^5.3.0",
     "@reduxjs/toolkit": "^2.7.0",
     "@remotion/bundler": "4.0.506",

@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { getFile, storeProject, useAppDispatch, useAppSelector } from "../../../store";
 import { getProject } from "../../../store";
 import { setCurrentProject, updateProject } from "../../../store/slices/projectsSlice";
@@ -13,7 +13,7 @@ import TextButton from "@/app/components/editor/AssetsPanel/SidebarButtons/TextB
 import LibraryButton from "@/app/components/editor/AssetsPanel/SidebarButtons/LibraryButton";
 import ExportButton from "@/app/components/editor/AssetsPanel/SidebarButtons/ExportButton";
 import HomeButton from "@/app/components/editor/AssetsPanel/SidebarButtons/HomeButton";
-import ShortcutsButton from "@/app/components/editor/AssetsPanel/SidebarButtons/ShortcutsButton";
+
 import MediaProperties from "../../../components/editor/PropertiesSection/MediaProperties";
 import TextProperties from "../../../components/editor/PropertiesSection/TextProperties";
 import { Timeline } from "../../../components/editor/timeline/Timline";
@@ -27,63 +27,93 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const { id } = use(params);
     const dispatch = useAppDispatch();
     const projectState = useAppSelector((state) => state.projectState);
-    const { currentProjectId } = useAppSelector((state) => state.projects);
+    const currentProjectId = useAppSelector((state) => state.projects.currentProjectId);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const pendingSaveRef = useRef<typeof projectState | null>(null);
+    const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
     const router = useRouter();
     const { activeSection, activeElement } = projectState;
-    // when page is loaded set the project id if it exists
     useEffect(() => {
+        let cancelled = false;
+        const objectUrls: string[] = [];
         const loadProject = async () => {
-            if (id) {
-                setIsLoading(true);
+            setIsLoading(true);
+            setLoadError(null);
+            try {
                 const project = await getProject(id);
-                if (project) {
-                    dispatch(setCurrentProject(id));
-                    setIsLoading(false);
-                } else {
-                    router.push('/404');
+                if (!project) {
+                    router.replace('/404');
+                    return;
                 }
+                const mediaFiles = await Promise.all(project.mediaFiles.map(async (media: MediaFile) => {
+                    const file = await getFile(media.fileId);
+                    if (!file) return {...media, src: media.remoteUrl};
+                    const src = URL.createObjectURL(file);
+                    objectUrls.push(src);
+                    return {...media, src};
+                }));
+                if (cancelled) return;
+                dispatch(setCurrentProject(id));
+                dispatch(rehydrate(project));
+                dispatch(setMediaFiles(mediaFiles));
+            } catch (error) {
+                console.error('Failed to load project:', error);
+                if (!cancelled) setLoadError('프로젝트 저장소를 읽지 못했습니다. 데이터 보호를 위해 편집기를 열지 않았습니다.');
+            } finally {
+                if (!cancelled) setIsLoading(false);
             }
         };
-        loadProject();
+        void loadProject();
+        return () => {
+            cancelled = true;
+            objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        };
     }, [id, dispatch, router]);
-
-    // set project state from with the current project id
-    useEffect(() => {
-        const loadProject = async () => {
-            if (currentProjectId) {
-                const project = await getProject(currentProjectId);
-                if (project) {
-                    dispatch(rehydrate(project));
-
-                    dispatch(setMediaFiles(await Promise.all(
-                        project.mediaFiles.map(async (media: MediaFile) => {
-                            const file = await getFile(media.fileId);
-                            return { ...media, src: file ? URL.createObjectURL(file) : media.remoteUrl };
-                        })
-                    )));
-                }
-            }
-        };
-        loadProject();
-    }, [dispatch, currentProjectId]);
 
 
     // save
     useEffect(() => {
-        const saveProject = async () => {
-            if (!projectState || projectState.id != currentProjectId) return;
-            await storeProject(projectState);
-            dispatch(updateProject(projectState));
-        };
-        saveProject();
+        if (!projectState || projectState.id !== currentProjectId) return;
+        pendingSaveRef.current = projectState;
+        const snapshot = structuredClone(projectState);
+        const timeout = window.setTimeout(() => {
+            saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
+                await storeProject(snapshot);
+                if (pendingSaveRef.current === projectState) {
+                    pendingSaveRef.current = null;
+                }
+                dispatch(updateProject(snapshot));
+            }).catch(() => undefined);
+        }, 300);
+        return () => window.clearTimeout(timeout);
     }, [projectState, dispatch, currentProjectId]);
+
+    useEffect(() => () => {
+        const pending = pendingSaveRef.current;
+        if (pending?.id === currentProjectId) {
+            const snapshot = structuredClone(pending);
+            saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(() => storeProject(snapshot).then(() => undefined)).catch(() => undefined);
+        }
+    }, [currentProjectId]);
 
 
     const handleFocus = (section: "media" | "text" | "workflow" | "export") => {
         dispatch(setActiveSection(section));
     };
+
+    if (loadError) {
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+                <div role="alert" className="max-w-lg rounded-xl border border-red-500/50 bg-red-950/30 p-6 text-center">
+                    <h1 className="text-xl font-bold">프로젝트를 안전하게 열 수 없습니다</h1>
+                    <p className="mt-3 text-sm text-white/80">{loadError}</p>
+                    <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded bg-white px-4 py-2 font-semibold text-black">다시 시도</button>
+                </div>
+            </main>
+        );
+    }
 
     return (
         <div className="flex flex-col h-screen select-none">
@@ -118,7 +148,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </div>
 
                 {/* Add media and text */}
-                <div className="relative z-40 min-h-0 flex-[0.3] min-w-[200px] overflow-y-auto border-r border-gray-800 bg-black p-4">
+                <div className="relative z-40 min-h-0 w-[380px] min-w-[360px] shrink-0 overflow-y-auto border-r border-gray-800 bg-black p-4">
                     {activeSection === "media" && (
                         <div>
                             <h2 className="text-lg flex flex-row gap-2 items-center justify-center font-semibold mb-2">

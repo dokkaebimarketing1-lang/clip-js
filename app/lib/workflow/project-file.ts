@@ -55,6 +55,34 @@ export const projectStateSchema = z.object({
       ctx.addIssue({code: z.ZodIssueCode.custom, path: ['workflow', 'effects', index], message: 'Effect range must stay within the target media timeline range.'});
     }
   });
+  const transitionIds = new Set<string>();
+  project.workflow.transitions.forEach((transition, index) => {
+    const path: Array<string | number> = ['workflow', 'transitions', index];
+    if (transitionIds.has(transition.id)) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path: [...path, 'id'], message: `Duplicate transition ID: ${transition.id}.`});
+    }
+    transitionIds.add(transition.id);
+    if (transition.fromMediaId === transition.toMediaId) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} must connect distinct media.`});
+      return;
+    }
+    const from = mediaById.get(transition.fromMediaId);
+    const to = mediaById.get(transition.toMediaId);
+    if (!from || !to) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} references missing media.`});
+      return;
+    }
+    if (from.type === 'audio' || to.type === 'audio') {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} requires visual media endpoints.`});
+    }
+    if (from.positionStart > to.positionStart) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} endpoints are in reversed timeline order.`});
+    }
+    const endpointDuration = Math.min(from.positionEnd - from.positionStart, to.positionEnd - to.positionStart);
+    if (transition.durationSeconds > endpointDuration) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} exceeds an endpoint media range.`});
+    }
+  });
 });
 
 const projectDocumentSchema = z.object({
@@ -67,7 +95,11 @@ const projectDocumentSchema = z.object({
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 
 export const serializeProject = (project: ProjectState): ProjectDocument => {
-  const mediaFiles = project.mediaFiles.map(({src: _src, ...media}) => media);
+  const mediaFiles = project.mediaFiles.map((media) => {
+    const serialized = {...media};
+    delete serialized.src;
+    return serialized;
+  });
   return projectDocumentSchema.parse({
     kind: 'clipjs-storyboard-project',
     schemaVersion: PROJECT_FILE_VERSION,

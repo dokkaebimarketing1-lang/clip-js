@@ -91,8 +91,10 @@ npm run build     # Remotion prebundle + Next production build
 
 ## Security and deployment
 
-- Set `CLIPJS_AGENT_TOKEN` in every production environment.
+- Set distinct `CLIPJS_AGENT_TOKEN` and `CLIPJS_APPROVAL_TOKEN` values in every environment; final render requests require both credentials.
+- Authentication fails closed by default, including development. For an isolated loopback-only demo, `CLIPJS_ALLOW_INSECURE_LOCALHOST=true` explicitly enables tokenless local API access; never expose that mode on a network interface.
 - Rendering is intended for a self-hosted Node server. Remotion does not support placing `@remotion/bundler` inside a Next API route, so this project prebundles the Composition during build.
+- The self-hosted renderer requires `ffprobe` on `PATH` (or `CLIPJS_FFPROBE_PATH`) and rejects staged audio/video whose actual streams do not match the declared media kind.
 - For Vercel/cloud rendering, replace the local renderer with Remotion Lambda or the official Remotion-on-Vercel architecture.
 - Review the [Remotion license](https://www.remotion.dev/license) for your organization size and usage.
 - `gl-transitions` is MIT-licensed; the selected shaders are rendered through Remotion's maintained WebGL2 presentation wrappers.

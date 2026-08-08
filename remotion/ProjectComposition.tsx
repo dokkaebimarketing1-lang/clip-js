@@ -57,7 +57,6 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
     top: media.y ?? 0,
     width: media.width ?? '100%',
     height: media.height ?? '100%',
-    objectFit: 'cover',
     opacity: media.opacity === undefined ? 1 : media.opacity / 100,
     transform: `rotate(${media.rotation ?? 0}deg)`,
   };
@@ -74,10 +73,11 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
           playbackRate={media.playbackSpeed || 1}
           volume={(media.volume ?? 100) / 100}
           effects={remotionEffects}
+          objectFit="cover"
           style={commonStyle}
         />
       ) : media.type === 'image' ? (
-        <Img src={source} effects={remotionEffects} style={commonStyle} />
+        <Img src={source} effects={remotionEffects} style={{...commonStyle, objectFit: 'cover'}} />
       ) : media.type === 'audio' ? (
         <Audio
           src={source}
@@ -108,12 +108,12 @@ const TransitionAsset: React.FC<{media: MediaFile; fps: number; trimStart: numbe
   if (!source || media.type === 'audio') return null;
   const base: React.CSSProperties = {
     position: 'absolute', left: media.x ?? 0, top: media.y ?? 0,
-    width: media.width ?? '100%', height: media.height ?? '100%', objectFit: 'cover',
+    width: media.width ?? '100%', height: media.height ?? '100%',
     ...style,
   };
   return media.type === 'image'
-    ? <Img src={source} effects={effects} style={base} />
-    : <Video src={source} trimBefore={Math.max(0, Math.round(trimStart * fps))} playbackRate={media.playbackSpeed || 1} muted effects={effects} style={base} />;
+    ? <Img src={source} effects={effects} style={{...base, objectFit: 'cover'}} />
+    : <Video src={source} trimBefore={Math.max(0, Math.round(trimStart * fps))} playbackRate={media.playbackSpeed || 1} muted effects={effects} objectFit="cover" style={base} />;
 };
 
 const TransitionPairContent: React.FC<{transition: TransitionSpec; source: MediaFile; target: MediaFile; fps: number; durationInFrames: number; timelineStartSeconds: number; effects: readonly EffectSpec[]}> = ({transition, source, target, fps, durationInFrames, timelineStartSeconds, effects}) => {

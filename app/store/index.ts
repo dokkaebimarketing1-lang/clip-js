@@ -5,6 +5,7 @@ import { openDB } from 'idb';
 import projectStateReducer from './slices/projectSlice';
 import projectsReducer from './slices/projectsSlice';
 import toast from 'react-hot-toast';
+import type {ProjectState} from '../types';
 
 // Create IndexedDB database for files and projects
 const setupDB = async () => {
@@ -32,23 +33,12 @@ export const loadState = () => {
     }
 };
 
-// Save state to localStorage
-const saveState = (state: any) => {
-    if (typeof window === 'undefined') return;
-    try {
-        const serializedState = JSON.stringify(state);
-        localStorage.setItem('clipjs-state', serializedState);
-    } catch (error) {
-        console.error('Error saving state to localStorage:', error);
-    }
-};
-
 // File storage functions
 export const storeFile = async (file: File, fileId: string) => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') throw new Error('File storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return null;
+        if (!db) throw new Error('File database is unavailable.');
 
         const fileData = {
             id: fileId,
@@ -60,15 +50,15 @@ export const storeFile = async (file: File, fileId: string) => {
     } catch (error) {
         toast.error('Error storing file');
         console.error('Error storing file:', error);
-        return null;
+        throw error;
     }
 };
 
 export const getFile = async (fileId: string) => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') throw new Error('File storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return null;
+        if (!db) throw new Error('File database is unavailable.');
 
         const fileData = await db.get('files', fileId);
         if (!fileData) return null;
@@ -77,44 +67,45 @@ export const getFile = async (fileId: string) => {
     } catch (error) {
         toast.error('Error retrieving file');
         console.error('Error retrieving file:', error);
-        return null;
+        throw error;
     }
 };
 
 export const deleteFile = async (fileId: string) => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') throw new Error('File storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return;
+        if (!db) throw new Error('File database is unavailable.');
         await db.delete('files', fileId);
     } catch (error) {
         toast.error('Error deleting file');
         console.error('Error deleting file:', error);
+        throw error;
     }
 };
 
 export const listFiles = async () => {
-    if (typeof window === 'undefined') return [];
+    if (typeof window === 'undefined') throw new Error('File storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return [];
+        if (!db) throw new Error('File database is unavailable.');
         return await db.getAll('files');
     } catch (error) {
         toast.error('Error listing files');
         console.error('Error listing files:', error);
-        return [];
+        throw error;
     }
 };
 
 // Project storage functions
-export const storeProject = async (project: any) => {
-    if (typeof window === 'undefined') return null;
+export const storeProject = async (project: ProjectState) => {
+    if (typeof window === 'undefined') throw new Error('Project storage is only available in the browser.');
     try {
         const db = await setupDB();
 
-        if (!db) return null;
+        if (!db) throw new Error('Project database is unavailable.');
         if (!project.id || !project.projectName) {
-            return null;
+            throw new Error('Project id and name are required.');
         }
 
         await db.put('projects', project);
@@ -123,44 +114,45 @@ export const storeProject = async (project: any) => {
     } catch (error) {
         toast.error('Error storing project');
         console.error('Error storing project:', error);
-        return null;
+        throw error;
     }
 };
 
 export const getProject = async (projectId: string) => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') throw new Error('Project storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return null;
+        if (!db) throw new Error('Project database is unavailable.');
         return await db.get('projects', projectId);
     } catch (error) {
         toast.error('Error retrieving project');
         console.error('Error retrieving project:', error);
-        return null;
+        throw error;
     }
 };
 
 export const deleteProject = async (projectId: string) => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') throw new Error('Project storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return;
+        if (!db) throw new Error('Project database is unavailable.');
         await db.delete('projects', projectId);
     } catch (error) {
         toast.error('Error deleting project');
         console.error('Error deleting project:', error);
+        throw error;
     }
 };
 
 export const listProjects = async () => {
-    if (typeof window === 'undefined') return [];
+    if (typeof window === 'undefined') throw new Error('Project storage is only available in the browser.');
     try {
         const db = await setupDB();
-        if (!db) return [];
+        if (!db) throw new Error('Project database is unavailable.');
         return await db.getAll('projects');
     } catch (error) {
         console.error('Error listing projects:', error);
-        return [];
+        throw error;
     }
 };
 
@@ -174,32 +166,6 @@ export const store = configureStore({
             serializableCheck: false,
         }),
 });
-
-// TODO: remove old state (localStorage we use indexedDB now) that is not used anymore 
-
-// Load persisted state from localStorage
-// const persistedState = loadState();
-// if (persistedState) {
-//     store.dispatch({
-//         type: 'REPLACE_STATE',
-//         payload: persistedState
-//     });
-// }
-
-// TODO: for some reason state get saved to localStorage twice when its none cause loss of old state i shall find better way to do this later
-// Subscribe to store changes to save to localStorage
-// if (typeof window !== 'undefined') {
-//     let isInitial = 2;
-//     store.subscribe(() => {
-//         if (isInitial) {
-//             isInitial -= 1;
-//             return;
-//         }
-
-//         const state = store.getState();
-//         saveState(state);
-//     });
-// }
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
