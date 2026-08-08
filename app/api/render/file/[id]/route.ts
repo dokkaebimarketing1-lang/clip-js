@@ -20,6 +20,8 @@ export async function GET(request: NextRequest, {params}: {params: Promise<{id: 
       'content-length': String(metadata.size),
       'content-disposition': `attachment; filename="${id}.mp4"`,
       'cache-control': 'private, no-store',
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
     }});
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Render not found.';

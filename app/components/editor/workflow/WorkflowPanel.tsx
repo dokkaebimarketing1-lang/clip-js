@@ -314,13 +314,18 @@ export default function WorkflowPanel() {
       await assertVideoGenerationAllowed(project.workflow);
       const response = await fetch('/api/render', {
         method: 'POST',
-        headers: {'content-type': 'application/json', ...(apiToken ? {authorization: `Bearer ${apiToken}`} : {})},
+        headers: {
+          'content-type': 'application/json',
+          ...(apiToken ? {authorization: `Bearer ${apiToken}`} : {}),
+          ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {}),
+        },
         body: JSON.stringify({project}),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Render failed.');
       setRenderDownloadUrl(normalizeRenderDownloadUrl(result.downloadUrl, window.location.origin));
       setApiToken('');
+      setApprovalToken('');
       toast.success('Remotion render completed. Use the download link below.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Render failed.');

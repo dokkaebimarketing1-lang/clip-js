@@ -11,7 +11,7 @@ import { toast } from 'react-hot-toast';
 import {createDefaultWorkflow} from '@/app/lib/workflow/schema';
 export default function Projects() {
     const dispatch = useAppDispatch();
-    const { projects, currentProjectId } = useAppSelector((state) => state.projects);
+    const { projects } = useAppSelector((state) => state.projects);
     const [isCreating, setIsCreating] = useState(false);
     const [newProjectName, setNewProjectName] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -77,19 +77,27 @@ export default function Projects() {
             workflow: createDefaultWorkflow(),
         };
 
-        await storeProject(newProject);
-        dispatch(addProject(newProject));
-        setNewProjectName('');
-        setIsCreating(false);
-        toast.success('Project created successfully');
+        try {
+            await storeProject(newProject);
+            dispatch(addProject(newProject));
+            setNewProjectName('');
+            setIsCreating(false);
+            toast.success('Project created successfully');
+        } catch {
+            // The storage layer already reports the actionable error. Keep the form open.
+        }
     };
 
     const handleDeleteProject = async (projectId: string) => {
-        await deleteProjectFromDB(projectId);
-        dispatch(deleteProject(projectId));
-        const storedProjects = await listProjects();
-        dispatch(rehydrateProjects(storedProjects));
-        toast.success('Project deleted successfully');
+        try {
+            await deleteProjectFromDB(projectId);
+            dispatch(deleteProject(projectId));
+            const storedProjects = await listProjects();
+            dispatch(rehydrateProjects(storedProjects));
+            toast.success('Project deleted successfully');
+        } catch {
+            // Do not remove the Redux item when IndexedDB deletion failed.
+        }
     };
 
     return (

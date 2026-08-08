@@ -113,6 +113,23 @@ describe('agent preview/apply', () => {
     expect(applied.workflow.higgsfieldAssets[0].shotId).toBe('S1');
     expect(applied.duration).toBe(0.5);
   });
+
+  it('imports visual clips at the storyboard shot time instead of appending to the timeline', async () => {
+    const project = structuredClone(initialState);
+    project.id = 'project-visual-map';
+    project.workflow = {...createDefaultWorkflow(), storyboard};
+    project.mediaFiles = [{
+      id: 'existing', fileId: 'existing', fileName: 'existing.mp4', type: 'video',
+      startTime: 0, endTime: 4, positionStart: 20, positionEnd: 24,
+      includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100, src: '',
+    }];
+    const change = await previewAgentCommand(project, {
+      type: 'import_clip', url: 'https://cdn.example.com/shot.mp4', model: 'seedance_2_5',
+      cutId: 'CUT01', shotId: 'S1', role: 'clip', durationSeconds: 4,
+    });
+    const applied = await approveAgentChange(project, change, change.token);
+    expect(applied.mediaFiles.at(-1)).toMatchObject({type: 'video', positionStart: 0, positionEnd: 4});
+  });
 });
 
 describe('remote media URL guard', () => {
@@ -176,12 +193,57 @@ describe('render request contract', () => {
     expect(rehydrated.projectName).toBe('Imported');
     expect(rehydrated.workflow.approval.status).toBe('invalidated');
   });
+  it('rejects transitions with missing, nonvisual, reversed, or identical endpoints', () => {
+    const project = {...structuredClone(initialState), id: 'transition-integrity', projectName: 'Transitions'};
+    project.mediaFiles = [
+      {id: 'first', fileId: 'first', fileName: 'first.mp4', type: 'video', startTime: 0, endTime: 2, positionStart: 0, positionEnd: 2, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100},
+      {id: 'second', fileId: 'second', fileName: 'second.mp4', type: 'video', startTime: 0, endTime: 2, positionStart: 2, positionEnd: 4, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100},
+      {id: 'audio', fileId: 'audio', fileName: 'audio.mp3', type: 'audio', startTime: 0, endTime: 4, positionStart: 0, positionEnd: 4, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 0, opacity: 100},
+      {id: 'unknown', fileId: 'unknown', fileName: 'unknown.bin', type: 'unknown', startTime: 0, endTime: 4, positionStart: 4, positionEnd: 8, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 0, opacity: 100},
+    ];
+    const transition = {id: 't', fromMediaId: 'first', toMediaId: 'second', type: 'fade' as const, provider: 'native' as const, durationSeconds: 0.5};
+    project.workflow.transitions = [transition];
+    expect(() => parseRenderProjectRequest({project})).not.toThrow();
+    project.workflow.transitions = [{...transition, toMediaId: 'missing'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('missing media');
+    project.workflow.transitions = [{...transition, toMediaId: 'audio'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('visual media');
+    project.workflow.transitions = [{...transition, toMediaId: 'unknown'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('visual media');
+    project.workflow.transitions = [{...transition, fromMediaId: 'second', toMediaId: 'first'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('timeline order');
+    project.workflow.transitions = [{...transition, toMediaId: 'first'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('distinct');
+  });
+
+  it('rejects duplicate media IDs before resolving effects or transitions', () => {
+    const project = {...structuredClone(initialState), id: 'duplicate-media', projectName: 'Duplicate media'};
+    const media = {id: 'same', fileId: 'first', fileName: 'first.mp4', type: 'video' as const, startTime: 0, endTime: 2, positionStart: 0, positionEnd: 2, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100};
+    project.mediaFiles = [media, {...media, fileId: 'second', fileName: 'second.mp4'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('Duplicate media ID');
+  });
   it('rejects excessive render duration, fps, and resolution', () => {
     const project = {...structuredClone(initialState), id: 'limits', projectName: 'Limits', duration: 1};
     expect(() => assertRenderLimits(project)).not.toThrow();
     expect(() => assertRenderLimits({...project, duration: 3601})).toThrow('duration');
     expect(() => assertRenderLimits({...project, fps: 120})).toThrow('fps');
     expect(() => assertRenderLimits({...project, resolution: {width: 7680, height: 4320}})).toThrow('resolution');
+  });
+  it('rejects overlapping captions in the same visual lane', () => {
+    const project = {...structuredClone(initialState), id: 'caption-collision', projectName: 'Collision', duration: 3};
+    project.workflow.captions = [
+      {id: 'first', text: '첫 번째', startSeconds: 1, endSeconds: 2, kind: 'dialogue', preset: 'dialogue-clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true},
+      {id: 'second', text: '두 번째', startSeconds: 1.5, endSeconds: 2.5, kind: 'dialogue', preset: 'dialogue-cinematic', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true},
+    ];
+    expect(() => assertRenderLimits(project)).toThrow('overlap in the bottom caption lane');
+  });
+  it('allows simultaneous captions in different visual lanes', () => {
+    const project = {...structuredClone(initialState), id: 'caption-lanes', projectName: 'Lanes', duration: 3};
+    project.workflow.captions = [
+      {id: 'dialogue', text: '대사', startSeconds: 1, endSeconds: 2, kind: 'dialogue', preset: 'dialogue-clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true},
+      {id: 'brand', text: '브랜드', startSeconds: 1.5, endSeconds: 2.5, kind: 'dialogue', preset: 'dialogue-cinematic', position: 'top', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true},
+    ];
+    expect(() => assertRenderLimits(project)).not.toThrow();
   });
   it('normalizes only same-origin signed render download routes', () => {
     expect(normalizeRenderDownloadUrl('/api/render/file/render-id?expires=1&token=signed', 'https://clip.example')).toBe('/api/render/file/render-id?expires=1&token=signed');
@@ -190,15 +252,16 @@ describe('render request contract', () => {
     expect(() => normalizeRenderDownloadUrl('/api/render/file/render-id/extra', 'https://clip.example')).toThrow('invalid');
   });
   it('signs render downloads and rejects tampered tokens', () => {
-    const previous = process.env.CLIPJS_AGENT_TOKEN;
-    process.env.CLIPJS_AGENT_TOKEN = 'unit-test-secret';
+    const previous = process.env.CLIPJS_RENDER_DOWNLOAD_SECRET;
+    process.env.CLIPJS_RENDER_DOWNLOAD_SECRET = 'unit-test-download-secret';
     try {
       const token = createRenderDownloadToken('render-id', 60);
       expect(() => verifyRenderDownloadToken('render-id', token)).not.toThrow();
       expect(() => verifyRenderDownloadToken('other-id', token)).toThrow('invalid');
+      expect(() => verifyRenderDownloadToken('render-id', `${token}.ignored-suffix`)).toThrow('invalid');
     } finally {
-      if (previous === undefined) delete process.env.CLIPJS_AGENT_TOKEN;
-      else process.env.CLIPJS_AGENT_TOKEN = previous;
+      if (previous === undefined) delete process.env.CLIPJS_RENDER_DOWNLOAD_SECRET;
+      else process.env.CLIPJS_RENDER_DOWNLOAD_SECRET = previous;
     }
   });
 });

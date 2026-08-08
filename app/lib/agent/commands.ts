@@ -75,7 +75,11 @@ const cloneProject = (project: ProjectState): ProjectState => structuredClone(pr
 const editableProjectFingerprint = (project: ProjectState) => ({
   id: project.id,
   projectName: project.projectName,
-  mediaFiles: project.mediaFiles.map(({src: _src, ...media}) => media),
+  mediaFiles: project.mediaFiles.map((media) => {
+    const fingerprint = {...media};
+    delete fingerprint.src;
+    return fingerprint;
+  }),
   textElements: project.textElements,
   duration: project.duration,
   resolution: project.resolution,
@@ -137,9 +141,7 @@ export const applyAgentCommand = async (project: ProjectState, input: unknown): 
     const shot = cut?.shots.find((item) => item.id === command.shotId);
     if (!cut || !shot) throw new Error('Import target cut/shot does not exist in the storyboard.');
     const id = crypto.randomUUID();
-    const positionStart = command.positionStart ?? (command.role === 'audio'
-      ? cut.absoluteStartSeconds + shot.startSeconds
-      : next.mediaFiles.reduce((max, item) => Math.max(max, item.positionEnd), 0));
+    const positionStart = command.positionStart ?? (cut.absoluteStartSeconds + shot.startSeconds);
     next.mediaFiles.push({
       id,
       fileId: id,

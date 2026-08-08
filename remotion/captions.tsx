@@ -2,11 +2,29 @@ import React from 'react';
 import {interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 import type {CaptionCue, CaptionPosition} from '../app/lib/workflow/schema';
 
-const placement = (position: CaptionPosition, height: number): React.CSSProperties => {
-  if (position === 'top') return {top: height * 0.08};
+const placement = (position: CaptionPosition, height: number, safeArea: boolean): React.CSSProperties => {
+  const edge = safeArea ? 0.08 : 0.02;
+  if (position === 'top') return {top: height * edge};
   if (position === 'center') return {top: '50%', transform: 'translateY(-50%)'};
-  if (position === 'lower-third') return {bottom: height * 0.16};
-  return {bottom: height * 0.08};
+  if (position === 'lower-third') return {bottom: height * (safeArea ? 0.16 : 0.04)};
+  return {bottom: height * edge};
+};
+
+export const captionBounds = (
+  position: CaptionPosition,
+  safeArea: boolean,
+  width: number,
+  height: number,
+): React.CSSProperties => {
+  const horizontalMargin = safeArea ? 0.07 : 0.02;
+  const widthRatio = position === 'top'
+    ? (safeArea ? 0.68 : 0.78)
+    : 1 - horizontalMargin * 2;
+  return {
+    left: width * horizontalMargin,
+    width: width * widthRatio,
+    ...placement(position, height, safeArea),
+  };
 };
 
 export const captionStackStyle = (hasSpeaker: boolean, height: number): React.CSSProperties => ({
@@ -43,7 +61,7 @@ export const CaptionContent: React.FC<{cue: CaptionCue; durationInFrames: number
   const animatedWords = ['word-highlight', 'karaoke', 'bounce', 'glow'].includes(cue.preset);
 
   return (
-    <div style={{position: 'absolute', left: width * 0.07, width: width * 0.86, textAlign: 'center', ...captionStackStyle(Boolean(cue.speaker), height), ...placement(cue.position, height)}}>
+    <div style={{position: 'absolute', textAlign: 'center', ...captionStackStyle(Boolean(cue.speaker), height), ...captionBounds(cue.position, cue.safeArea, width, height)}}>
       {cue.speaker && <div style={{display: 'block', padding: '5px 14px', borderRadius: 8, background: cue.accentColor, color: '#111', fontFamily: cue.fontFamily, fontWeight: 800, fontSize: Math.max(22, width * 0.018)}}>{cue.speaker}</div>}
       <div style={{display: 'block', width: 'fit-content', maxWidth: '100%', fontFamily: cue.fontFamily, fontWeight: cue.kind === 'dialogue' ? 750 : 900, fontSize: Math.max(38, width * (cue.kind === 'variety' ? 0.052 : 0.04)), lineHeight: 1.25, color: '#fff', overflowWrap: 'break-word', wordBreak: 'keep-all', WebkitTextStroke: cue.kind === 'variety' ? '2px #111' : undefined, paintOrder: 'stroke fill', textShadow: '0 4px 12px #000, 0 2px 3px #000', ...presetStyle(cue, frame, fps)}}>
         {cue.preset === 'typewriter' ? cue.text.slice(0, typewriterLength) : animatedWords ? words.map((word, index) => {

@@ -68,6 +68,7 @@ export const PreviewPlayer = () => {
             style={{ width: "100%", height: "100%" }}
             controls
             clickToPlay={false}
+            acknowledgeRemotionLicense
         />
     )
 };
