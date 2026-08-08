@@ -107,7 +107,7 @@ export default function WorkflowPanel() {
       const response = await fetch('/api/approval/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
-        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard, production: project.workflow.production}),
+        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard, production: project.workflow.production, seedanceMaster: project.workflow.seedanceMaster}),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Approval failed.');

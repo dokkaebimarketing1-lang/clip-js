@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { TextElement, MediaFile, ActiveElement, ExportConfig } from '../../types';
 import { ProjectState } from '../../types';
 import {createDefaultWorkflow, type WorkflowState, workflowStateSchema} from '@/app/lib/workflow/schema';
+import {invalidateApproval} from '@/app/lib/workflow/approval';
 
 export const initialState: ProjectState = {
     id: crypto.randomUUID(),
@@ -134,7 +135,10 @@ const projectStateSlice = createSlice({
         // Special reducer for rehydrating state from IndexedDB
         rehydrate: (state, action: PayloadAction<ProjectState>) => {
             const workflow = action.payload.workflow ?? createDefaultWorkflow();
-            const normalizedWorkflow = workflowStateSchema.parse(workflow);
+            const parsedWorkflow = workflowStateSchema.parse(workflow);
+            const normalizedWorkflow = parsedWorkflow.approval.status === 'approved' && !parsedWorkflow.approval.seedanceMasterHash
+                ? {...parsedWorkflow, approval: invalidateApproval(parsedWorkflow.approval)}
+                : parsedWorkflow;
             const duration = calculateTotalDuration(
                 action.payload.mediaFiles ?? [],
                 action.payload.textElements ?? [],

@@ -20,9 +20,11 @@ describe('storyboard approval gate', () => {
     await expect(assertVideoGenerationAllowed(workflow)).rejects.toBeInstanceOf(ApprovalRequiredError);
   });
   it('allows only the exact approved storyboard hash', async () => {
-    const approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'));
-    await expect(assertVideoGenerationAllowed({...createDefaultWorkflow(), storyboard, approval})).resolves.toBeUndefined();
-    await expect(assertVideoGenerationAllowed({...createDefaultWorkflow(), storyboard: {...storyboard, title: 'changed'}, approval})).rejects.toThrow('changed after approval');
+    const workflow = createDefaultWorkflow();
+    const approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), workflow.production, workflow.seedanceMaster);
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard, approval})).resolves.toBeUndefined();
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard: {...storyboard, title: 'changed'}, approval})).rejects.toThrow('changed after approval');
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard, seedanceMaster: {...workflow.seedanceMaster, duration: 20}, approval})).rejects.toThrow('Seedance Master changed after approval');
     expect(invalidateApproval(approval).status).toBe('invalidated');
   });
 });
@@ -191,6 +193,19 @@ describe('render request contract', () => {
     const rehydrated = projectReducer({...structuredClone(initialState), id: 'open-project', projectName: 'Open'}, rehydrate(normalized));
     expect(rehydrated.id).toBe('open-project');
     expect(rehydrated.projectName).toBe('Imported');
+    expect(rehydrated.workflow.approval.status).toBe('invalidated');
+  });
+  it('invalidates legacy approvals that do not bind Seedance Master settings', () => {
+    const legacy = structuredClone(initialState);
+    legacy.workflow.approval = {
+      status: 'approved',
+      storyboardHash: 'storyboard-hash',
+      productionHash: 'a'.repeat(64),
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      approvedBy: 'owner',
+      signature: 'legacy-signature',
+    };
+    const rehydrated = projectReducer(structuredClone(initialState), rehydrate(legacy));
     expect(rehydrated.workflow.approval.status).toBe('invalidated');
   });
   it('rejects transitions with missing, nonvisual, reversed, or identical endpoints', () => {

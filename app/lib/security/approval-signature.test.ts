@@ -8,6 +8,7 @@ const baseApproval = {
   status: 'approved' as const,
   storyboardHash: 'a'.repeat(64),
   productionHash: 'b'.repeat(64),
+  seedanceMasterHash: 'c'.repeat(64),
   approvedAt: '2026-01-01T00:00:00Z',
   approvedBy: 'owner',
 };
@@ -28,6 +29,7 @@ describe('storyboard approval signature', () => {
     const signed = signStoryboardApproval('project-1', baseApproval);
     expect(() => verifyStoryboardApprovalSignature('project-1', {...signed, storyboardHash: 'c'.repeat(64)})).toThrow('invalid');
     expect(() => verifyStoryboardApprovalSignature('project-1', {...signed, productionHash: 'd'.repeat(64)})).toThrow('invalid');
+    expect(() => verifyStoryboardApprovalSignature('project-1', {...signed, seedanceMasterHash: 'e'.repeat(64)})).toThrow('invalid');
     expect(() => verifyStoryboardApprovalSignature('project-1', {...signed, approvedBy: 'attacker'})).toThrow('invalid');
     expect(() => verifyStoryboardApprovalSignature('project-1', {...signed, approvedAt: '2027-01-01T00:00:00Z'})).toThrow('invalid');
   });

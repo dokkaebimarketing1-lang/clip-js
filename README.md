@@ -23,9 +23,10 @@ A browser video editor built with Next.js, React, Remotion, IndexedDB and FFmpeg
 - Production bearer-token protection
 - HMAC-signed 10-minute render downloads and bounded render resources
 - Hell Grind-inspired Asset Registry V2, scene continuity locks, structured shot prompt compiler and generation Take Ledger
-- Owner approval binds both the storyboard and exact production manifest hash
+- Owner approval binds the storyboard, exact production manifest, and exact Seedance Master settings hashes
 - Seedance 2.5 Master Builder의 28축을 프로젝트 상태로 저장하고, 승인된 스토리보드·감독 manifest를 Higgsfield `seedance_2_5` 요청으로 평탄화
-- Higgsfield가 노출한 필드만 허용하는 검증 및 owner-token-gated CLI 제출 (`HIGGSFIELD_CLI_PATH` 또는 `PATH`의 `higgsfield`)
+- Higgsfield가 노출한 필드만 허용하는 검증 및 owner-token-gated CLI 제출. Windows npm `.cmd` shim은 직접 실행하지 않고 실제 JavaScript entry를 Node로 안전하게 실행합니다.
+- 승인 서명+요청 해시 기반 멱등성 캐시와 직렬 큐로 새 승인 없이 같은 유료 작업이 중복 제출되는 것을 차단합니다.
 
 ## Installation
 
@@ -98,6 +99,7 @@ npm run build     # Remotion prebundle + Next production build
 ## Security and deployment
 
 - Set distinct `CLIPJS_AGENT_TOKEN`, `CLIPJS_APPROVAL_TOKEN`, and `CLIPJS_RENDER_DOWNLOAD_SECRET` values in every environment; final render requests require both request credentials and download links use the third secret.
+- `HIGGSFIELD_CLI_PATH`는 Higgsfield JavaScript entry 또는 npm `.cmd` shim을 지정할 수 있습니다. 생략하면 Windows `PATH`에서 shim과 실제 entry를 함께 확인합니다. 완료 작업 캐시는 기본적으로 `~/.clipjs/higgsfield-jobs.json`에 저장되며 `CLIPJS_HIGGSFIELD_CACHE_PATH`로 변경할 수 있습니다.
 - Authentication fails closed in every environment. Local development must also set both tokens; request URLs and `Host` headers are not trusted as proof that a peer is local.
 - Rendering is intended for a self-hosted Node server. Remotion does not support placing `@remotion/bundler` inside a Next API route, so this project prebundles the Composition during build.
 - The self-hosted renderer requires `ffprobe` on `PATH` (or `CLIPJS_FFPROBE_PATH`) and rejects staged audio/video whose actual streams do not match the declared media kind.

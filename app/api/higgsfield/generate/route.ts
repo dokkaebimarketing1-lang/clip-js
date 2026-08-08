@@ -6,9 +6,11 @@ import {parseRenderProjectRequest} from '@/app/lib/workflow/project-file';
 import {assertVideoGenerationAllowed} from '@/app/lib/workflow/approval';
 import {compileHiggsfieldSeedanceRequest} from '@/app/lib/workflow/seedance-master';
 import {submitHiggsfieldSeedanceJob} from '@/app/lib/higgsfield/generate.server';
+import {computeHiggsfieldIdempotencyKey, createHiggsfieldSubmissionGuard} from '@/app/lib/higgsfield/submission-guard.server';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
+const submitOnce = createHiggsfieldSubmissionGuard({submit: submitHiggsfieldSeedanceJob, maxPending: 2});
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,8 +25,11 @@ export async function POST(request: NextRequest) {
       production: project.workflow.production,
       settings: project.workflow.seedanceMaster,
     });
-    const job = await submitHiggsfieldSeedanceJob(higgsfieldRequest);
-    return NextResponse.json({job, request: higgsfieldRequest});
+    const signature = project.workflow.approval.signature;
+    if (!signature) throw new Error('Approved project signature is required.');
+    const idempotencyKey = computeHiggsfieldIdempotencyKey(project.id, signature, higgsfieldRequest);
+    const {job, reused} = await submitOnce(idempotencyKey, higgsfieldRequest);
+    return NextResponse.json({job, request: higgsfieldRequest, idempotencyKey, reused});
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Unknown Higgsfield error.';
     console.error('Higgsfield submission failed:', error);
@@ -32,6 +37,7 @@ export async function POST(request: NextRequest) {
     if (/approval|approved|server-signed/i.test(detail)) return NextResponse.json({error: detail, code: 'APPROVAL_REQUIRED'}, {status: 403});
     if (/must|required|invalid|unsupported|reference|mode|duration|resolution|aspect/i.test(detail)) return NextResponse.json({error: detail, code: 'INVALID_HIGGSFIELD_REQUEST'}, {status: 400});
     if (/timed out|timeout/i.test(detail)) return NextResponse.json({error: 'Higgsfield submission timed out.', code: 'HIGGSFIELD_TIMEOUT'}, {status: 504});
+    if (/queue is full|idempotency cache/i.test(detail)) return NextResponse.json({error: detail, code: 'HIGGSFIELD_BUSY'}, {status: 503});
     return NextResponse.json({error: 'Higgsfield submission failed.', code: 'HIGGSFIELD_FAILED'}, {status: 500});
   }
 }

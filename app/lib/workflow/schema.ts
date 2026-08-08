@@ -36,6 +36,7 @@ export const approvalSchema = z.object({
   status: z.enum(['draft', 'approved', 'invalidated']),
   storyboardHash: z.string().optional(),
   productionHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  seedanceMasterHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   approvedAt: z.string().datetime().optional(),
   approvedBy: z.string().optional(),
   signature: z.string().optional(),
