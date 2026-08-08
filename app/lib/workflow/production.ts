@@ -14,7 +14,7 @@ export const compileShotPrompt = (input: ProductionManifest, shotSpecId: string)
   const references = shot.activeReferences.map((reference) => {
     const asset = manifest.assets.find((candidate) => candidate.id === reference.assetId);
     if (!asset || asset.status !== 'locked') throw new Error(`Shot generation requires locked asset ${reference.assetId}.`);
-    return `${asset.tag} — ${reference.role} reference\n${asset.descriptor}`;
+    return `${asset.tag} — defines ONLY the ${reference.role} of this subject:\n${asset.descriptor}`;
   });
   const assetById = new Map(manifest.assets.map((asset) => [asset.id, asset]));
   const acting = shot.acting.map((entry) => {
@@ -30,8 +30,8 @@ export const compileShotPrompt = (input: ProductionManifest, shotSpecId: string)
     `CUT ${shot.cutId}; SHOT ${shot.shotId}; ${shot.durationSeconds.toFixed(3)} seconds`,
     `EXACT ${pluralizedCharacter(shot.characterCount)} — NO DUPLICATES`,
     '',
-    'ACTIVE REFERENCES',
-    references.length ? references.join('\n') : 'No active references.',
+    'USE (assets for THIS shot only — unlisted assets must not appear)',
+    references.length ? references.join('\n') : 'No reference assets — pure text-to-video (t2v).',
     '',
     'GEO SPATIAL LAYOUT',
     `Scene: ${continuity.sceneId}`,
@@ -65,10 +65,11 @@ export const compileShotPrompt = (input: ProductionManifest, shotSpecId: string)
     `Direction: ${shot.lighting.direction}`,
     `Preserve continuity: ${shot.lighting.preserveContinuity ? 'yes' : 'no'}`,
     '',
-    'AUDIO',
-    `Dialogue: ${shot.audio.dialogue || '—'}`,
+    'AUDIO (4 lanes — official grammar: {dialogue} <sfx> (music))',
+    `Dialogue {${shot.audio.dialogue || '—'}}`,
+    `SFX <${shot.audio.sfx || '—'}>`,
     `Ambience: ${shot.audio.ambience || '—'}`,
-    `SFX: ${shot.audio.sfx || '—'}`,
+    shot.audio.music ? `Music (${shot.audio.music})` : 'Music: (none — no BGM, per approved storyboard)',
     '',
     'CHARACTER ACTING',
     ...(acting.length ? acting : ['No character acting direction.']),
@@ -82,6 +83,9 @@ export const compileShotPrompt = (input: ProductionManifest, shotSpecId: string)
     '',
     'POSITIVE CONSTRAINTS',
     ...(shot.positiveConstraints.length ? shot.positiveConstraints : ['preserve all locked production facts']),
+    '',
+    'END STATE (this shot must end exactly here)',
+    shot.endState ?? 'Match the approved storyboard end frame exactly.',
   ].join('\n');
   if (prompt.length > 50_000) throw new Error('Compiled prompt exceeds the 50KB safety limit.');
   return prompt;
@@ -124,6 +128,9 @@ export const computeProductionHash = async (manifest: ProductionManifest): Promi
 export type RecordTakeInput = {
   shotSpecId: string;
   parentTakeId?: string;
+  mode?: GenerationTake['mode'];
+  resolution?: GenerationTake['resolution'];
+  extensionMode?: GenerationTake['extensionMode'];
   provider: string;
   model: string;
   outputAssetId?: string;
@@ -167,6 +174,9 @@ export const createGenerationTake = async (
     newValueHash: input.newValue === undefined ? undefined : await sha256(input.newValue),
     provider: input.provider,
     model: input.model,
+    mode: input.mode,
+    resolution: input.resolution,
+    extensionMode: input.extensionMode,
     outputAssetId: input.outputAssetId,
     verdict,
     selected: false,

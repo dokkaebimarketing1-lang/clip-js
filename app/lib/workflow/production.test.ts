@@ -4,6 +4,7 @@ import {approveStoryboard, assertVideoGenerationAllowed} from './approval';
 import {
   createDefaultWorkflow,
   productionManifestSchema,
+  shotGenerationSpecSchema,
   type ProductionManifest,
   type Storyboard,
 } from './schema';
@@ -69,7 +70,7 @@ describe('Hell Grind production manifest', () => {
     const second = await compileShotPrompt(structuredClone(production), 'shot-spec-1');
     expect(first).toBe(second);
     expect(first).toContain('EXACT 1 CHARACTER');
-    expect(first).toContain('@roco — identity reference');
+    expect(first).toContain('@roco — defines ONLY the identity of this subject:');
     expect(first).toContain('GEO SPATIAL LAYOUT');
     expect(first).toContain('0.000–1.000s: hold calibration wide');
     expect(first).toContain('grounded action fantasy');
@@ -91,11 +92,11 @@ describe('Hell Grind production manifest', () => {
     project.workflow = {...createDefaultWorkflow(), storyboard, production};
     const change = await previewAgentCommand(project, {
       type: 'record_generation_take', shotSpecId: 'shot-spec-1',
-      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted',
+      provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted',
       outputAssetId: 'generated-clip-1',
     });
     const take = change.proposedProject.workflow.production.takes[0];
-    expect(take).toMatchObject({shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted'});
+    expect(take).toMatchObject({shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted'});
     expect(take.structuredSpecHash).toMatch(/^[a-f0-9]{64}$/);
     expect(take.compiledPromptHash).toMatch(/^[a-f0-9]{64}$/);
     expect(take.assetBundleHash).toMatch(/^[a-f0-9]{64}$/);
@@ -112,23 +113,23 @@ describe('Hell Grind production manifest', () => {
       assetBundleHash: 'c'.repeat(64),
       continuityLockHash: 'd'.repeat(64),
       provider: 'higgsfield',
-      model: 'seedance_2_0',
+      model: 'seedance_2_5',
       verdict: 'bad-roll' as const,
       selected: false,
       createdAt: new Date(index * 1000).toISOString(),
     }));
     const take = await createGenerationTake(failed, {
-      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'bad-roll',
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5', verdict: 'bad-roll',
     });
     expect(take.verdict).toBe('simplify-shot');
   });
 
   it('fails closed when two takes for the same shot are selected', async () => {
     const first = await createGenerationTake(production, {
-      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted',
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted',
     });
     const second = await createGenerationTake(production, {
-      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted',
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted',
     });
     expect(() => productionManifestSchema.parse({...production, takes: [{...first, selected: true}, {...second, selected: true}]}))
       .toThrow(/more than one selected take/i);
@@ -140,11 +141,11 @@ describe('Hell Grind production manifest', () => {
     project.workflow.approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), production);
     const first = await previewAgentCommand(project, {
       type: 'record_generation_take', shotSpecId: 'shot-spec-1',
-      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted', outputAssetId: 'clip-1',
+      provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted', outputAssetId: 'clip-1',
     });
     const second = await previewAgentCommand(first.proposedProject, {
       type: 'record_generation_take', shotSpecId: 'shot-spec-1',
-      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted', outputAssetId: 'clip-2',
+      provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted', outputAssetId: 'clip-2',
     });
     const firstTakeId = first.proposedProject.workflow.production.takes[0].id;
     const promoted = await previewAgentCommand(second.proposedProject, {type: 'select_generation_take', takeId: firstTakeId});
@@ -166,7 +167,7 @@ describe('Hell Grind production manifest', () => {
     project.workflow = {...createDefaultWorkflow(), storyboard, production};
     const recorded = await previewAgentCommand(project, {
       type: 'record_generation_take', shotSpecId: 'shot-spec-1',
-      provider: 'higgsfield', model: 'seedance_2_0', verdict: 'bad-roll',
+      provider: 'higgsfield', model: 'seedance_2_5', verdict: 'bad-roll',
     });
     const takeId = recorded.proposedProject.workflow.production.takes[0].id;
     await expect(previewAgentCommand(recorded.proposedProject, {type: 'select_generation_take', takeId}))
@@ -187,11 +188,11 @@ describe('Hell Grind production manifest', () => {
     const cut = storyboard.cuts[0];
     const storyboardShot = cut.shots[0];
     const asset: HiggsfieldAsset = {
-      id: 'clip-1', provider: 'higgsfield', model: 'seedance_2_0', url: 'https://cdn.example.com/clip.mp4',
+      id: 'clip-1', provider: 'higgsfield', model: 'seedance_2_5', url: 'https://cdn.example.com/clip.mp4',
       cutId: 'CUT01', shotId: 'S1', role: 'clip', durationSeconds: 4,
     };
     const take = await createGenerationTake(production, {
-      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_0', verdict: 'accepted', outputAssetId: 'clip-1',
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted', outputAssetId: 'clip-1',
     });
     const mapped = buildTakeClipMedia({take, shot, cut, storyboardShot, asset, mediaFiles: []});
     expect(mapped.media?.positionStart).toBe(cut.absoluteStartSeconds + storyboardShot.startSeconds);
@@ -202,5 +203,79 @@ describe('Hell Grind production manifest', () => {
     const existing = buildTakeClipMedia({take, shot, asset, mediaFiles: [mapped.media!]});
     expect(existing.alreadyOnTimeline).toBe(true);
     expect(buildTakeClipMedia({take, shot, mediaFiles: []}).media).toBeUndefined();
+  });
+
+  it('passes Seedance 2.5 fields through the agent command path', async () => {
+    const project = structuredClone(initialState);
+    project.id = 'production-project';
+    project.workflow = {...createDefaultWorkflow(), storyboard, production};
+    const change = await previewAgentCommand(project, {
+      type: 'record_generation_take', shotSpecId: 'shot-spec-1',
+      provider: 'higgsfield', model: 'seedance_2_5',
+      mode: 'omni_reference', resolution: '720p', verdict: 'accepted',
+    });
+    const take = change.proposedProject.workflow.production.takes[0];
+    expect(take.mode).toBe('omni_reference');
+    expect(take.resolution).toBe('720p');
+    // extensionMode without video_extension is rejected at the schema level too
+    await expect(previewAgentCommand(project, {
+      type: 'record_generation_take', shotSpecId: 'shot-spec-1',
+      provider: 'higgsfield', model: 'seedance_2_5',
+      mode: 'omni_reference', extensionMode: 'forward', verdict: 'accepted',
+    })).rejects.toThrow(/extensionMode/i);
+  });
+
+  it('enforces Seedance 2.5 mode rules on recorded takes', async () => {
+    // omni_reference + 720p (2.5 default reference workflow) is valid
+    const valid = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5',
+      mode: 'omni_reference', resolution: '720p', verdict: 'accepted',
+    });
+    expect(valid.mode).toBe('omni_reference');
+    expect(valid.resolution).toBe('720p');
+    expect(() => productionManifestSchema.parse({...production, takes: [valid]})).not.toThrow();
+
+    // extensionMode without video_extension -> rejected (2.5 rule)
+    const badExtension = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5',
+      mode: 'omni_reference', extensionMode: 'forward', verdict: 'accepted',
+    });
+    expect(() => productionManifestSchema.parse({...production, takes: [badExtension]})).toThrow(/only allowed when mode is 'video_extension'/i);
+
+    // video_extension without extensionMode -> rejected (2.5 rule)
+    const missingExtension = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5',
+      mode: 'video_extension', verdict: 'accepted',
+    });
+    expect(() => productionManifestSchema.parse({...production, takes: [missingExtension]})).toThrow(/requires extensionMode/i);
+
+    // valid video_extension chain with forward mode
+    const chain = await createGenerationTake(production, {
+      shotSpecId: 'shot-spec-1', provider: 'higgsfield', model: 'seedance_2_5',
+      mode: 'video_extension', extensionMode: 'forward', resolution: '720p', verdict: 'accepted',
+    });
+    expect(() => productionManifestSchema.parse({...production, takes: [chain]})).not.toThrow();
+  });
+
+  it('accepts up to 50 active references per shot spec (Seedance 2.5 cap)', () => {
+    const refs = Array.from({length: 50}, (_, index) => ({assetId: `asset-${index}`, role: 'identity' as const}));
+    expect(() => shotGenerationSpecSchema.parse({...production.shotSpecs[0], activeReferences: refs})).not.toThrow();
+    const tooMany = [...refs, {assetId: 'asset-51', role: 'identity' as const}];
+    expect(() => shotGenerationSpecSchema.parse({...production.shotSpecs[0], activeReferences: tooMany})).toThrow(/too_big/i);
+  });
+
+  it('compiles prompts with the Seedance 2.5 official structure', () => {
+    const prompt = compileShotPrompt(production, 'shot-spec-1');
+    // 씬별 자산 배정 (공식 5단계 중 4단계)
+    expect(prompt).toContain('USE (assets for THIS shot only');
+    // 오디오 4레인 + 공식 4기호 ({대사} <효과음> (음악))
+    expect(prompt).toContain('AUDIO (4 lanes');
+    expect(prompt).toContain('Dialogue {');
+    expect(prompt).toContain('SFX <');
+    expect(prompt).toContain('Music: (none');
+    // 씬별 종료 상태 (공식 End state)
+    expect(prompt).toContain('END STATE (this shot must end exactly here)');
+    // 시간 기반 세그먼트 (공식 타임스탬프 지시)
+    expect(prompt).toMatch(/\d+\.\d{3}–\d+\.\d{3}s:/);
   });
 });

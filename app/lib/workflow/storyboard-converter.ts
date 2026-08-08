@@ -30,6 +30,7 @@ const deriveSpecFor = (cutId: string, shot: {id: string; startSeconds: number; e
   audio: {dialogue: shot.dialogue, ambience: '—', sfx: shot.sfx},
   acting: [],
   positiveConstraints: [`match approved storyboard frame: ${shot.startFrame} → ${shot.endFrame}`],
+  endState: `match the approved storyboard end frame exactly: ${shot.endFrame}`,
 });
 
 export const deriveProductionFromStoryboard = (

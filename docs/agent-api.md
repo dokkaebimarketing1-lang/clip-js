@@ -12,7 +12,7 @@ Preview and render requests require `Authorization: Bearer $CLIPJS_AGENT_TOKEN`.
   "command": {
     "type": "import_clip",
     "url": "https://cdn.example.com/CUT01-S1.mp4",
-    "model": "seedance_2_0",
+    "model": "seedance_2_5",
     "cutId": "CUT01",
     "shotId": "S1",
     "role": "clip",
@@ -32,7 +32,7 @@ Supported mutation commands:
 - `upsert_production_asset` — add or replace a bounded character/location/prop/crowd state asset
 - `upsert_continuity_lock` — add or replace a scene geometry, axis, lighting and palette lock
 - `upsert_shot_spec` — add or replace a structured generation spec compiled into the canonical prompt skeleton
-- `record_generation_take` — record provider/model/output/verdict while computing provenance hashes server-side
+- `record_generation_take` — record provider/model/output/verdict while computing provenance hashes server-side. Seedance 2.5: optional `mode` (`t2v`/`omni_reference`/`video_edit`/`video_extension`), `resolution` (`480p`/`720p`), `extensionMode` (`backward`/`forward` — `video_extension` 전용)
 
 Production mutations invalidate owner approval. A `locked` asset requires exactly 10 passed stress tests. Prompt compilation and take recording fail closed unless all active references and the selected continuity lock are locked. Agents cannot submit provenance hashes directly.
 

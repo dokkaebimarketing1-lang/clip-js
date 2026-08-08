@@ -34,6 +34,7 @@ export const sceneContinuityLockSchema = z.object({
   id: boundedId,
   sceneId: boundedId,
   status: z.enum(['draft', 'locked']),
+  referenceUrl: z.string().url().optional(),
   landmarks: z.array(z.object({
     id: boundedId,
     description: z.string().min(1).max(500),
@@ -57,7 +58,7 @@ export const shotGenerationSpecSchema = z.object({
   durationSeconds: z.number().positive().max(120),
   characterCount: z.number().int().min(0).max(20),
   format: z.enum(['single-take', 'hard-cuts']),
-  activeReferences: z.array(z.object({assetId: boundedId, role: z.enum(['identity', 'location', 'prop', 'first-frame'])})).max(20),
+  activeReferences: z.array(z.object({assetId: boundedId, role: z.enum(['identity', 'location', 'prop', 'first-frame'])})).max(50),
   continuityLockId: boundedId,
   firstFrameBlocking: z.array(z.object({
     subject: z.string().min(1).max(128),
@@ -77,11 +78,12 @@ export const shotGenerationSpecSchema = z.object({
     direction: z.string().min(1).max(300),
     preserveContinuity: z.boolean(),
   }),
-  audio: z.object({dialogue: z.string().max(2000), ambience: z.string().max(1000), sfx: z.string().max(1000)}),
+  audio: z.object({dialogue: z.string().max(2000), ambience: z.string().max(1000), sfx: z.string().max(1000), music: z.string().max(1000).optional()}),
   acting: z.array(z.object({assetId: boundedId, beats: z.array(z.string().min(1).max(500)).max(20)})).max(20),
   positiveConstraints: z.array(z.string().min(1).max(500)).max(30),
   style: z.array(z.string().min(1).max(300)).max(10).optional(),
   quality: z.string().min(1).max(500).optional(),
+  endState: z.string().min(1).max(1000).optional(),
 }).superRefine((shot, ctx) => {
   shot.actionBeats.forEach((beat, index) => {
     if (beat.endSeconds > shot.durationSeconds) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['actionBeats', index], message: 'Action beat must stay within shot duration.'});
@@ -92,6 +94,9 @@ export const generationTakeSchema = z.object({
   id: boundedId,
   shotSpecId: boundedId,
   parentTakeId: boundedId.optional(),
+  mode: z.enum(['t2v', 'omni_reference', 'video_edit', 'video_extension']).optional(),
+  resolution: z.enum(['480p', '720p']).optional(),
+  extensionMode: z.enum(['backward', 'forward']).optional(),
   structuredSpecHash: sha256Schema,
   compiledPromptHash: sha256Schema,
   assetBundleHash: sha256Schema,
@@ -108,6 +113,8 @@ export const generationTakeSchema = z.object({
 }).superRefine((take, ctx) => {
   const hasDiffHashes = Boolean(take.previousValueHash && take.newValueHash);
   if (Boolean(take.changedPath) !== hasDiffHashes) ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Take diff provenance requires changedPath plus both value hashes.'});
+  if (take.extensionMode && take.mode !== 'video_extension') ctx.addIssue({code: z.ZodIssueCode.custom, path: ['extensionMode'], message: "extensionMode is only allowed when mode is 'video_extension' (Seedance 2.5 rule)."});
+  if (take.mode === 'video_extension' && !take.extensionMode) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['mode'], message: "mode 'video_extension' requires extensionMode (Seedance 2.5 rule)."});
 });
 
 export const productionManifestSchema = z.object({

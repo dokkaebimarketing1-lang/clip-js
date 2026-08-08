@@ -27,14 +27,17 @@ export default function WorkflowPanel() {
   const [productionJson, setProductionJson] = useState('');
   const [selectedShotSpecId, setSelectedShotSpecId] = useState('');
   const [url, setUrl] = useState('');
-  const [model, setModel] = useState('seedance_2_0');
+  const [model, setModel] = useState('seedance_2_5');
   const [cutId, setCutId] = useState('CUT01');
   const [shotId, setShotId] = useState('S1');
   const [duration, setDuration] = useState(5);
   const [role, setRole] = useState<HiggsfieldAsset['role']>('clip');
   const [takeShotSpecId, setTakeShotSpecId] = useState('');
   const [takeProvider, setTakeProvider] = useState('higgsfield');
-  const [takeModel, setTakeModel] = useState('seedance_2_0');
+  const [takeModel, setTakeModel] = useState('seedance_2_5');
+  const [takeMode, setTakeMode] = useState('omni_reference');
+  const [takeResolution, setTakeResolution] = useState('720p');
+  const [takeExtensionMode, setTakeExtensionMode] = useState('');
   const [takeVerdict, setTakeVerdict] = useState<GenerationTake['verdict']>('accepted');
   const [takeParentId, setTakeParentId] = useState('');
   const [takeOutputAssetId, setTakeOutputAssetId] = useState('');
@@ -247,6 +250,9 @@ export default function WorkflowPanel() {
         parentTakeId: takeParentId || undefined,
         provider: takeProvider,
         model: takeModel,
+        mode: takeMode as GenerationTake['mode'],
+        resolution: takeResolution as GenerationTake['resolution'],
+        extensionMode: (takeExtensionMode || undefined) as GenerationTake['extensionMode'],
         outputAssetId,
         verdict: takeVerdict,
       });
@@ -384,7 +390,14 @@ export default function WorkflowPanel() {
               {['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected'].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
             <input className={fieldClass} value={takeProvider} onChange={(event) => setTakeProvider(event.target.value)} placeholder="provider (higgsfield)" />
-            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="model (seedance_2_0)" />
+            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="model (seedance_2_5)" />
+            <select className={fieldClass} value={takeMode} onChange={(event) => setTakeMode(event.target.value)}>
+              {['t2v', 'omni_reference', 'video_edit', 'video_extension'].map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+            <select className={fieldClass} value={takeResolution} onChange={(event) => setTakeResolution(event.target.value)}>
+              {['720p', '480p'].map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+            <input className={fieldClass} value={takeExtensionMode} onChange={(event) => setTakeExtensionMode(event.target.value)} placeholder="extension_mode (forward/backward — video_extension 전용)" />
             <input className={fieldClass} value={takeOutputAssetId} onChange={(event) => setTakeOutputAssetId(event.target.value)} placeholder="output asset id (optional)" />
             <input className={fieldClass} value={takeParentId} onChange={(event) => setTakeParentId(event.target.value)} placeholder="parent take id (retake)" />
           </div>
