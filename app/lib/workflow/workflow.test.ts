@@ -24,7 +24,7 @@ describe('storyboard approval gate', () => {
     const approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), workflow.production, workflow.seedanceMaster);
     await expect(assertVideoGenerationAllowed({...workflow, storyboard, approval})).resolves.toBeUndefined();
     await expect(assertVideoGenerationAllowed({...workflow, storyboard: {...storyboard, title: 'changed'}, approval})).rejects.toThrow('changed after approval');
-    await expect(assertVideoGenerationAllowed({...workflow, storyboard, seedanceMaster: {...workflow.seedanceMaster, duration: 20}, approval})).rejects.toThrow('Seedance Master changed after approval');
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard, seedanceMaster: {...workflow.seedanceMaster, duration: 20, axes: {...workflow.seedanceMaster.axes, durationStructure: '20s-4stage'}}, approval})).rejects.toThrow('Seedance Master changed after approval');
     expect(invalidateApproval(approval).status).toBe('invalidated');
   });
 });

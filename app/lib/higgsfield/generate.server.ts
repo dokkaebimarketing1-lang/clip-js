@@ -11,6 +11,13 @@ const MAX_OUTPUT_BYTES = 1_000_000;
 const START_TIMEOUT_MS = 90_000;
 const TERMINATION_GRACE_MS = 5_000;
 
+export class HiggsfieldSubmissionTimeoutError extends Error {
+  constructor() {
+    super('Higgsfield job submission timed out.');
+    this.name = 'HiggsfieldSubmissionTimeoutError';
+  }
+}
+
 type LaunchSpec = {executable: string; prefixArgs: string[]};
 type LaunchOptions = {
   cliPath?: string;
@@ -63,7 +70,7 @@ export const submitHiggsfieldSeedanceJob = (input: HiggsfieldSeedanceRequest): P
     const child = spawn(/* turbopackIgnore: true */ launch.executable, args, {
       shell: false,
       windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
     let stderr = '';
@@ -85,7 +92,7 @@ export const submitHiggsfieldSeedanceJob = (input: HiggsfieldSeedanceRequest): P
       if (!child.kill()) return settleReject(error);
       graceTimer = setTimeout(() => settleReject(error), TERMINATION_GRACE_MS);
     };
-    const timer = setTimeout(() => terminate(new Error('Higgsfield job submission timed out.')), START_TIMEOUT_MS);
+    const timer = setTimeout(() => terminate(new HiggsfieldSubmissionTimeoutError()), START_TIMEOUT_MS);
     const collect = (target: 'stdout' | 'stderr', chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_OUTPUT_BYTES) return terminate(new Error('Higgsfield CLI output exceeded the safety limit.'));
@@ -110,6 +117,5 @@ export const submitHiggsfieldSeedanceJob = (input: HiggsfieldSeedanceRequest): P
         settleReject(new Error('Higgsfield CLI returned an invalid JSON response.'));
       }
     });
-    child.stdin.end(request.prompt, 'utf8');
   });
 };

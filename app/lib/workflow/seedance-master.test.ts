@@ -6,6 +6,7 @@ import {
   buildHiggsfieldCliArgs,
   compileHiggsfieldSeedanceRequest,
   higgsfieldSeedanceRequestSchema,
+  seedanceMasterSettingsSchema,
 } from './seedance-master';
 
 const storyboard: Storyboard = {
@@ -93,6 +94,19 @@ describe('Seedance master → Higgsfield compiler', () => {
       .toThrow(/50/);
   });
 
+  it('rejects unsupported first/last-frame mode and invalid reference IDs', () => {
+    const settings = buildDefaultSeedanceMasterSettings();
+    settings.axes.task = 'fl';
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings})).toThrow(/first\/last-frame mode/i);
+    expect(() => higgsfieldSeedanceRequestSchema.parse({
+      prompt: 'x', mode: 'omni_reference', duration: 30, aspect_ratio: '16:9', resolution: '720p', generate_audio: false,
+      image_references: ['../../unsafe'],
+    })).toThrow();
+    const mismatched = buildDefaultSeedanceMasterSettings();
+    mismatched.duration = 20;
+    expect(() => seedanceMasterSettingsSchema.parse(mismatched)).toThrow(/단계 구조/);
+  });
+
   it('requires extension direction only for video extension', () => {
     const settings = buildDefaultSeedanceMasterSettings();
     settings.axes.task = 'ext';
@@ -109,7 +123,7 @@ describe('Seedance master → Higgsfield compiler', () => {
     const request = compileHiggsfieldSeedanceRequest({storyboard, production, settings, imageReferences: ['upload_1', 'upload_2']});
     const args = buildHiggsfieldCliArgs(request);
     expect(args).toEqual(expect.arrayContaining(['generate', 'create', 'seedance_2_5', '--mode', 'omni_reference', '--image-references', 'upload_1', '--image-references', 'upload_2', '--json']));
-    expect(args).not.toContain('--prompt');
+    expect(args).toEqual(expect.arrayContaining(['--prompt', request.prompt]));
     expect(args.join(' ')).not.toMatch(/output[_-]format|watermark|return[_-]last[_-]frame|adaptive|doubao/i);
   });
 });

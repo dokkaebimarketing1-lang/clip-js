@@ -70,8 +70,12 @@ export default function SeedanceMasterPanel() {
   }, [project.workflow.storyboard, project.workflow.production, settings]);
 
   const save = (next: SeedanceMasterSettings) => {
-    const parsed = seedanceMasterSettingsSchema.parse(next);
-    dispatch(setWorkflow({...project.workflow, seedanceMaster: parsed}));
+    const parsed = seedanceMasterSettingsSchema.safeParse(next);
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? 'Seedance 설정값이 올바르지 않습니다.');
+      return;
+    }
+    dispatch(setWorkflow({...project.workflow, seedanceMaster: parsed.data}));
   };
   const setAxis = (key: AxisKey, value: unknown) => save({...settings, axes: {...settings.axes, [key]: value}});
   const toggleMulti = (key: AxisKey, value: string) => {
@@ -82,8 +86,12 @@ export default function SeedanceMasterPanel() {
   };
   const copy = async (kind: 'prompt'|'json') => {
     if (!compiled.request) return;
-    await navigator.clipboard.writeText(kind === 'prompt' ? compiled.request.prompt : JSON.stringify(compiled.request, null, 2));
-    toast.success(kind === 'prompt' ? 'Higgsfield 프롬프트를 복사했습니다.' : 'Higgsfield 요청값을 복사했습니다.');
+    try {
+      await navigator.clipboard.writeText(kind === 'prompt' ? compiled.request.prompt : JSON.stringify(compiled.request, null, 2));
+      toast.success(kind === 'prompt' ? 'Higgsfield 프롬프트를 복사했습니다.' : 'Higgsfield 요청값을 복사했습니다.');
+    } catch {
+      toast.error('클립보드에 복사하지 못했습니다. 브라우저 권한을 확인하세요.');
+    }
   };
   const submit = async () => {
     setSubmitting(true);
@@ -94,9 +102,13 @@ export default function SeedanceMasterPanel() {
         headers: {'content-type': 'application/json', authorization: `Bearer ${agentToken}`, 'x-clipjs-approval-token': approvalToken},
         body: JSON.stringify({project}),
       });
-      const body = await response.json() as {job?: unknown; error?: string};
+      const responseText = await response.text();
+      let body: {job?: unknown; error?: string} = {};
+      try { body = JSON.parse(responseText) as {job?: unknown; error?: string}; } catch { /* sanitized below */ }
       if (!response.ok) throw new Error(body.error || 'Higgsfield 작업 생성에 실패했습니다.');
       setJobResult(JSON.stringify(body.job, null, 2));
+      setAgentToken('');
+      setApprovalToken('');
       toast.success('Higgsfield에 Seedance 2.5 작업을 제출했습니다.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Higgsfield 작업 생성에 실패했습니다.');
@@ -108,16 +120,16 @@ export default function SeedanceMasterPanel() {
   return <section className="space-y-3 rounded border border-blue-400/30 bg-blue-500/5 p-3">
     <div><h3 className="font-semibold">Seedance 2.5 Master → Higgsfield</h3><p className="text-xs text-gray-400">28축을 프로젝트에 저장하고, 승인된 스토리보드·감독 설계를 합쳐 Higgsfield가 받는 값만 만듭니다.</p></div>
     <div className="grid grid-cols-2 gap-2">
-      <label className="text-xs text-gray-400">영상 길이<input className={fieldClass} type="number" min={4} max={30} value={settings.duration} onChange={(e)=>save({...settings,duration:Number(e.target.value)})}/></label>
+      <label className="text-xs text-gray-400">영상 길이<select className={fieldClass} value={settings.duration} onChange={(e)=>{const duration=Number(e.target.value) as 20|30; save({...settings,duration,axes:{...settings.axes,durationStructure:duration===20?'20s-4stage':'30s-5stage'}});}}><option value={20}>20초</option><option value={30}>30초</option></select></label>
       <label className="text-xs text-gray-400">화면 비율<select className={fieldClass} value={settings.aspectRatio} onChange={(e)=>save({...settings,aspectRatio:e.target.value as SeedanceMasterSettings['aspectRatio']})}>{['auto','21:9','16:9','4:3','1:1','3:4','9:16'].map(v=><option key={v}>{v}</option>)}</select></label>
       <label className="text-xs text-gray-400">해상도<select className={fieldClass} value={settings.resolution} onChange={(e)=>save({...settings,resolution:e.target.value as SeedanceMasterSettings['resolution']})}><option>720p</option><option>480p</option></select></label>
       <label className="flex items-center gap-2 text-xs text-gray-300"><input type="checkbox" checked={settings.generateAudio} onChange={(e)=>save({...settings,generateAudio:e.target.checked})}/>Seedance에서 소리 만들기</label>
     </div>
     <details className="rounded border border-white/10 p-2" open><summary className="cursor-pointer font-semibold">28축 연출 설정</summary>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{singleAxes.map(axis=><label key={axis.key} className="text-xs text-gray-400">{axis.label}<select className={fieldClass} value={String(settings.axes[axis.key])} onChange={(e)=>setAxis(axis.key,e.target.value)}>{axis.options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>)}</div>
-      <div className="mt-3 space-y-2">{multiAxes.map(axis=><div key={axis.key}><div className="text-xs text-gray-400">{axis.label}</div><div className="flex flex-wrap gap-1">{axis.options.map(o=>{const selected=(settings.axes[axis.key] as string[]).includes(o.value); return <button type="button" key={o.value} onClick={()=>toggleMulti(axis.key,o.value)} className={`rounded border px-2 py-1 text-xs ${selected?'border-blue-300 bg-blue-500/30':'border-white/15 bg-black/20'}`}>{o.label}</button>;})}</div></div>)}</div>
+      <div className="mt-3 space-y-2">{multiAxes.map(axis=><div key={axis.key}><div className="text-xs text-gray-400">{axis.label}</div><div className="flex flex-wrap gap-1">{axis.options.map(o=>{const selected=(settings.axes[axis.key] as string[]).includes(o.value); return <button type="button" aria-pressed={selected} key={o.value} onClick={()=>toggleMulti(axis.key,o.value)} className={`rounded border px-2 py-1 text-xs ${selected?'border-blue-300 bg-blue-500/30':'border-white/15 bg-black/20'}`}>{o.label}</button>;})}</div></div>)}</div>
     </details>
-    {settings.axes.task === 'ext' && <label className="text-xs text-gray-400">연장 방향<select className={fieldClass} value={settings.extensionMode ?? ''} onChange={(e)=>save({...settings,extensionMode:e.target.value as 'forward'|'backward'})}><option value="">선택</option><option value="forward">뒤로 이어 만들기</option><option value="backward">앞으로 이어 만들기</option></select></label>}
+    {settings.axes.task === 'ext' && <label className="text-xs text-gray-400">연장 방향<select className={fieldClass} value={settings.extensionMode ?? ''} onChange={(e)=>save({...settings,extensionMode:e.target.value ? e.target.value as 'forward'|'backward' : undefined})}><option value="">선택</option><option value="forward">뒤로 이어 만들기</option><option value="backward">앞으로 이어 만들기</option></select></label>}
     <details className="rounded border border-white/10 p-2"><summary className="cursor-pointer font-semibold">Higgsfield 업로드 ID</summary><p className="my-1 text-xs text-gray-500">파일 경로가 아니라 Higgsfield에 먼저 올린 파일의 ID를 한 줄에 하나씩 넣습니다.</p>
       <textarea className={`${fieldClass} min-h-16`} value={settings.imageReferenceIds.join('\n')} onChange={(e)=>save({...settings,imageReferenceIds:splitIds(e.target.value)})} placeholder="이미지 업로드 ID"/>
       <textarea className={`${fieldClass} mt-1 min-h-16`} value={settings.videoReferenceIds.join('\n')} onChange={(e)=>save({...settings,videoReferenceIds:splitIds(e.target.value)})} placeholder="영상 업로드 ID"/>

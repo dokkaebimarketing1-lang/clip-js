@@ -140,8 +140,8 @@ export const workflowStateSchema = z.object({
   transitions: z.array(transitionSchema).default([]),
   effects: z.array(effectSpecSchema).max(1000).default([]),
   captions: z.array(captionCueSchema).max(5000).default([]),
-  production: productionManifestSchema.default(createDefaultProductionManifest()),
-  seedanceMaster: seedanceMasterSettingsSchema.default(buildDefaultSeedanceMasterSettings()),
+  production: productionManifestSchema.default(() => createDefaultProductionManifest()),
+  seedanceMaster: seedanceMasterSettingsSchema.default(() => buildDefaultSeedanceMasterSettings()),
 });
 
 export type Storyboard = z.infer<typeof storyboardSchema>;

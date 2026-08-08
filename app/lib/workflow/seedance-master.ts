@@ -36,7 +36,7 @@ const axisSchema = z.object({
 
 export const seedanceMasterSettingsSchema = z.object({
   axes: axisSchema,
-  duration: z.number().int().min(4).max(30),
+  duration: z.union([z.literal(20), z.literal(30)]),
   aspectRatio: z.enum(['auto', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16']),
   resolution: z.enum(['480p', '720p']),
   generateAudio: z.boolean(),
@@ -44,7 +44,12 @@ export const seedanceMasterSettingsSchema = z.object({
   imageReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(50).default([]),
   videoReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(50).default([]),
   audioReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(50).default([]),
-}).strict();
+}).strict().superRefine((settings, ctx) => {
+  const expected = settings.duration === 20 ? '20s-4stage' : '30s-5stage';
+  if (settings.axes.durationStructure !== expected) {
+    ctx.addIssue({code: z.ZodIssueCode.custom, path: ['axes', 'durationStructure'], message: '영상 길이와 단계 구조가 일치해야 합니다.'});
+  }
+});
 
 export type SeedanceMasterSettings = z.infer<typeof seedanceMasterSettingsSchema>;
 
@@ -67,15 +72,15 @@ export const buildDefaultSeedanceMasterSettings = (): SeedanceMasterSettings => 
 });
 
 export const higgsfieldSeedanceRequestSchema = z.object({
-  prompt: z.string().min(1).max(50_000),
+  prompt: z.string().min(1).max(24_000),
   mode: z.enum(['t2v', 'omni_reference', 'video_edit', 'video_extension']),
   duration: z.number().int().min(4).max(30),
   aspect_ratio: z.enum(['auto', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16']),
   resolution: z.enum(['480p', '720p']),
   generate_audio: z.boolean(),
-  image_references: z.array(z.string().min(1)).optional(),
-  video_references: z.array(z.string().min(1)).optional(),
-  audio_references: z.array(z.string().min(1)).optional(),
+  image_references: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).optional(),
+  video_references: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).optional(),
+  audio_references: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).optional(),
   extension_mode: z.enum(['backward', 'forward']).optional(),
 }).strict().superRefine((request, ctx) => {
   const imageCount = request.image_references?.length ?? 0;
@@ -95,7 +100,7 @@ export type HiggsfieldSeedanceRequest = z.infer<typeof higgsfieldSeedanceRequest
 
 export const buildHiggsfieldCliArgs = (requestInput: HiggsfieldSeedanceRequest): string[] => {
   const request = higgsfieldSeedanceRequestSchema.parse(requestInput);
-  const args = ['generate', 'create', 'seedance_2_5', '--mode', request.mode, '--duration', String(request.duration), '--aspect_ratio', request.aspect_ratio, '--resolution', request.resolution, '--generate_audio', String(request.generate_audio)];
+  const args = ['generate', 'create', 'seedance_2_5', '--prompt', request.prompt, '--mode', request.mode, '--duration', String(request.duration), '--aspect_ratio', request.aspect_ratio, '--resolution', request.resolution, '--generate_audio', String(request.generate_audio)];
   request.image_references?.forEach((id) => args.push('--image-references', id));
   request.video_references?.forEach((id) => args.push('--video-references', id));
   request.audio_references?.forEach((id) => args.push('--audio-references', id));
@@ -115,6 +120,7 @@ const modeForTask = (task: SeedanceMasterSettings['axes']['task']): HiggsfieldSe
 const axisLabels: Partial<Record<keyof SeedanceMasterSettings['axes'], Record<string, string>>> = {
   extra: {none: '不使用', one_click: '一键成片', seamless: '无缝转场', combined: '组合能力'},
   genre: {tvc: '高端广告片', drama: '短剧', brand: '品牌故事', education: '教育视频', ecommerce: '电商视频', travel: '旅行Vlog'},
+  durationStructure: {'20s-4stage': '20秒四阶段结构', '30s-5stage': '30秒五阶段结构'},
   shotSequence: {timestamp: '连续且不重叠的整数秒时间区间', 'shot-number': '镜头编号', 'time-point': '指定秒数事件', 'relative-time': '相对时间事件', mixed: '镜头编号与时间区间并用'},
   dialogueLanguage: {'ko-seoul': '韩语，自然的首尔口音', en: '美式英语', none: '无台词'},
   voice: {'soft-slow': '温柔、缓慢、口语化', 'bright-fast': '明亮、稍快、有活力', 'calm-formal': '沉稳、均匀、正式', 'excited-fast': '兴奋、快速、饱满'},
@@ -147,7 +153,7 @@ const summarizeAxis = (settings: SeedanceMasterSettings): string => {
   const {axes} = settings;
   const list = (key: keyof typeof axes, values: readonly string[]) => values.map((value) => axisValue(key, value)).join('、') || '无';
   return [
-    `【生成目标】${axisValue('genre', axes.genre)}；${settings.duration}秒；${axisValue('shotSequence', axes.shotSequence)}；额外能力：${axisValue('extra', axes.extra)}。`,
+    `【生成目标】${axisValue('genre', axes.genre)}；${settings.duration}秒；${axisValue('durationStructure', axes.durationStructure)}；${axisValue('shotSequence', axes.shotSequence)}；额外能力：${axisValue('extra', axes.extra)}。`,
     `【人物与情绪】台词语言：${axisValue('dialogueLanguage', axes.dialogueLanguage)}；语气：${axisValue('voice', axes.voice)}；情绪：${list('emotions', axes.emotions)}；情绪流：${axisValue('emotionFlow', axes.emotionFlow)}。`,
     `【镜头与风格】景别：${axisValue('shotSize', axes.shotSize)}；时间天气：${axisValue('timeWeather', axes.timeWeather)}；${axisValue('camera', axes.camera)}；机位：${axisValue('angle', axes.angle)}；光学：${list('optics', axes.optics)}；构图：${axisValue('composition', axes.composition)}；转场：${axisValue('transition', axes.transition)}。每个镜头只使用一种运镜。`,
     `【声音总则】声道：${list('audioLanes', axes.audioLanes)}；音乐：${axisValue('musicGenre', axes.musicGenre)}；效果音：${list('fxPresets', axes.fxPresets)}。`,

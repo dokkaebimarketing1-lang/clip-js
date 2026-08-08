@@ -41,26 +41,28 @@ export const createHiggsfieldSubmissionGuard = (options: GuardOptions) => {
   const cacheFilePath = options.cacheFilePath === undefined
     ? (process.env.CLIPJS_HIGGSFIELD_CACHE_PATH?.trim() || DEFAULT_CACHE_PATH)
     : options.cacheFilePath;
-  const completed = readCache(cacheFilePath);
+  let completed: Map<string, unknown> | undefined;
+  const getCompleted = () => completed ??= readCache(cacheFilePath);
   const inFlight = new Map<string, Promise<unknown>>();
   const queue = createSerialTaskQueue(options.maxPending ?? 1, 'Higgsfield submission queue is full.');
 
   const ensureWritableCache = () => {
     if (!cacheFilePath || existsSync(cacheFilePath)) return;
-    persistCache(cacheFilePath, completed);
+    persistCache(cacheFilePath, getCompleted());
   };
 
   return async (key: string, request: HiggsfieldSeedanceRequest): Promise<{job: unknown; reused: boolean}> => {
     if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('Invalid Higgsfield idempotency key.');
-    if (completed.has(key)) return {job: completed.get(key), reused: true};
+    const completedJobs = getCompleted();
+    if (completedJobs.has(key)) return {job: completedJobs.get(key), reused: true};
     const existing = inFlight.get(key);
     if (existing) return {job: await existing, reused: true};
     ensureWritableCache();
 
     const submission = queue(async () => {
       const job = await options.submit(request);
-      completed.set(key, job);
-      if (cacheFilePath) persistCache(cacheFilePath, completed);
+      completedJobs.set(key, job);
+      if (cacheFilePath) persistCache(cacheFilePath, completedJobs);
       return job;
     });
     inFlight.set(key, submission);
