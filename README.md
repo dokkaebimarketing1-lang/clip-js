@@ -26,7 +26,7 @@ A browser video editor built with Next.js, React, Remotion, IndexedDB and FFmpeg
 - Owner approval binds the storyboard, exact production manifest, and exact Seedance Master settings hashes
 - Seedance 2.5 Master Builder의 28축을 프로젝트 상태로 저장하고, 승인된 스토리보드·감독 manifest를 Higgsfield `seedance_2_5` 요청으로 평탄화
 - Higgsfield가 노출한 필드만 허용하는 검증 및 owner-token-gated CLI 제출. Windows npm `.cmd` shim은 직접 실행하지 않고 실제 JavaScript entry를 Node로 안전하게 실행합니다.
-- 승인 서명+요청 해시 기반 멱등성 캐시와 직렬 큐로 새 승인 없이 같은 유료 작업이 중복 제출되는 것을 차단합니다.
+- 승인 서명+요청 해시별 원자적 claim과 직렬 큐로 새 승인 없이 같은 유료 작업이 중복 제출되는 것을 차단합니다. CLI 응답이 유실되거나 타임아웃되면 해당 claim은 `uncertain`으로 남아 자동 재제출을 금지합니다.
 
 ## Installation
 
@@ -99,7 +99,7 @@ npm run build     # Remotion prebundle + Next production build
 ## Security and deployment
 
 - Set distinct `CLIPJS_AGENT_TOKEN`, `CLIPJS_APPROVAL_TOKEN`, and `CLIPJS_RENDER_DOWNLOAD_SECRET` values in every environment; final render requests require both request credentials and download links use the third secret.
-- `HIGGSFIELD_CLI_PATH`는 Higgsfield JavaScript entry 또는 npm `.cmd` shim을 지정할 수 있습니다. 생략하면 Windows `PATH`에서 shim과 실제 entry를 함께 확인합니다. 완료 작업 캐시는 기본적으로 `~/.clipjs/higgsfield-jobs.json`에 저장되며 `CLIPJS_HIGGSFIELD_CACHE_PATH`로 변경할 수 있습니다.
+- `HIGGSFIELD_CLI_PATH`는 Higgsfield JavaScript entry 또는 npm `.cmd` shim을 지정할 수 있습니다. 생략하면 Windows `PATH`에서 shim과 실제 entry를 함께 확인합니다. 제출 claim은 기본적으로 `~/.clipjs/higgsfield-claims/`에 영구 저장되며 `CLIPJS_HIGGSFIELD_CLAIM_DIR`로 변경할 수 있습니다. `uncertain` claim은 Higgsfield 작업 목록을 대조하기 전까지 삭제하거나 자동 재시도하지 않습니다.
 - Authentication fails closed in every environment. Local development must also set both tokens; request URLs and `Host` headers are not trusted as proof that a peer is local.
 - Rendering is intended for a self-hosted Node server. Remotion does not support placing `@remotion/bundler` inside a Next API route, so this project prebundles the Composition during build.
 - The self-hosted renderer requires `ffprobe` on `PATH` (or `CLIPJS_FFPROBE_PATH`) and rejects staged audio/video whose actual streams do not match the declared media kind.

@@ -5,7 +5,7 @@ import {verifyStoryboardApprovalSignature} from '@/app/lib/security/approval-sig
 import {assertVideoGenerationAllowed} from '@/app/lib/workflow/approval';
 import {compileHiggsfieldSeedanceRequest} from '@/app/lib/workflow/seedance-master';
 import {HiggsfieldSubmissionTimeoutError, submitHiggsfieldSeedanceJob} from '@/app/lib/higgsfield/generate.server';
-import {computeHiggsfieldIdempotencyKey, createHiggsfieldSubmissionGuard} from '@/app/lib/higgsfield/submission-guard.server';
+import {computeHiggsfieldIdempotencyKey, createHiggsfieldSubmissionGuard, HiggsfieldSubmissionUncertainError} from '@/app/lib/higgsfield/submission-guard.server';
 import {SerialTaskQueueFullError} from '@/app/lib/render/serial-task-queue';
 import {readLimitedJson} from '@/app/lib/security/request-body';
 
@@ -58,6 +58,9 @@ export async function POST(request: NextRequest) {
     console.error('Higgsfield submission failed.', {name: error instanceof Error ? error.name : 'UnknownError'});
     if (error instanceof SerialTaskQueueFullError) {
       return NextResponse.json({error: 'Another Higgsfield submission is in progress.', code: 'HIGGSFIELD_BUSY'}, {status: 503});
+    }
+    if (error instanceof HiggsfieldSubmissionUncertainError) {
+      return NextResponse.json({error: 'A previous submission may already exist. Automatic replay is blocked; reconcile Higgsfield jobs and approve a new attempt.', code: 'HIGGSFIELD_SUBMISSION_UNCERTAIN'}, {status: 409});
     }
     if (error instanceof HiggsfieldSubmissionTimeoutError) {
       return NextResponse.json({error: 'Higgsfield submission timed out.', code: 'HIGGSFIELD_TIMEOUT'}, {status: 504});
