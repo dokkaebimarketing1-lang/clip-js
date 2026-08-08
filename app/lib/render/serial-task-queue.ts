@@ -1,5 +1,12 @@
 export type SerialTaskQueue = <T>(task: () => Promise<T>) => Promise<T>;
 
+export class SerialTaskQueueFullError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SerialTaskQueueFullError';
+  }
+}
+
 export const createSerialTaskQueue = (maxPending: number, fullMessage: string): SerialTaskQueue => {
   if (!Number.isInteger(maxPending) || maxPending < 1) throw new Error('maxPending must be a positive integer.');
 
@@ -7,7 +14,7 @@ export const createSerialTaskQueue = (maxPending: number, fullMessage: string): 
   let tail: Promise<void> = Promise.resolve();
 
   return <T>(task: () => Promise<T>): Promise<T> => {
-    if (pending >= maxPending) return Promise.reject(new Error(fullMessage));
+    if (pending >= maxPending) return Promise.reject(new SerialTaskQueueFullError(fullMessage));
     pending += 1;
 
     const job = tail.then(task);

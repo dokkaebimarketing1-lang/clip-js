@@ -18,6 +18,7 @@ const payload = (projectId: string, approval: StoryboardApproval): string => JSO
   status: approval.status,
   storyboardHash: approval.storyboardHash,
   productionHash: approval.productionHash,
+  seedanceMasterHash: approval.seedanceMasterHash,
   approvedAt: approval.approvedAt,
   approvedBy: approval.approvedBy,
 });

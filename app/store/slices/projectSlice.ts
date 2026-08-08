@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { TextElement, MediaFile, ActiveElement, ExportConfig } from '../../types';
 import { ProjectState } from '../../types';
 import {createDefaultWorkflow, type WorkflowState, workflowStateSchema} from '@/app/lib/workflow/schema';
+import {invalidateApproval} from '@/app/lib/workflow/approval';
 
 export const initialState: ProjectState = {
     id: crypto.randomUUID(),
@@ -101,7 +102,8 @@ const projectStateSlice = createSlice({
         setWorkflow: (state, action: PayloadAction<WorkflowState>) => {
             const storyboardChanged = JSON.stringify(state.workflow.storyboard ?? null) !== JSON.stringify(action.payload.storyboard ?? null);
             const productionChanged = JSON.stringify(state.workflow.production) !== JSON.stringify(action.payload.production);
-            state.workflow = storyboardChanged || productionChanged
+            const seedanceMasterChanged = JSON.stringify(state.workflow.seedanceMaster) !== JSON.stringify(action.payload.seedanceMaster);
+            state.workflow = storyboardChanged || productionChanged || seedanceMasterChanged
                 ? { ...action.payload, approval: { status: 'invalidated' } }
                 : action.payload;
             const mediaEnd = state.mediaFiles.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
@@ -133,7 +135,10 @@ const projectStateSlice = createSlice({
         // Special reducer for rehydrating state from IndexedDB
         rehydrate: (state, action: PayloadAction<ProjectState>) => {
             const workflow = action.payload.workflow ?? createDefaultWorkflow();
-            const normalizedWorkflow = workflowStateSchema.parse(workflow);
+            const parsedWorkflow = workflowStateSchema.parse(workflow);
+            const normalizedWorkflow = parsedWorkflow.approval.status === 'approved' && !parsedWorkflow.approval.seedanceMasterHash
+                ? {...parsedWorkflow, approval: invalidateApproval(parsedWorkflow.approval)}
+                : parsedWorkflow;
             const duration = calculateTotalDuration(
                 action.payload.mediaFiles ?? [],
                 action.payload.textElements ?? [],
