@@ -10,7 +10,7 @@ import {computeHiggsfieldIdempotencyKey, createHiggsfieldSubmissionGuard} from '
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
-const submitOnce = createHiggsfieldSubmissionGuard({submit: submitHiggsfieldSeedanceJob, maxPending: 2});
+const submitOnce = createHiggsfieldSubmissionGuard({submit: submitHiggsfieldSeedanceJob, maxPending: 1});
 
 export async function POST(request: NextRequest) {
   try {

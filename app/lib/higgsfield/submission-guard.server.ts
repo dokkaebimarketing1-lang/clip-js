@@ -43,7 +43,7 @@ export const createHiggsfieldSubmissionGuard = (options: GuardOptions) => {
     : options.cacheFilePath;
   const completed = readCache(cacheFilePath);
   const inFlight = new Map<string, Promise<unknown>>();
-  const queue = createSerialTaskQueue(options.maxPending ?? 2, 'Higgsfield submission queue is full.');
+  const queue = createSerialTaskQueue(options.maxPending ?? 1, 'Higgsfield submission queue is full.');
 
   const ensureWritableCache = () => {
     if (!cacheFilePath || existsSync(cacheFilePath)) return;

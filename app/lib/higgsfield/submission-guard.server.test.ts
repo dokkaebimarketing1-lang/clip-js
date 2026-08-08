@@ -27,17 +27,16 @@ describe('Higgsfield submission guard', () => {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it('bounds distinct paid submissions to one running and one queued request', async () => {
+  it('allows only one distinct paid submission at a time', async () => {
     let release!: (value: unknown) => void;
-    const submit = vi.fn(() => new Promise((resolve) => { release = resolve; }));
-    const guarded = createHiggsfieldSubmissionGuard({submit, maxPending: 2, cacheFilePath: null});
+    const submit = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockResolvedValueOnce({id: 'job-2'});
+    const guarded = createHiggsfieldSubmissionGuard({submit, maxPending: 1, cacheFilePath: null});
     const first = guarded(key('a'), request);
-    const second = guarded(key('b'), request);
-    await expect(guarded(key('c'), request)).rejects.toThrow('queue is full');
+    await expect(guarded(key('b'), request)).rejects.toThrow('queue is full');
     release({id: 'job-1'});
     await first;
-    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
-    release({id: 'job-2'});
-    await second;
+    await expect(guarded(key('b'), request)).resolves.toEqual({job: {id: 'job-2'}, reused: false});
   });
 });
