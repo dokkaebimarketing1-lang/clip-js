@@ -1,6 +1,12 @@
-import {describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 vi.mock('server-only', () => ({}));
-import {assertExpectedMediaStreams} from './media-probe';
+import {assertExpectedMediaStreams, verifyStagedMediaStreams} from './media-probe';
+
+const savedProbePath = process.env.CLIPJS_FFPROBE_PATH;
+afterEach(() => {
+  if (savedProbePath === undefined) delete process.env.CLIPJS_FFPROBE_PATH;
+  else process.env.CLIPJS_FFPROBE_PATH = savedProbePath;
+});
 
 describe('remote media stream validation', () => {
   it('accepts video containers with a video stream', () => {
@@ -17,5 +23,10 @@ describe('remote media stream validation', () => {
 
   it('accepts audio-only containers declared as audio', () => {
     expect(() => assertExpectedMediaStreams('audio', {streams: [{codec_type: 'audio'}]})).not.toThrow();
+  });
+
+  it('reports an actionable error when ffprobe is unavailable', async () => {
+    process.env.CLIPJS_FFPROBE_PATH = 'definitely-missing-clipjs-ffprobe';
+    await expect(verifyStagedMediaStreams('missing.mp4', 'video')).rejects.toThrow('ffprobe is unavailable');
   });
 });

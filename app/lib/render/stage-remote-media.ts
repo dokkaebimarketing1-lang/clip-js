@@ -10,8 +10,8 @@ import {resolveSafeRemoteUrl} from '@/app/lib/security/remote-url.server';
 import {detectRemoteMediaFormat, type RemoteMediaKind} from './remote-media-format';
 import {verifyStagedMediaStreams} from './media-probe';
 
-const MAX_ASSET_BYTES = 512 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
+const MAX_ASSET_BYTES = 128 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const SIGNATURE_BYTES = 32;
 
@@ -90,7 +90,7 @@ const downloadPinned = async (
         reject(error);
       }
     });
-    request.setTimeout(120_000, () => request.destroy(new Error('Remote media download timed out.')));
+    request.setTimeout(40_000, () => request.destroy(new Error('Remote media download timed out.')));
     request.on('error', reject);
     request.end();
   });

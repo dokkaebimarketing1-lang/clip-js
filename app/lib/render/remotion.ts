@@ -11,6 +11,7 @@ const RENDER_RETENTION_MS = 24 * 60 * 60 * 1000;
 const STAGING_TIMEOUT_MS = 45_000;
 const COMPOSITION_TIMEOUT_MS = 30_000;
 const RENDER_HARD_TIMEOUT_MS = 200_000;
+const DELAY_RENDER_TIMEOUT_MS = 60_000;
 const enqueueRender = createSerialTaskQueue(1, 'Render queue is full. Try again after the active render completes.');
 
 const removeExpiredRenders = async (outputDir: string): Promise<void> => {
@@ -25,12 +26,12 @@ const removeExpiredRenders = async (outputDir: string): Promise<void> => {
 };
 
 const performRender = async (project: ProjectState): Promise<{renderId: string; outputLocation: string}> => {
-  const serveUrl = path.join(process.cwd(), 'remotion-bundle');
+  const serveUrl = path.resolve(/*turbopackIgnore: true*/ process.env.CLIPJS_REMOTION_BUNDLE_DIR || path.join(process.cwd(), 'remotion-bundle'));
   await access(path.join(serveUrl, 'index.html')).catch(() => {
     throw new Error('Remotion bundle is missing. Run npm run build:remotion first.');
   });
   const renderId = crypto.randomUUID();
-  const outputDir = path.join(process.cwd(), 'renders');
+  const outputDir = path.resolve(/*turbopackIgnore: true*/ process.env.CLIPJS_RENDER_OUTPUT_DIR || path.join(process.cwd(), 'renders'));
   await mkdir(outputDir, {recursive: true});
   await removeExpiredRenders(outputDir);
   const outputLocation = path.join(outputDir, `${renderId}.mp4`);
@@ -70,7 +71,7 @@ const performRender = async (project: ProjectState): Promise<{renderId: string; 
       outputLocation,
       inputProps,
       crf: project.exportSettings.quality === 'high' ? 16 : 23,
-      timeoutInMilliseconds: 60_000,
+      timeoutInMilliseconds: DELAY_RENDER_TIMEOUT_MS,
       concurrency: 2,
       browserExecutable,
       chromiumOptions,

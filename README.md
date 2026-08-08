@@ -43,6 +43,7 @@ npm run type-check
 npm run build
 CLIPJS_AGENT_TOKEN='a-long-random-secret' \
 CLIPJS_APPROVAL_TOKEN='a-different-owner-only-secret' \
+CLIPJS_RENDER_DOWNLOAD_SECRET='a-third-download-signing-secret' \
 CLIPJS_MEDIA_HOSTS='assets.higgsfield.ai,*.cloudfront.net' \
 npm start
 ```
@@ -91,10 +92,11 @@ npm run build     # Remotion prebundle + Next production build
 
 ## Security and deployment
 
-- Set distinct `CLIPJS_AGENT_TOKEN` and `CLIPJS_APPROVAL_TOKEN` values in every environment; final render requests require both credentials.
-- Authentication fails closed by default, including development. For an isolated loopback-only demo, `CLIPJS_ALLOW_INSECURE_LOCALHOST=true` explicitly enables tokenless local API access; never expose that mode on a network interface.
+- Set distinct `CLIPJS_AGENT_TOKEN`, `CLIPJS_APPROVAL_TOKEN`, and `CLIPJS_RENDER_DOWNLOAD_SECRET` values in every environment; final render requests require both request credentials and download links use the third secret.
+- Authentication fails closed in every environment. Local development must also set both tokens; request URLs and `Host` headers are not trusted as proof that a peer is local.
 - Rendering is intended for a self-hosted Node server. Remotion does not support placing `@remotion/bundler` inside a Next API route, so this project prebundles the Composition during build.
 - The self-hosted renderer requires `ffprobe` on `PATH` (or `CLIPJS_FFPROBE_PATH`) and rejects staged audio/video whose actual streams do not match the declared media kind.
+- `CLIPJS_REMOTION_BUNDLE_DIR` and `CLIPJS_RENDER_OUTPUT_DIR` can override the default `<cwd>/remotion-bundle` and `<cwd>/renders` paths for container or service deployments.
 - For Vercel/cloud rendering, replace the local renderer with Remotion Lambda or the official Remotion-on-Vercel architecture.
 - Review the [Remotion license](https://www.remotion.dev/license) for your organization size and usage.
 - `gl-transitions` is MIT-licensed; the selected shaders are rendered through Remotion's maintained WebGL2 presentation wrappers.

@@ -87,6 +87,7 @@ def download_and_verify(download_url: str) -> Path:
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=30,
         )
         metadata = json.loads(probe.stdout)
         streams = metadata.get("streams", [])

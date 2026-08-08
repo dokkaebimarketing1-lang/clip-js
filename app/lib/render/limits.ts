@@ -19,7 +19,9 @@ export const assertRenderLimits = (project: ProjectState): void => {
   }
   const captionsByLane = new Map<string, typeof project.workflow.captions>();
   for (const cue of project.workflow.captions) {
-    captionsByLane.set(cue.position, [...(captionsByLane.get(cue.position) ?? []), cue]);
+    const lane = captionsByLane.get(cue.position);
+    if (lane) lane.push(cue);
+    else captionsByLane.set(cue.position, [cue]);
   }
   captionsByLane.forEach((cues, lane) => {
     const ordered = [...cues].sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds);

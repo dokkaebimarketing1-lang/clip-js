@@ -44,6 +44,13 @@ export const projectStateSchema = z.object({
   textElements: z.array(textElementSchema).max(1000),
   workflow: workflowStateSchema,
 }).passthrough().superRefine((project, ctx) => {
+  const mediaIds = new Set<string>();
+  project.mediaFiles.forEach((media, index) => {
+    if (mediaIds.has(media.id)) {
+      ctx.addIssue({code: z.ZodIssueCode.custom, path: ['mediaFiles', index, 'id'], message: `Duplicate media ID: ${media.id}.`});
+    }
+    mediaIds.add(media.id);
+  });
   const mediaById = new Map(project.mediaFiles.map((media) => [media.id, media]));
   project.workflow.effects.forEach((effect, index) => {
     const media = mediaById.get(effect.targetMediaId);
@@ -72,7 +79,7 @@ export const projectStateSchema = z.object({
       ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} references missing media.`});
       return;
     }
-    if (from.type === 'audio' || to.type === 'audio') {
+    if (!['video', 'image'].includes(from.type) || !['video', 'image'].includes(to.type)) {
       ctx.addIssue({code: z.ZodIssueCode.custom, path, message: `Transition ${transition.id} requires visual media endpoints.`});
     }
     if (from.positionStart > to.positionStart) {

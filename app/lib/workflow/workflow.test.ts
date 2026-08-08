@@ -199,6 +199,7 @@ describe('render request contract', () => {
       {id: 'first', fileId: 'first', fileName: 'first.mp4', type: 'video', startTime: 0, endTime: 2, positionStart: 0, positionEnd: 2, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100},
       {id: 'second', fileId: 'second', fileName: 'second.mp4', type: 'video', startTime: 0, endTime: 2, positionStart: 2, positionEnd: 4, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100},
       {id: 'audio', fileId: 'audio', fileName: 'audio.mp3', type: 'audio', startTime: 0, endTime: 4, positionStart: 0, positionEnd: 4, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 0, opacity: 100},
+      {id: 'unknown', fileId: 'unknown', fileName: 'unknown.bin', type: 'unknown', startTime: 0, endTime: 4, positionStart: 4, positionEnd: 8, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 0, opacity: 100},
     ];
     const transition = {id: 't', fromMediaId: 'first', toMediaId: 'second', type: 'fade' as const, provider: 'native' as const, durationSeconds: 0.5};
     project.workflow.transitions = [transition];
@@ -207,10 +208,19 @@ describe('render request contract', () => {
     expect(() => parseRenderProjectRequest({project})).toThrow('missing media');
     project.workflow.transitions = [{...transition, toMediaId: 'audio'}];
     expect(() => parseRenderProjectRequest({project})).toThrow('visual media');
+    project.workflow.transitions = [{...transition, toMediaId: 'unknown'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('visual media');
     project.workflow.transitions = [{...transition, fromMediaId: 'second', toMediaId: 'first'}];
     expect(() => parseRenderProjectRequest({project})).toThrow('timeline order');
     project.workflow.transitions = [{...transition, toMediaId: 'first'}];
     expect(() => parseRenderProjectRequest({project})).toThrow('distinct');
+  });
+
+  it('rejects duplicate media IDs before resolving effects or transitions', () => {
+    const project = {...structuredClone(initialState), id: 'duplicate-media', projectName: 'Duplicate media'};
+    const media = {id: 'same', fileId: 'first', fileName: 'first.mp4', type: 'video' as const, startTime: 0, endTime: 2, positionStart: 0, positionEnd: 2, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100};
+    project.mediaFiles = [media, {...media, fileId: 'second', fileName: 'second.mp4'}];
+    expect(() => parseRenderProjectRequest({project})).toThrow('Duplicate media ID');
   });
   it('rejects excessive render duration, fps, and resolution', () => {
     const project = {...structuredClone(initialState), id: 'limits', projectName: 'Limits', duration: 1};
@@ -242,16 +252,16 @@ describe('render request contract', () => {
     expect(() => normalizeRenderDownloadUrl('/api/render/file/render-id/extra', 'https://clip.example')).toThrow('invalid');
   });
   it('signs render downloads and rejects tampered tokens', () => {
-    const previous = process.env.CLIPJS_AGENT_TOKEN;
-    process.env.CLIPJS_AGENT_TOKEN = 'unit-test-secret';
+    const previous = process.env.CLIPJS_RENDER_DOWNLOAD_SECRET;
+    process.env.CLIPJS_RENDER_DOWNLOAD_SECRET = 'unit-test-download-secret';
     try {
       const token = createRenderDownloadToken('render-id', 60);
       expect(() => verifyRenderDownloadToken('render-id', token)).not.toThrow();
       expect(() => verifyRenderDownloadToken('other-id', token)).toThrow('invalid');
       expect(() => verifyRenderDownloadToken('render-id', `${token}.ignored-suffix`)).toThrow('invalid');
     } finally {
-      if (previous === undefined) delete process.env.CLIPJS_AGENT_TOKEN;
-      else process.env.CLIPJS_AGENT_TOKEN = previous;
+      if (previous === undefined) delete process.env.CLIPJS_RENDER_DOWNLOAD_SECRET;
+      else process.env.CLIPJS_RENDER_DOWNLOAD_SECRET = previous;
     }
   });
 });

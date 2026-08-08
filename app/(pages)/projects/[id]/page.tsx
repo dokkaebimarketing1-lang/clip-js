@@ -54,7 +54,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     objectUrls.push(src);
                     return {...media, src};
                 }));
-                if (cancelled) return;
+                if (cancelled) {
+                    objectUrls.forEach((url) => URL.revokeObjectURL(url));
+                    objectUrls.length = 0;
+                    return;
+                }
                 dispatch(setCurrentProject(id));
                 dispatch(rehydrate(project));
                 dispatch(setMediaFiles(mediaFiles));
@@ -69,6 +73,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         return () => {
             cancelled = true;
             objectUrls.forEach((url) => URL.revokeObjectURL(url));
+            objectUrls.length = 0;
         };
     }, [id, dispatch, router]);
 

@@ -1,4 +1,4 @@
-import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
+import {createHmac, timingSafeEqual} from 'node:crypto';
 import type {NextRequest} from 'next/server';
 
 const safeEqual = (left: string, right: string): boolean => {
@@ -7,28 +7,16 @@ const safeEqual = (left: string, right: string): boolean => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
-const mayUseInsecureLocalhost = (request: NextRequest): boolean => {
-  if (process.env.NODE_ENV === 'production' || process.env.CLIPJS_ALLOW_INSECURE_LOCALHOST !== 'true') return false;
-  const hostname = request.nextUrl?.hostname || new URL(request.url).hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-};
-
-const insecureLocalDownloadSecret = randomBytes(32).toString('hex');
-
 const getDownloadSecret = (): string => {
-  const secret = process.env.CLIPJS_AGENT_TOKEN;
+  const secret = process.env.CLIPJS_RENDER_DOWNLOAD_SECRET;
   if (secret) return secret;
-  if (process.env.NODE_ENV !== 'production' && process.env.CLIPJS_ALLOW_INSECURE_LOCALHOST === 'true') {
-    return insecureLocalDownloadSecret;
-  }
-  throw new Error('CLIPJS_AGENT_TOKEN is required to sign render downloads.');
+  throw new Error('CLIPJS_RENDER_DOWNLOAD_SECRET is required to sign render downloads.');
 };
 
 export const authorizeAgentRequest = (request: NextRequest): void => {
   const expected = process.env.CLIPJS_AGENT_TOKEN;
   if (!expected) {
-    if (mayUseInsecureLocalhost(request)) return;
-    throw new Error('CLIPJS_AGENT_TOKEN is required unless insecure localhost mode is explicitly enabled.');
+    throw new Error('CLIPJS_AGENT_TOKEN is required.');
   }
   const provided = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
   if (!safeEqual(provided, expected)) throw new Error('Unauthorized.');
@@ -37,8 +25,7 @@ export const authorizeAgentRequest = (request: NextRequest): void => {
 export const authorizeApprovalRequest = (request: NextRequest): void => {
   const expected = process.env.CLIPJS_APPROVAL_TOKEN;
   if (!expected) {
-    if (mayUseInsecureLocalhost(request)) return;
-    throw new Error('CLIPJS_APPROVAL_TOKEN is required unless insecure localhost mode is explicitly enabled.');
+    throw new Error('CLIPJS_APPROVAL_TOKEN is required.');
   }
   const provided = request.headers.get('x-clipjs-approval-token') ?? '';
   if (!safeEqual(provided, expected)) throw new Error('Unauthorized approval request.');

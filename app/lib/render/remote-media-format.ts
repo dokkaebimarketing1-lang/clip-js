@@ -23,7 +23,12 @@ const hasAsciiAt = (buffer: Buffer, offset: number, value: string): boolean =>
 
 const detectByMagic = (kind: RemoteMediaKind, prefix: Buffer): RemoteMediaFormat | undefined => {
   if (kind === 'video') {
-    if (hasAsciiAt(prefix, 4, 'ftyp')) return {extension: 'mp4', contentType: 'video/mp4'};
+    if (hasAsciiAt(prefix, 4, 'ftyp')) {
+      const brand = prefix.subarray(8, 12).toString('ascii');
+      if (brand === 'qt  ') return {extension: 'mov', contentType: 'video/quicktime'};
+      if (brand === 'M4V ' || brand === 'M4VH' || brand === 'M4VP') return {extension: 'm4v', contentType: 'video/x-m4v'};
+      return {extension: 'mp4', contentType: 'video/mp4'};
+    }
     if (startsWithBytes(prefix, [0x1a, 0x45, 0xdf, 0xa3])) return {extension: 'webm', contentType: 'video/webm'};
   }
   if (kind === 'audio') {
