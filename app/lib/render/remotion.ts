@@ -6,12 +6,15 @@ import type {ProjectState} from '@/app/types';
 import {stageRemoteMedia} from './stage-remote-media';
 import {withTimeout} from './timeout';
 import {createSerialTaskQueue} from './serial-task-queue';
+import {getRenderBrowserExecutable} from './render-browser-config';
+import {
+  COMPOSITION_TIMEOUT_MS,
+  DELAY_RENDER_TIMEOUT_MS,
+  RENDER_HARD_TIMEOUT_MS,
+  STAGING_TIMEOUT_MS,
+} from './render-budget';
 
 const RENDER_RETENTION_MS = 24 * 60 * 60 * 1000;
-const STAGING_TIMEOUT_MS = 45_000;
-const COMPOSITION_TIMEOUT_MS = 30_000;
-const RENDER_HARD_TIMEOUT_MS = 200_000;
-const DELAY_RENDER_TIMEOUT_MS = 60_000;
 const enqueueRender = createSerialTaskQueue(1, 'Render queue is full. Try again after the active render completes.');
 
 const removeExpiredRenders = async (outputDir: string): Promise<void> => {
@@ -27,6 +30,7 @@ const removeExpiredRenders = async (outputDir: string): Promise<void> => {
 
 const performRender = async (project: ProjectState): Promise<{renderId: string; outputLocation: string}> => {
   const serveUrl = path.resolve(/*turbopackIgnore: true*/ process.env.CLIPJS_REMOTION_BUNDLE_DIR || path.join(process.cwd(), 'remotion-bundle'));
+  const browserExecutable = getRenderBrowserExecutable();
   await access(path.join(serveUrl, 'index.html')).catch(() => {
     throw new Error('Remotion bundle is missing. Run npm run build:remotion first.');
   });
@@ -45,7 +49,6 @@ const performRender = async (project: ProjectState): Promise<{renderId: string; 
   let browser: Awaited<ReturnType<typeof openBrowser>> | null = null;
   try {
     const inputProps = {project: staged.project};
-    const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE_PATH || undefined;
     const chromiumOptions = {headless: true};
     browser = await openBrowser('chrome', {browserExecutable, chromiumOptions});
     const compositionPromise = selectComposition({
