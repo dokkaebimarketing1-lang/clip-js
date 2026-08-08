@@ -16,6 +16,7 @@ import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
 import {buildTakeClipMedia, compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
 import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
+import SeedanceMasterPanel from './SeedanceMasterPanel';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
@@ -431,6 +432,8 @@ export default function WorkflowPanel() {
           })}
         </div>}
       </section>
+
+      <SeedanceMasterPanel />
 
       <section className="space-y-2 rounded border border-white/10 p-3">
         <h3 className="font-semibold">Higgsfield importer</h3>

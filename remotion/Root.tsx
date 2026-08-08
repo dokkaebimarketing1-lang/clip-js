@@ -2,6 +2,7 @@ import React from 'react';
 import {Composition, type CalculateMetadataFunction} from 'remotion';
 import {ProjectComposition, type ProjectCompositionProps} from './ProjectComposition';
 import type {ProjectState} from '../app/types';
+import {createDefaultWorkflow} from '../app/lib/workflow/schema';
 
 const defaultProject: ProjectState = {
   id: 'remotion-default',
@@ -27,7 +28,7 @@ const defaultProject: ProjectState = {
   history: [],
   future: [],
   exportSettings: {resolution: '1080p', quality: 'high', speed: 'fastest', fps: 30, format: 'mp4', includeSubtitles: true},
-  workflow: {approval: {status: 'draft'}, higgsfieldAssets: [], transitions: [], effects: [], captions: [], production: {assets: [], continuityLocks: [], shotSpecs: [], takes: []}},
+  workflow: createDefaultWorkflow(),
 };
 
 const calculateMetadata: CalculateMetadataFunction<ProjectCompositionProps> = ({props}) => ({

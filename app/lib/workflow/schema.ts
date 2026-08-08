@@ -1,6 +1,8 @@
 import {z} from 'zod';
 import {createDefaultProductionManifest, productionManifestSchema} from './production-schema';
+import {buildDefaultSeedanceMasterSettings, seedanceMasterSettingsSchema} from './seedance-master';
 export * from './production-schema';
+export * from './seedance-master';
 
 export const storyboardShotSchema = z.object({
   id: z.string().min(1),
@@ -138,6 +140,7 @@ export const workflowStateSchema = z.object({
   effects: z.array(effectSpecSchema).max(1000).default([]),
   captions: z.array(captionCueSchema).max(5000).default([]),
   production: productionManifestSchema.default(createDefaultProductionManifest()),
+  seedanceMaster: seedanceMasterSettingsSchema.default(buildDefaultSeedanceMasterSettings()),
 });
 
 export type Storyboard = z.infer<typeof storyboardSchema>;
@@ -162,4 +165,5 @@ export const createDefaultWorkflow = (): WorkflowState => ({
   effects: [],
   captions: [],
   production: createDefaultProductionManifest(),
+  seedanceMaster: buildDefaultSeedanceMasterSettings(),
 });

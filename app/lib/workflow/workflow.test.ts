@@ -281,7 +281,7 @@ describe('project reducer workflow invariants', () => {
     expect(afterStoryboard.workflow.approval.status).toBe('invalidated');
   });
 
-  it('invalidates approval when production data changes and preserves it for caption-only edits', () => {
+  it('invalidates approval when production or Seedance Master data changes and preserves it for caption-only edits', () => {
     const base = structuredClone(initialState);
     base.workflow = {
       ...createDefaultWorkflow(), storyboard,
@@ -299,5 +299,10 @@ describe('project reducer workflow invariants', () => {
     };
     const afterProduction = projectReducer(base, setWorkflow({...base.workflow, production: changedProduction}));
     expect(afterProduction.workflow.approval.status).toBe('invalidated');
+    const afterSeedanceMaster = projectReducer(base, setWorkflow({
+      ...base.workflow,
+      seedanceMaster: {...base.workflow.seedanceMaster, duration: 20},
+    }));
+    expect(afterSeedanceMaster.workflow.approval.status).toBe('invalidated');
   });
 });
