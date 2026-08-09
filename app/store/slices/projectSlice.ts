@@ -135,8 +135,17 @@ const projectStateSlice = createSlice({
         // Special reducer for rehydrating state from IndexedDB
         rehydrate: (state, action: PayloadAction<ProjectState>) => {
             const workflow = action.payload.workflow ?? createDefaultWorkflow();
-            const parsedWorkflow = workflowStateSchema.parse(workflow);
-            const normalizedWorkflow = parsedWorkflow.approval.status === 'approved' && !parsedWorkflow.approval.seedanceMasterHash
+            const workflowInput = structuredClone(workflow) as unknown as {
+                seedanceMaster?: {axes?: {textGeneration?: unknown}};
+            };
+            const legacyGeneratedText = workflowInput.seedanceMaster?.axes?.textGeneration !== undefined
+                && workflowInput.seedanceMaster.axes.textGeneration !== 'none';
+            if (legacyGeneratedText && workflowInput.seedanceMaster?.axes) {
+                workflowInput.seedanceMaster.axes.textGeneration = 'none';
+            }
+            const parsedWorkflow = workflowStateSchema.parse(workflowInput);
+            const normalizedWorkflow = (parsedWorkflow.approval.status === 'approved' && !parsedWorkflow.approval.seedanceMasterHash)
+                || (legacyGeneratedText && parsedWorkflow.approval.status === 'approved')
                 ? {...parsedWorkflow, approval: invalidateApproval(parsedWorkflow.approval)}
                 : parsedWorkflow;
             const duration = calculateTotalDuration(
