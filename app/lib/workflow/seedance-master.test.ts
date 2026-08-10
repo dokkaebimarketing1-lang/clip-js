@@ -56,6 +56,17 @@ describe('Seedance master → Higgsfield compiler', () => {
     expect(settings.axes.task).toBe('t2v');
   });
 
+  it('keeps generated footage completely free of visible text and rejects text-generation modes', () => {
+    const settings = buildDefaultSeedanceMasterSettings();
+    const request = compileHiggsfieldSeedanceRequest({storyboard, production, settings});
+    expect(request.prompt).toContain('画面任何区域都不得出现文字、字母、数字、Logo或水印');
+    expect(request.prompt).toContain('背景道具、手机屏幕、招牌、书脊、包装、钟表和车牌也必须完全无字');
+
+    const unsafe = JSON.parse(JSON.stringify(settings)) as Record<string, unknown>;
+    (unsafe.axes as Record<string, unknown>).textGeneration = 'slogan';
+    expect(seedanceMasterSettingsSchema.safeParse(unsafe).success).toBe(false);
+  });
+
   it('flattens all direction into one complete prompt without builder placeholders', () => {
     const request = compileHiggsfieldSeedanceRequest({storyboard, production, settings: buildDefaultSeedanceMasterSettings()});
     expect(request.prompt).toContain('【任务类型】文生视频');

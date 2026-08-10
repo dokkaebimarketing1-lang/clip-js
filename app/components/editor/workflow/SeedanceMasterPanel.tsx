@@ -35,7 +35,7 @@ const singleAxes: AxisControl[] = [
   {key: 'visualStyle', label: '⑳ 시각 스타일', options: [['documentary','실사 다큐'],['anime-2d','2D 애니'],['cg-3d','3D CG'],['cyberpunk','사이버펑크'],['retro','레트로'],['vlog','Vlog']].map(([value,label])=>({value,label}))},
   {key: 'styleLock', label: '㉑ 스타일 고정', options: [['forward','스타일 지정'],['bidirectional','반대 스타일도 금지'],['reference-image','참조 이미지 기준']].map(([value,label])=>({value,label}))},
   {key: 'lighting', label: '㉒ 조명', options: [['golden-hour','골든아워'],['neon','네온'],['studio','스튜디오'],['natural','자연광'],['low-key','저조도'],['blue-hour','블루아워']].map(([value,label])=>({value,label}))},
-  {key: 'textGeneration', label: '㉓ 화면 글자', options: [['none','글자 없음'],['slogan','광고 문구'],['subtitle','자막'],['speech-bubble','말풍선']].map(([value,label])=>({value,label}))},
+  {key: 'textGeneration', label: '㉓ 화면 글자', options: [{value: 'none', label: '생성 금지 · 후편집 전용'}]},
   {key: 'subjectDefinition', label: '㉕ 주인공 정의', options: [['single','한 명'],['multi-material-single-subject','한 인물에 여러 참조'],['material-per-subject','인물별 참조']].map(([value,label])=>({value,label}))},
   {key: 'whiteModel', label: '㉖ 흰색 3D 모형', options: [['none','사용 안 함'],['coarse','동작 골격'],['detailed','세밀한 구조']].map(([value,label])=>({value,label}))},
   {key: 'keyframe', label: '㉗ 핵심 프레임', options: [['none','사용 안 함'],['ordered','순서대로 사용'],['first-last','시작·끝(힉스필드 미지원)']].map(([value,label])=>({value,label}))},

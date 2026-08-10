@@ -27,7 +27,7 @@ const axisSchema = z.object({
   visualStyle: z.enum(['documentary', 'anime-2d', 'cg-3d', 'cyberpunk', 'retro', 'vlog']),
   styleLock: z.enum(['forward', 'bidirectional', 'reference-image']),
   lighting: z.enum(['golden-hour', 'neon', 'studio', 'natural', 'low-key', 'blue-hour']),
-  textGeneration: z.enum(['none', 'slogan', 'subtitle', 'speech-bubble']),
+  textGeneration: z.literal('none'),
   referenceMaterials: z.array(z.enum(['image-character', 'image-scene', 'image-multi-subject', 'video-action', 'video-effects', 'audio-voice'])).max(6),
   subjectDefinition: z.enum(['single', 'multi-material-single-subject', 'material-per-subject']),
   whiteModel: z.enum(['none', 'coarse', 'detailed']),
@@ -140,7 +140,7 @@ const axisLabels: Partial<Record<keyof SeedanceMasterSettings['axes'], Record<st
   visualStyle: {documentary: '真人实拍彩色电影，写实照片级质感', 'anime-2d': '2D动画', 'cg-3d': '3D CG动画', cyberpunk: '赛博朋克', retro: '复古胶片', vlog: '自然Vlog'},
   styleLock: {forward: '正向风格固定', bidirectional: '正向描述并严格排除相反风格', 'reference-image': '以参考媒体风格为准'},
   lighting: {'golden-hour': '黄金时刻暖光', neon: '霓虹灯光', studio: '摄影棚柔光', natural: '柔和自然光', 'low-key': '低光照暗调', 'blue-hour': '蓝调时刻'},
-  textGeneration: {none: '不生成画面文字', slogan: '生成广告文案', subtitle: '生成同步字幕', 'speech-bubble': '生成角色气泡台词'},
+  textGeneration: {none: '不生成任何画面文字，所有文字仅在后期制作中添加'},
   referenceMaterials: {'image-character': '人物外貌与服装图片', 'image-scene': '场景空间与光线图片', 'image-multi-subject': '多主体分别绑定图片', 'video-action': '动作与运镜视频', 'video-effects': '特效与风格视频', 'audio-voice': '角色音色音频'},
   subjectDefinition: {single: '单一主角', 'multi-material-single-subject': '一个主角使用多份材料', 'material-per-subject': '每个主角分别绑定材料'},
   whiteModel: {none: '不使用白模', coarse: '白模仅固定动作路径与机位', detailed: '白模固定结构动作并重渲染材质'},
@@ -181,7 +181,8 @@ const compileMasterPrompt = (storyboard: Storyboard, production: ProductionManif
     `【项目】${storyboard.title}`,
     summarizeAxis(settings),
     ...stages,
-    '【总约束】保持人物、服装、道具、场景、光线、数量全程一致。无多余人物，无畸形手脚，无水印，无Logo。',
+    '【最高优先级无字约束】画面任何区域都不得出现文字、字母、数字、Logo或水印。背景道具、手机屏幕、招牌、书脊、包装、钟表和车牌也必须完全无字。需要显示的App界面、字幕、品牌和广告文案全部留给ClipJS后期合成。',
+    '【总约束】保持人物、服装、道具、场景、光线、数量全程一致。无多余人物，无畸形手脚。',
   ].join('\n\n');
   return prompt;
 };

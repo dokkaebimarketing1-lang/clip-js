@@ -58,7 +58,7 @@ npm start
 2. Produce the cut-by-cut storyboard-v2 document and exact storyboard sheets.
 3. Import the approved JSON from [`docs/storyboard-example.json`](docs/storyboard-example.json).
 4. Build the production blueprint: lock stress-tested asset states, scene geometry/lighting, and structured shot specs.
-5. **Seedance 2.5 Master → Higgsfield**에서 28축을 고릅니다. 카메라·광학·감정·소리는 하나의 프롬프트로 합쳐지고, Higgsfield에는 `prompt/mode/duration/aspect_ratio/resolution/generate_audio`와 지원되는 참조 ID만 전달됩니다.
+5. **Seedance 2.5 Master → Higgsfield**에서 28축을 고릅니다. 카메라·광학·감정·소리는 하나의 프롬프트로 합쳐지고, Higgsfield에는 `prompt/mode/duration/aspect_ratio/resolution/generate_audio`와 지원되는 참조 ID만 전달됩니다. 생성 원본은 화면 전체와 배경 소품까지 문자·숫자·Logo·watermark를 금지하며, 앱 UI·자막·브랜드·CTA는 ClipJS 후편집에서 정확히 합성합니다.
 6. Preview the deterministically compiled prompt, then click **Approve exact version**. Any storyboard, production-manifest, or Seedance Master setting change invalidates approval.
 7. 승인 뒤 agent token과 owner token을 입력하고 **Seedance 2.5 생성 시작**을 누르면 self-hosted 서버가 Higgsfield CLI에 작업을 제출합니다. `t2v`는 참조를 금지하고, `omni_reference`는 최소 1개 참조를 요구하며, 참조 합계는 50개로 제한됩니다.
 8. Record each take and import accepted HTTPS result URLs.

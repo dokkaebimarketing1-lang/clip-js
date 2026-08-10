@@ -208,6 +208,18 @@ describe('render request contract', () => {
     const rehydrated = projectReducer(structuredClone(initialState), rehydrate(legacy));
     expect(rehydrated.workflow.approval.status).toBe('invalidated');
   });
+  it('normalizes legacy generated-text settings to post-production only and invalidates approval', () => {
+    const legacy = structuredClone(initialState);
+    (legacy.workflow.seedanceMaster.axes as unknown as Record<string, unknown>).textGeneration = 'subtitle';
+    legacy.workflow.approval = {
+      status: 'approved', storyboardHash: 'storyboard-hash', productionHash: 'a'.repeat(64),
+      seedanceMasterHash: 'b'.repeat(64), approvedAt: '2026-01-01T00:00:00.000Z',
+      approvedBy: 'owner', signature: 'legacy-signature',
+    };
+    const rehydrated = projectReducer(structuredClone(initialState), rehydrate(legacy as never));
+    expect(rehydrated.workflow.seedanceMaster.axes.textGeneration).toBe('none');
+    expect(rehydrated.workflow.approval.status).toBe('invalidated');
+  });
   it('rejects transitions with missing, nonvisual, reversed, or identical endpoints', () => {
     const project = {...structuredClone(initialState), id: 'transition-integrity', projectName: 'Transitions'};
     project.mediaFiles = [
