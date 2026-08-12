@@ -210,7 +210,7 @@ export const Timeline = () => {
                     {/* Track Marker */}
                     <button
                         onClick={() => dispatch(setMarkerTrack(!enableMarkerTracking))}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-sm sm:text-base h-auto px-2 py-1 sm:w-auto"
+                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
                     >
                         {enableMarkerTracking ? <Image
                             alt="cut"
@@ -230,7 +230,7 @@ export const Timeline = () => {
                     {/* Split */}
                     <button
                         onClick={handleSplit}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-sm sm:text-base h-auto px-2 py-1 sm:w-auto"
+                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
                     >
                         <Image
                             alt="cut"
@@ -244,7 +244,7 @@ export const Timeline = () => {
                     {/* Duplicate */}
                     <button
                         onClick={handleDuplicate}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-sm sm:text-base h-auto px-2 py-1 sm:w-auto"
+                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
                     >
                         <Image
                             alt="cut"
@@ -258,7 +258,7 @@ export const Timeline = () => {
                     {/* Delete */}
                     <button
                         onClick={handleDelete}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-sm sm:text-base h-auto px-2 py-1 sm:w-auto"
+                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
                     >
                         <Image
                             alt="Delete"
@@ -273,7 +273,7 @@ export const Timeline = () => {
 
                 {/* Timeline Zoom */}
                 <div className="flex flex-row justify-between items-center gap-2 mr-4">
-                    <label className="block text-sm mt-1 font-semibold text-white">Zoom</label>
+                    <label className="block text-xs mt-1 font-semibold text-white">Zoom</label>
                     <span className="text-white text-lg">-</span>
                     <input
                         type="range"

@@ -339,54 +339,26 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </div>
             </div>
             {/* Timeline at bottom */}
-            <div className="flex flex-row border-t border-gray-500">
-                <div className=" bg-darkSurfacePrimary flex flex-col items-center justify-center mt-20">
-
-                    <div className="relative h-16">
-                        <div className="flex items-center gap-2 p-4">
-                            <Image
-                                alt="Video"
-                                className="invert h-auto w-auto max-w-[30px] max-h-[30px]"
-                                height={30}
-                                width={30}
-                                src="https://www.svgrepo.com/show/532727/video.svg"
-                            />
+            <div className="flex h-12 shrink-0 flex-row items-stretch border-t border-gray-800 bg-darkSurfacePrimary">
+                <div className="flex flex-col items-center justify-center border-r border-gray-800">
+                    <div className="relative h-9 w-9">
+                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
+                            <Image alt="Video" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/532727/video.svg" />
                         </div>
                     </div>
-
-                    <div className="relative h-16">
-                        <div className="flex items-center gap-2 p-4">
-                            <Image
-                                alt="Video"
-                                className="invert h-auto w-auto max-w-[30px] max-h-[30px]"
-                                height={30}
-                                width={30}
-                                src="https://www.svgrepo.com/show/532708/music.svg"
-                            />
+                    <div className="relative h-9 w-9">
+                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
+                            <Image alt="Music" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/532708/music.svg" />
                         </div>
                     </div>
-
-                    <div className="relative h-16">
-                        <div className="flex items-center gap-2 p-4">
-                            <Image
-                                alt="Video"
-                                className="invert h-auto w-auto max-w-[30px] max-h-[30px]"
-                                height={30}
-                                width={30}
-                                src="https://www.svgrepo.com/show/535454/image.svg"
-                            />
+                    <div className="relative h-9 w-9">
+                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
+                            <Image alt="Image" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/535454/image.svg" />
                         </div>
                     </div>
-
-                    <div className="relative h-16">
-                        <div className="flex items-center gap-2 p-4">
-                            <Image
-                                alt="Video"
-                                className="invert h-auto w-auto max-w-[30px] max-h-[30px]"
-                                height={30}
-                                width={30}
-                                src="https://www.svgrepo.com/show/535686/text.svg"
-                            />
+                    <div className="relative h-9 w-9">
+                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
+                            <Image alt="Text" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/535686/text.svg" />
                         </div>
                     </div>
                 </div>
