@@ -4,6 +4,8 @@ import {
   generationApprovalSchema,
   seedanceMasterSettingsSchema,
   storyboardSchema,
+  characterSheetSchema,
+  type CharacterSheet,
   type CreativeApproval,
   type GenerationApproval,
   type ProductionManifest,
@@ -29,12 +31,14 @@ export const computeSeedanceMasterHash = async (settings: SeedanceMasterSettings
   sha256(seedanceMasterSettingsSchema.parse(settings));
 
 export const approveCreative = async (
-  storyboard: Storyboard,
+  storyboard: Storyboard | undefined,
   approvedBy: string,
   now = new Date(),
+  characterSheet?: CharacterSheet,
 ): Promise<CreativeApproval> => creativeApprovalSchema.parse({
   status: 'approved',
-  storyboardHash: await computeStoryboardHash(storyboard),
+  storyboardHash: storyboard ? await computeStoryboardHash(storyboard) : undefined,
+  characterSheetHash: characterSheet ? await sha256(characterSheetSchema.parse(characterSheet)) : undefined,
   approvedAt: now.toISOString(),
   approvedBy,
 });

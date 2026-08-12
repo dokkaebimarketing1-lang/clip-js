@@ -32,6 +32,32 @@ export const storyboardSchema = z.object({
   cuts: z.array(storyboardCutSchema).min(1),
 });
 
+// ── VLOG 파이프라인 8단계 신규 스키마 (PR #15 위에 추가) ──
+// ② 인터뷰 결과: 한 문장 → LLM 질의응답 → 구조화 브리프
+export const interviewBriefSchema = z.object({
+  subject: z.string().min(1).max(200),
+  action: z.string().min(1).max(200),
+  durationSeconds: z.union([z.literal(20), z.literal(30)]),
+  tone: z.string().min(1).max(200).default('자연스러운 일상'),
+  characterName: z.string().min(1).max(80).optional(),
+  characterBreed: z.string().min(1).max(80).optional(),
+  greetingLine: z.string().min(1).max(300).default(''),
+  extraNotes: z.string().max(1000).optional(),
+});
+
+// ④ 캐릭터 시트: 콘티 속 주체를 시각 자산으로 분리
+export const characterSheetSchema = z.object({
+  name: z.string().min(1).max(80),
+  breed: z.string().min(1).max(80).default(''),
+  palette: z.object({
+    dominant: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#cccccc'),
+    secondary: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#888888'),
+    accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#ffd43b'),
+  }).default({dominant: '#cccccc', secondary: '#888888', accent: '#ffd43b'}),
+  visualTags: z.array(z.string().max(40)).max(20).default([]),
+  referenceImageId: z.string().min(1).max(256).optional(),
+});
+
 export const approvalStatusSchema = z.enum(['draft', 'approved', 'invalidated']);
 
 const approvalAuditSchema = z.object({
@@ -51,6 +77,7 @@ export const legacyApprovalSchema = approvalAuditSchema.extend({
 
 export const creativeApprovalSchema = approvalAuditSchema.extend({
   storyboardHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  characterSheetHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 });
 
 export const generationApprovalSchema = approvalAuditSchema.extend({
@@ -256,6 +283,8 @@ const migrateLegacyWorkflowApprovals = (input: unknown): unknown => {
 };
 
 const workflowStateV3Schema = z.object({
+  interviewBrief: interviewBriefSchema.optional(),
+  characterSheet: characterSheetSchema.optional(),
   storyboard: storyboardSchema.optional(),
   creativeApproval: creativeApprovalSchema.default({status: 'draft'}),
   generationApproval: generationApprovalSchema.default({status: 'draft'}),
@@ -281,6 +310,8 @@ export type CreativeApproval = z.infer<typeof creativeApprovalSchema>;
 export type GenerationApproval = z.infer<typeof generationApprovalSchema>;
 export type ReleaseApproval = z.infer<typeof releaseApprovalSchema>;
 export type HiggsfieldAsset = z.infer<typeof higgsfieldAssetSchema>;
+export type InterviewBrief = z.infer<typeof interviewBriefSchema>;
+export type CharacterSheet = z.infer<typeof characterSheetSchema>;
 export type TransitionSpec = z.infer<typeof transitionSchema>;
 export type EffectType = z.infer<typeof effectTypeSchema>;
 export type EffectSpec = z.infer<typeof effectSpecSchema>;
@@ -294,6 +325,8 @@ export type WorkflowState = z.infer<typeof workflowStateSchema>;
 
 export const createDefaultWorkflow = (): WorkflowState => ({
   ...draftApprovals(),
+  interviewBrief: undefined,
+  characterSheet: undefined,
   higgsfieldAssets: [],
   transitions: [],
   effects: [],
