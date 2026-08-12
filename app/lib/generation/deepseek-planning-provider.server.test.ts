@@ -51,6 +51,11 @@ describe('ModelArk DeepSeek planning provider', () => {
     expect(init?.headers).toMatchObject({authorization: 'Bearer test-key'});
     const body = JSON.parse(String(init?.body));
     expect(body.model).toBe(DEEPSEEK_PLANNING_MODEL);
+    expect(body.max_completion_tokens).toBe(4_000);
+    expect(body.thinking).toEqual({type: 'disabled'});
+    expect(body.messages[0].content).toContain('20-second plan: exactly 4 cuts');
+    expect(body.messages[0].content).toContain('30-second plan: exactly 6 cuts');
+    expect(body.messages[0].content).toContain('Each cut must contain exactly 1 shot');
     expect(body.messages.at(-1).content).toContain('고양이가 인사하는 20초 브이로그');
   });
 
@@ -66,6 +71,8 @@ describe('ModelArk DeepSeek planning provider', () => {
     const numbered = structuredClone(validPlan);
     numbered.interviewBrief.characterBreed = '';
     numbered.characterSheet.breed = '';
+    numbered.storyboard.cuts[0].id = 1 as unknown as string;
+    numbered.storyboard.cuts[0].shots[0].id = 1 as unknown as string;
     numbered.storyboard.cuts[0].shots[0].startFrame = 0 as unknown as string;
     numbered.storyboard.cuts[0].shots[0].endFrame = 120 as unknown as string;
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
@@ -77,6 +84,8 @@ describe('ModelArk DeepSeek planning provider', () => {
 
     expect(result.interviewBrief.characterBreed).toBeUndefined();
     expect(result.characterSheet.breed).toBeUndefined();
+    expect(result.storyboard.cuts[0].id).toBe('CUT01');
+    expect(result.storyboard.cuts[0].shots[0].id).toBe('S1');
     expect(result.storyboard.cuts[0].shots[0].startFrame).toContain('시작 화면');
     expect(result.storyboard.cuts[0].shots[0].endFrame).toContain('종료 화면');
   });

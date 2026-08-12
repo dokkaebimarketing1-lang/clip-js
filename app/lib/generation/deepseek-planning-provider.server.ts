@@ -36,6 +36,8 @@ Do not output commentary or markdown.
 interviewBrief fields: subject, action, durationSeconds (20 or 30 only), tone, optional characterName, optional characterBreed, greetingLine, extraNotes.
 characterSheet fields: name, optional breed, palette with dominant/secondary/accent as 6-digit hex colors, visualTags as strings. Omit unknown optional fields; never return empty strings.
 storyboard fields: version="v1", title, noBgm=true, cuts. Each cut has id, title, absoluteStartSeconds, absoluteEndSeconds, shots. Each shot has id, startSeconds, endSeconds, startFrame, endFrame, camera, action, dialogue, sfx.
+20-second plan: exactly 4 cuts. 30-second plan: exactly 6 cuts. Each cut must contain exactly 1 shot.
+Keep startFrame, endFrame, camera, action, dialogue, and sfx concise; each field must be at most 120 Korean characters.
 startFrame and endFrame are visual scene descriptions, never frame numbers or timestamps.
 All timestamps must be continuous, non-negative, and end at interviewBrief.durationSeconds. Write natural Korean creative content. Preserve any dialogue supplied by the user exactly. Do not invent copyrighted characters, logos, visible text, numbers, or brands.`;
 
@@ -60,8 +62,16 @@ const normalizePlanningOutput = (value: unknown): unknown => {
   ] as const) {
     if (object?.[key] === '') delete object[key];
   }
-  for (const cut of root.storyboard?.cuts ?? []) {
-    for (const shot of cut.shots ?? []) {
+  const cuts = root.storyboard?.cuts ?? [];
+  for (let cutIndex = 0; cutIndex < cuts.length; cutIndex += 1) {
+    const cut = cuts[cutIndex];
+    if (typeof (cut as Record<string, unknown>).id !== 'string') {
+      (cut as Record<string, unknown>).id = `CUT${String(cutIndex + 1).padStart(2, '0')}`;
+    }
+    const shots = cut.shots ?? [];
+    for (let shotIndex = 0; shotIndex < shots.length; shotIndex += 1) {
+      const shot = shots[shotIndex];
+      if (typeof shot.id !== 'string') shot.id = `S${shotIndex + 1}`;
       const action = typeof shot.action === 'string' && shot.action.trim() ? shot.action : '장면 동작';
       if (typeof shot.startFrame !== 'string') shot.startFrame = `${action} 시작 화면`;
       if (typeof shot.endFrame !== 'string') shot.endFrame = `${action} 종료 화면`;
@@ -104,6 +114,8 @@ export const createDeepSeekPlanningProvider = (options: {
             {role: 'user', content: sentence.trim()},
           ],
           temperature: 0.2,
+          thinking: {type: 'disabled'},
+          max_completion_tokens: 4_000,
           stream: false,
         }),
         signal: controller.signal,
