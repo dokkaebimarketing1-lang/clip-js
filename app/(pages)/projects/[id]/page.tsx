@@ -20,6 +20,7 @@ import ProjectName from "../../../components/editor/player/ProjectName";
 import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
 import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
 import StageWorkspace from "@/app/components/editor/workflow/StageWorkspace";
+import {MockMediaList, MockPreviewPlayer} from '@/app/components/editor/workflow/MockMediaWorkspace';
 import {deriveGenerationCtaState, type GenerationCtaTarget} from "@/app/lib/workflow/generation-cta";
 import {getProjectWorkspaceLayout, PROJECT_WORKSPACES, type ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
 import {
@@ -73,6 +74,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const router = useRouter();
     const { activeElement } = projectState;
     const workspaceLayout = getProjectWorkspaceLayout(workspace);
+    const showMockMedia = projectState.mediaFiles.length === 0;
     const openWorkflowForStage = () => {
         setRightTab('workflow');
         window.setTimeout(() => {
@@ -332,7 +334,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <div>
                             <h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 소스</h2>
                             <AddMedia />
-                            <div className="mt-4"><MediaList /></div>
+                            <div className="mt-4">{showMockMedia ? <MockMediaList /> : <MediaList />}</div>
                         </div>
                     )}
                     {leftTab === 'text' && (
@@ -371,7 +373,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             />
                         ) : centerTab === 'preview' ? (
                             <div className="flex h-full items-center justify-center overflow-hidden bg-black">
-                                <PreviewPlayer />
+                                {showMockMedia ? <MockPreviewPlayer /> : <PreviewPlayer />}
                             </div>
                         ) : (
                             <PipelineCanvas
