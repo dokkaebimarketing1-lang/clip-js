@@ -2,6 +2,15 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 vi.mock('server-only', () => ({}));
 import {assertExpectedMediaStreams, assertGeneratedVideoProbe, verifyStagedMediaStreams} from './media-probe';
 
+type RichProbeStream = {
+  codec_type?: string; codec_name?: string; width?: number; height?: number;
+  r_frame_rate?: string; avg_frame_rate?: string; duration?: string;
+};
+type RichProbeResult = {
+  format?: {format_name?: string; duration?: string; size?: string};
+  streams: RichProbeStream[];
+};
+
 const savedProbePath = process.env.CLIPJS_FFPROBE_PATH;
 afterEach(() => {
   if (savedProbePath === undefined) delete process.env.CLIPJS_FFPROBE_PATH;
@@ -32,7 +41,7 @@ describe('remote media stream validation', () => {
 });
 
 describe('generated video rich probe validation', () => {
-  const valid = () => ({
+  const valid = (): RichProbeResult => ({
     format: {format_name: 'mov,mp4,m4a,3gp,3g2,mj2', duration: '30.04', size: '1000'},
     streams: [
       {codec_type: 'video', codec_name: 'h264', width: 1280, height: 720, r_frame_rate: '24/1', avg_frame_rate: '24/1', duration: '30.04'},

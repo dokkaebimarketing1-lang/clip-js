@@ -12,8 +12,8 @@ import type {GenerationRecord} from '@/app/lib/generation/generation-schema';
 type ReadyJob = Extract<GenerationRecord['job'], {status: 'ready'}>;
 export type ReadyGenerationCandidate = {
   requestKey: string;
-  claim: {projectId: string};
-  job: Pick<ReadyJob, 'status' | 'takeId' | 'assetId' | 'contentSha256' | 'authorizedResolution' | 'providerJobId' | 'model' | 'updatedAt' | 'takeScope' | 'targetShotSpecId'>;
+  claim: {projectId: string; attemptId: string; requestHash: string};
+  job: Pick<ReadyJob, 'status' | 'takeId' | 'assetId' | 'contentSha256' | 'authorizedResolution' | 'providerJobId' | 'model' | 'updatedAt' | 'takeScope' | 'targetShotSpecId' | 'authorizationRef' | 'provider'>;
 };
 
 const managedMode = (task: ProjectState['workflow']['seedanceMaster']['axes']['task']): GenerationTake['mode'] => {

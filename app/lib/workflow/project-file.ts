@@ -40,7 +40,7 @@ const mediaFileBaseSchema = z.object({
   zIndex: z.number().finite(),
   opacity: z.number().finite().min(0).max(100),
   src: z.string().max(4096).optional(),
-  remoteUrl: z.string().url().max(4096).optional(),
+  remoteUrl: z.string().max(4096).optional(),
   provider: z.enum(['local', 'higgsfield', 'byteplus']).optional(),
   generatedAssetId: z.string().min(1).max(256).optional(),
   contentSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -152,6 +152,7 @@ export const serializeProject = (project: ProjectState): ProjectDocument => {
   const mediaFiles = project.mediaFiles.map((media) => {
     const serialized = {...media};
     delete serialized.src;
+    delete serialized.remoteUrl;
     return serialized;
   });
   return projectDocumentSchema.parse({

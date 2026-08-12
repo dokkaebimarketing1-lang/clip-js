@@ -17,7 +17,7 @@ import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
 import {buildTakeClipMedia, compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
 import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
-import {prepareApprovedTakeImport, upsertQcPendingTake} from '@/app/lib/workflow/generated-take';
+import {prepareApprovedTakeImport, ReadyGenerationCandidate, upsertQcPendingTake} from '@/app/lib/workflow/generated-take';
 import {takeApprovalSchema} from '@/app/lib/workflow/production-schema';
 import SeedanceMasterPanel from './SeedanceMasterPanel';
 
@@ -345,15 +345,18 @@ export default function WorkflowPanel() {
   const registerReadyCandidate = (generation: GenerationProjectionUi) => {
     const job = generation.job;
     if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256 || !job.providerJobId) return toast.error('Generation is not ready for QC.');
-    const next = upsertQcPendingTake(project, {
+    const authorization = project.workflow.generationApproval;
+    const candidate: ReadyGenerationCandidate = {
       requestKey: generation.requestKey,
-      claim: {projectId: generation.projectId},
+      claim: {projectId: generation.projectId, attemptId: authorization.attemptId ?? '', requestHash: authorization.requestHash ?? ''},
       job: {
         status: 'ready', takeId: job.takeId, assetId: job.assetId, contentSha256: job.contentSha256,
         authorizedResolution: job.authorizedResolution, providerJobId: job.providerJobId, model: job.model, updatedAt: job.updatedAt,
         takeScope: job.takeScope, targetShotSpecId: job.targetShotSpecId,
+        provider: authorization.provider ?? 'byteplus', authorizationRef: authorization.signature ?? '',
       },
-    });
+    };
+    const next = upsertQcPendingTake(project, candidate);
     dispatch(rehydrate(next));
     toast.success('Candidate registered as qc_pending. No timeline media was added.');
   };
