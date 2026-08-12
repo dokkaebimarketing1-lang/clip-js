@@ -69,30 +69,34 @@ export default function PipelineCanvas({
           AI 감독 파이프라인
           {isMock && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300">예시 목업</span>}
         </div>
-        <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="grid grid-cols-4 gap-2">
           {STAGES.map((stage, i) => {
             const active = selectedStage === stage.id;
-            const done = stage.id === 'sentence' || (stage.id === 'interview' && !!interviewBrief) || (stage.id === 'character' && !!characterSheet) || (stage.id === 'storyboard' && !!storyboard);
+            const done = Boolean(storyboard) || (stage.id === 'interview' && interviewBrief) || (stage.id === 'character' && characterSheet);
             return (
-              <div key={stage.id} className="flex items-center gap-1">
-                <button
-                  onClick={() => { setSelectedStage(stage.id); setSelectedShot(null); }}
-                  className={`flex min-w-[64px] flex-col items-center rounded-lg border px-2 py-2 text-center transition ${active ? 'border-fuchsia-500 bg-fuchsia-500/20' : done ? 'border-fuchsia-500/40 bg-fuchsia-500/10' : 'border-white/10 bg-white/5 hover:border-white/30'}`}
-                >
-                  <span className="text-base font-bold text-fuchsia-300">{stage.num}</span>
-                  <span className="mt-1 text-[10px] text-gray-300">{stage.label}</span>
-                </button>
-                {i < STAGES.length - 1 && <span className="text-fuchsia-400/50">→</span>}
-              </div>
+              <button
+                key={stage.id}
+                type="button"
+                aria-label={`${i + 1}단계 ${stage.label}`}
+                onClick={() => { setSelectedStage(stage.id); setSelectedShot(null); }}
+                className={`relative flex min-w-0 items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 ${active ? 'border-fuchsia-500 bg-fuchsia-500/20' : done ? 'border-fuchsia-500/40 bg-fuchsia-500/10' : 'border-white/10 bg-white/5 hover:border-white/30'}`}
+              >
+                <span className="text-sm font-bold text-fuchsia-300">{stage.num}</span>
+                <span className="min-w-0 truncate text-[10px] text-gray-300">{stage.label}</span>
+                {i < STAGES.length - 1 && i !== 3 && <span aria-hidden="true" className="absolute -right-2 z-10 text-[10px] text-fuchsia-400/60">→</span>}
+              </button>
             );
           })}
         </div>
       </div>
 
-      {/* 본문: 샷 노드 그리드 + 디테일 */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="min-w-0 flex-1 overflow-y-auto p-3">
-          <div className="mb-2 text-xs font-semibold text-gray-300">스토리보드 샷 ({shots.length})</div>
+      {/* 본문: 샷 노드 그리드 + 하단 상세 */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="mb-2 flex items-center justify-between text-xs font-semibold text-gray-300">
+            <span>스토리보드 샷 ({shots.length})</span>
+            <span className="text-[10px] font-normal text-gray-500">샷을 선택하면 아래에서 연결·재생 구간을 확인합니다</span>
+          </div>
           {shots.length === 0 ? (
             <p className="text-xs text-gray-500">왼쪽 VLOG 탭에서 문장을 입력하고 컴포즈하면 샷이 여기에 노드로 표시됩니다.</p>
           ) : (
@@ -115,18 +119,22 @@ export default function PipelineCanvas({
           )}
         </div>
 
-        {/* 디테일 패널 */}
-        <div className="w-[260px] shrink-0 overflow-y-auto border-l border-white/10 bg-black/40 p-3">
+        {/* 선택 상세: 중앙 폭을 잠식하지 않는 하단 인스펙터 */}
+        <div className="min-h-[88px] shrink-0 border-t border-white/10 bg-black/50 p-3">
           {selectedShot !== null && shots[selectedShot] ? (
-            <div className="space-y-2">
-              <div className="text-xs font-semibold text-fuchsia-300">샷 #{selectedShot + 1} 디테일</div>
-              <DetailRow label="컷" value={shots[selectedShot].cut} />
-              <DetailRow label="시간" value={`${Math.round(shots[selectedShot].startSeconds)}–${Math.round(shots[selectedShot].endSeconds)}s`} />
-              <DetailRow label="카메라" value={shots[selectedShot].camera} />
+            <div className="grid grid-cols-[120px_repeat(4,minmax(0,1fr))] items-start gap-3">
+              <div>
+                <div className="text-xs font-semibold text-fuchsia-300">샷 #{selectedShot + 1}</div>
+                <div className="mt-1 text-[10px] text-gray-500">{Math.round(shots[selectedShot].startSeconds)}–{Math.round(shots[selectedShot].endSeconds)}s</div>
+              </div>
+              <DetailRow label="컷 · 카메라" value={`${shots[selectedShot].cut} · ${shots[selectedShot].camera}`} />
               <DetailRow label="액션" value={shots[selectedShot].action} />
-              <DetailRow label="대사" value={shots[selectedShot].dialogue} />
-              <DetailRow label="SFX" value={shots[selectedShot].sfx} />
-              <div className="mt-2 rounded bg-fuchsia-600/20 px-2 py-1 text-center text-[10px] text-fuchsia-200">▶ 이 샷 재생 구간 (클립 생성 후 활성화)</div>
+              <DetailRow label="대사 · SFX" value={`${shots[selectedShot].dialogue} · ${shots[selectedShot].sfx}`} />
+              <button
+                type="button"
+                aria-label={`샷 ${selectedShot + 1} 재생 구간 보기`}
+                className="rounded-md border border-fuchsia-500/30 bg-fuchsia-600/15 px-2 py-2 text-[10px] font-semibold text-fuchsia-200 hover:bg-fuchsia-600/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
+              >▶ 재생 구간</button>
             </div>
           ) : selectedStage ? (
             <div className="space-y-2">

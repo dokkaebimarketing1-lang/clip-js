@@ -210,64 +210,64 @@ export const Timeline = () => {
                     {/* Track Marker */}
                     <button
                         onClick={() => dispatch(setMarkerTrack(!enableMarkerTracking))}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
+                        className="flex h-7 items-center justify-center gap-1 rounded border border-white/10 bg-white/5 px-2 text-[11px] font-medium text-gray-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
                     >
                         {enableMarkerTracking ? <Image
                             alt="cut"
-                            className="h-auto w-auto max-w-[20px] max-h-[20px]"
+                            className="h-auto w-auto max-w-[14px] max-h-[14px] invert"
                             height={30}
                             width={30}
                             src="https://www.svgrepo.com/show/447546/yes-alt.svg"
                         /> : <Image
                             alt="cut"
-                            className="h-auto w-auto max-w-[20px] max-h-[20px]"
+                            className="h-auto w-auto max-w-[14px] max-h-[14px] invert"
                             height={30}
                             width={30}
                             src="https://www.svgrepo.com/show/447315/dismiss.svg"
                         />}
-                        <span className="ml-2">Track Marker <span className="text-xs">(T)</span></span>
+                        <span className="ml-1">Track Marker <span className="text-xs">(T)</span></span>
                     </button>
                     {/* Split */}
                     <button
                         onClick={handleSplit}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
+                        className="flex h-7 items-center justify-center gap-1 rounded border border-white/10 bg-white/5 px-2 text-[11px] font-medium text-gray-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
                     >
                         <Image
                             alt="cut"
-                            className="h-auto w-auto max-w-[20px] max-h-[20px]"
+                            className="h-auto w-auto max-w-[14px] max-h-[14px] invert"
                             height={30}
                             width={30}
                             src="https://www.svgrepo.com/show/509075/cut.svg"
                         />
-                        <span className="ml-2">Split <span className="text-xs">(S)</span></span>
+                        <span className="ml-1">Split <span className="text-xs">(S)</span></span>
                     </button>
                     {/* Duplicate */}
                     <button
                         onClick={handleDuplicate}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
+                        className="flex h-7 items-center justify-center gap-1 rounded border border-white/10 bg-white/5 px-2 text-[11px] font-medium text-gray-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
                     >
                         <Image
                             alt="cut"
-                            className="h-auto w-auto max-w-[20px] max-h-[20px]"
+                            className="h-auto w-auto max-w-[14px] max-h-[14px] invert"
                             height={30}
                             width={30}
                             src="https://www.svgrepo.com/show/521623/duplicate.svg"
                         />
-                        <span className="ml-2">Duplicate <span className="text-xs">(D)</span></span>
+                        <span className="ml-1">Duplicate <span className="text-xs">(D)</span></span>
                     </button>
                     {/* Delete */}
                     <button
                         onClick={handleDelete}
-                        className="bg-white border rounded-md border-transparent transition-colors flex flex-row items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] mt-2 font-medium text-xs sm:text-sm h-auto px-2 py-1 sm:w-auto"
+                        className="flex h-7 items-center justify-center gap-1 rounded border border-white/10 bg-white/5 px-2 text-[11px] font-medium text-gray-200 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
                     >
                         <Image
                             alt="Delete"
-                            className="h-auto w-auto max-w-[20px] max-h-[20px]"
+                            className="h-auto w-auto max-w-[14px] max-h-[14px] invert"
                             height={30}
                             width={30}
                             src="https://www.svgrepo.com/show/511788/delete-1487.svg"
                         />
-                        <span className="ml-2">Delete <span className="text-xs">(Del)</span></span>
+                        <span className="ml-1">Delete <span className="text-xs">(Del)</span></span>
                     </button>
                 </div>
 
@@ -312,19 +312,19 @@ export const Timeline = () => {
                     {/* Timeline elements */}
                     <div className="w-full">
 
-                        <div className="relative h-16 z-10">
+                        <div className="relative h-8 z-10">
                             <VideoTimeline />
                         </div>
 
-                        <div className="relative h-16 z-10">
+                        <div className="relative h-8 z-10">
                             <AudioTimeline />
                         </div>
 
-                        <div className="relative h-16 z-10">
+                        <div className="relative h-8 z-10">
                             <ImageTimeline />
                         </div>
 
-                        <div className="relative h-16 z-10">
+                        <div className="relative h-8 z-10">
                             <TextTimeline />
                         </div>
 

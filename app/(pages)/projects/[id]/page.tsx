@@ -16,10 +16,8 @@ import { Timeline } from "../../../components/editor/timeline/Timline";
 import { PreviewPlayer } from "../../../components/editor/player/remotion/Player";
 import { MediaFile } from "@/app/types";
 
-import Image from "next/image";
 import ProjectName from "../../../components/editor/player/ProjectName";
 import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
-import VlogComposerCompact from "@/app/components/editor/workflow/VlogComposerCompact";
 import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
 import {
     ProjectSaveCoordinator,
@@ -38,7 +36,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const autosaveTimeoutRef = useRef<number | null>(null);
     const editorUrlRef = useRef('');
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
-    const [leftTab, setLeftTab] = useState<'media' | 'text' | 'vlog'>('media');
+    const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
     const [rightTab, setRightTab] = useState<'workflow' | 'props'>('workflow');
     const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('pipeline');
 
@@ -266,30 +264,25 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
             <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* 좌측 아이콘 레일 */}
-                <div className="relative z-50 flex w-[64px] shrink-0 flex-col items-center gap-2 border-r border-gray-800 bg-neutral-950 p-3">
+                <div className="relative z-50 flex w-[52px] shrink-0 flex-col items-center gap-2 border-r border-gray-800 bg-neutral-950 p-2">
                     <HomeButton />
                     <button
                         aria-label="소스"
                         title="소스"
                         onClick={() => setLeftTab('media')}
                         className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'media' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
-                    >미디어</button>
+                    >소스</button>
                     <button
                         aria-label="텍스트"
                         title="텍스트"
                         onClick={() => setLeftTab('text')}
                         className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'text' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
-                    >텍스트</button>
-                    <button
-                        aria-label="VLOG"
-                        title="VLOG AI 감독"
-                        onClick={() => setLeftTab('vlog')}
-                        className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'vlog' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
-                    >VLOG</button>
+                    >T</button>
+
                 </div>
 
                 {/* 왼쪽 소스 패널 (상시 노출) */}
-                <div className="relative z-40 min-h-0 w-[320px] shrink-0 overflow-y-auto border-r border-gray-800 bg-neutral-900 p-4">
+                <div className="relative z-40 min-h-0 w-[260px] shrink-0 overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3">
                     {leftTab === 'media' && (
                         <div>
                             <h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 소스</h2>
@@ -303,45 +296,44 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             <AddText />
                         </div>
                     )}
-                    {leftTab === 'vlog' && (
-                        <div>
-                            <h2 className="mb-3 text-sm font-semibold text-gray-200">VLOG AI 감독</h2>
-                            <p className="mb-3 text-xs text-gray-400">한 문장으로 8단계 영상 파이프라인을 자동 구성합니다. 결과는 오른쪽 설정창에서 확인하세요.</p>
-                            <VlogComposerCompact />
-                        </div>
-                    )}
+
                 </div>
 
-                {/* 중앙 미리보기 + 타임라인 */}
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                    <div className="flex shrink-0 items-center gap-1 border-b border-white/10 bg-neutral-950 px-2">
+                {/* 중앙: 파이프라인/미리보기 + 전용 타임라인 도크 */}
+                <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/10 bg-neutral-950 px-2">
                         <button
+                            type="button"
                             onClick={() => setCenterTab('pipeline')}
-                            className={`px-3 py-2 text-xs font-semibold transition ${centerTab === 'pipeline' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                            className={`h-full px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${centerTab === 'pipeline' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >파이프라인</button>
                         <button
+                            type="button"
                             onClick={() => setCenterTab('preview')}
-                            className={`px-3 py-2 text-xs font-semibold transition ${centerTab === 'preview' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                            className={`h-full px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${centerTab === 'preview' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >미리보기</button>
+                        <span className="ml-auto pr-2 font-mono text-[10px] tabular-nums text-gray-500">00:00 / 00:30</span>
                     </div>
-                    {centerTab === 'preview' ? (
-                        <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
-                            <div className="flex flex-col items-center gap-3">
-                                <ProjectName />
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                        {centerTab === 'preview' ? (
+                            <div className="flex h-full items-center justify-center overflow-hidden bg-black">
                                 <PreviewPlayer />
                             </div>
-                        </div>
-                    ) : (
-                        <PipelineCanvas
-                            interviewBrief={projectState.workflow.interviewBrief}
-                            characterSheet={projectState.workflow.characterSheet}
-                            storyboard={projectState.workflow.storyboard}
-                        />
-                    )}
-                </div>
+                        ) : (
+                            <PipelineCanvas
+                                interviewBrief={projectState.workflow.interviewBrief}
+                                characterSheet={projectState.workflow.characterSheet}
+                                storyboard={projectState.workflow.storyboard}
+                            />
+                        )}
+                    </div>
+                    <section aria-label="타임라인 편집기" className="h-[210px] shrink-0 overflow-y-auto border-t border-gray-700 bg-[#17161a] px-2 pb-2">
+                        <Timeline />
+                    </section>
+                </main>
 
                 {/* 오른쪽 설정창 (상시 노출) */}
-                <div className="flex min-h-0 w-[400px] shrink-0 flex-col border-l border-gray-800 bg-neutral-900">
+                <div className="flex min-h-0 w-[340px] shrink-0 flex-col border-l border-gray-800 bg-neutral-900">
                     <div className="flex shrink-0 border-b border-gray-800">
                         <button
                             onClick={() => setRightTab('workflow')}
@@ -352,7 +344,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             className={`flex-1 px-3 py-2 text-xs font-semibold transition ${rightTab === 'props' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >속성</button>
                     </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
                         {rightTab === 'workflow' ? (
                             <WorkflowPanel />
                         ) : (
@@ -377,49 +369,6 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     </div>
                 </div>
             </div>
-            {/* Timeline at bottom */}
-            <div className="flex h-12 shrink-0 flex-row items-stretch border-t border-gray-800 bg-darkSurfacePrimary">
-                <div className="flex flex-col items-center justify-center border-r border-gray-800">
-                    <div className="relative h-9 w-9">
-                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
-                            <Image alt="Video" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/532727/video.svg" />
-                        </div>
-                    </div>
-                    <div className="relative h-9 w-9">
-                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
-                            <Image alt="Music" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/532708/music.svg" />
-                        </div>
-                    </div>
-                    <div className="relative h-9 w-9">
-                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
-                            <Image alt="Image" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/535454/image.svg" />
-                        </div>
-                    </div>
-                    <div className="relative h-9 w-9">
-                        <div className="flex h-full items-center justify-center gap-1 p-1.5">
-                            <Image alt="Text" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/535686/text.svg" />
-                        </div>
-                    </div>
-                </div>
-                {/* transport 바 */}
-                <div className="flex h-8 shrink-0 items-center gap-3 border-t border-gray-800 bg-neutral-950 px-3 text-gray-300">
-                    <div className="flex items-center gap-2">
-                        <button className="rounded p-1 hover:bg-white/10" title="처음">⏮</button>
-                        <button className="rounded bg-white/10 p-1 hover:bg-white/20" title="재생/일시정지">⏯</button>
-                        <button className="rounded p-1 hover:bg-white/10" title="끝">⏭</button>
-                    </div>
-                    <span className="font-mono text-[11px] text-gray-400">00:00 / 00:30</span>
-                    <div className="ml-2 h-1 flex-1 rounded-full bg-white/10">
-                        <div className="h-1 w-0 rounded-full bg-fuchsia-500" />
-                    </div>
-                    <div className="flex items-center gap-1 text-[11px]">
-                        <span>줌</span>
-                        <span className="rounded bg-white/10 px-1.5 py-0.5">−</span>
-                        <span className="rounded bg-white/10 px-1.5 py-0.5">+</span>
-                    </div>
-                </div>
-                <Timeline />
-            </div>
-        </div >
+        </div>
     );
 }
