@@ -32,15 +32,55 @@ export const storyboardSchema = z.object({
   cuts: z.array(storyboardCutSchema).min(1),
 });
 
-export const approvalSchema = z.object({
-  status: z.enum(['draft', 'approved', 'invalidated']),
-  storyboardHash: z.string().optional(),
+export const approvalStatusSchema = z.enum(['draft', 'approved', 'invalidated']);
+
+const approvalAuditSchema = z.object({
+  status: approvalStatusSchema,
+  signatureVersion: z.literal(1).optional(),
+  signingKeyId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+  approvedAt: z.string().datetime().optional(),
+  approvedBy: z.string().min(1).max(128).optional(),
+  signature: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+});
+
+export const legacyApprovalSchema = approvalAuditSchema.extend({
+  storyboardHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   productionHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   seedanceMasterHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-  approvedAt: z.string().datetime().optional(),
-  approvedBy: z.string().optional(),
-  signature: z.string().optional(),
 });
+
+export const creativeApprovalSchema = approvalAuditSchema.extend({
+  storyboardHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+});
+
+export const generationApprovalSchema = approvalAuditSchema.extend({
+  authorizationVersion: z.literal(1).optional(),
+  projectId: z.string().min(1).max(128).optional(),
+  generationBlueprintHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  storyboardHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  productionInputHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  seedanceMasterHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  attemptId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional(),
+  provider: z.enum(['byteplus', 'fake', 'higgsfield']).optional(),
+  model: z.string().min(1).max(200).optional(),
+  providerApiVersion: z.string().min(1).max(64).optional(),
+  compilerVersion: z.string().min(1).max(64).optional(),
+  policyVersion: z.string().min(1).max(64).optional(),
+  requestHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+}).superRefine((approval, ctx) => {
+  if (approval.status !== 'approved') return;
+  const required = ['authorizationVersion', 'projectId', 'generationBlueprintHash', 'storyboardHash', 'productionInputHash', 'seedanceMasterHash', 'attemptId', 'provider', 'model', 'providerApiVersion', 'compilerVersion', 'policyVersion', 'requestHash', 'approvedAt', 'approvedBy'] as const;
+  required.forEach((field) => {
+    if (approval[field] === undefined) ctx.addIssue({code: z.ZodIssueCode.custom, path: [field], message: `Approved generation authorization requires ${field}.`});
+  });
+});
+
+export const releaseApprovalSchema = approvalAuditSchema.extend({
+  renderInputHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+});
+
+/** @deprecated Read only at the v2 → v3 migration boundary. */
+export const approvalSchema = legacyApprovalSchema;
 
 export const higgsfieldAssetSchema = z.object({
   id: z.string().min(1),
@@ -133,21 +173,113 @@ export const captionCueSchema = z.object({
   });
 });
 
-export const workflowStateSchema = z.object({
+const timedMediaLaneSchema = z.object({
+  id: z.string().min(1).max(128),
+  mediaId: z.string().min(1).max(128),
+  startSeconds: z.number().nonnegative(),
+  endSeconds: z.number().positive(),
+  volume: z.number().min(0).max(100),
+}).refine((lane) => lane.endSeconds > lane.startSeconds, 'Audio lane end must be after start');
+
+export const postProductionSchema = z.object({
+  sourceAudioPolicy: z.enum(['mute', 'duck', 'keep']).default('mute'),
+  dialogueCues: z.array(z.object({
+    id: z.string().min(1).max(128), text: z.string().min(1).max(1000), language: z.literal('ko-KR'),
+    speaker: z.string().min(1).max(128), mediaId: z.string().min(1).max(128),
+    startSeconds: z.number().nonnegative(), endSeconds: z.number().positive(),
+  }).refine((cue) => cue.endSeconds > cue.startSeconds, 'Dialogue cue end must be after start')).max(500).default([]),
+  ambience: z.array(timedMediaLaneSchema).max(500).default([]),
+  sfx: z.array(timedMediaLaneSchema).max(1000).default([]),
+  bgm: z.array(timedMediaLaneSchema).max(100).default([]),
+  appUiOverlays: z.array(z.object({
+    id: z.string().min(1).max(128), screenName: z.string().min(1).max(200),
+    source: z.enum(['verified-app-capture', 'vector-reconstruction']),
+    mediaId: z.string().min(1).max(128),
+    startSeconds: z.number().nonnegative(), endSeconds: z.number().positive(),
+    accessibilityLabel: z.string().min(1).max(500),
+  }).refine((overlay) => overlay.endSeconds > overlay.startSeconds, 'App UI overlay end must be after start')).max(200).default([]),
+  endingCard: z.object({
+    brandName: z.string().min(1).max(200), cta: z.string().min(1).max(500),
+    brandTextElementId: z.string().min(1).max(128), ctaTextElementId: z.string().min(1).max(128),
+    startSeconds: z.number().nonnegative(), endSeconds: z.number().positive(),
+  }).refine((card) => card.endSeconds > card.startSeconds, 'Ending card end must be after start').optional(),
+  releaseChecklist: z.object({
+    koreanDialogueReviewed: z.boolean().default(false), captionsVerified: z.boolean().default(false),
+    audioMixReviewed: z.boolean().default(false), appUiVerified: z.boolean().default(false), ctaVerified: z.boolean().default(false),
+  }).default({}),
+}).default({});
+
+const draftApprovals = () => ({
+  creativeApproval: {status: 'draft' as const},
+  generationApproval: {status: 'draft' as const},
+  releaseApproval: {status: 'draft' as const},
+});
+
+const migrateLegacyWorkflowApprovals = (input: unknown): unknown => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const workflow = {...input as Record<string, unknown>};
+  const hasV3Approvals = workflow.creativeApproval !== undefined
+    || workflow.generationApproval !== undefined
+    || workflow.releaseApproval !== undefined;
+  if (!hasV3Approvals) {
+    // Any legacy approval payload is untrusted in v3, even when malformed.
+    // Its mere presence means an older approval existed and must fail closed.
+    const status = workflow.approval === undefined ? 'draft' : 'invalidated';
+    workflow.creativeApproval = {status};
+    workflow.generationApproval = {status};
+    workflow.releaseApproval = {status};
+  }
+  for (const key of ['creativeApproval', 'releaseApproval'] as const) {
+    const approval = workflow[key];
+    if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
+      const record = approval as Record<string, unknown>;
+      if (record.status === 'approved' && (record.signatureVersion !== 1 || typeof record.signingKeyId !== 'string')) {
+        workflow[key] = {...record, status: 'invalidated'};
+      }
+    }
+  }
+  const generation = workflow.generationApproval;
+  if (generation && typeof generation === 'object' && !Array.isArray(generation)) {
+    const record = generation as Record<string, unknown>;
+    const currentFields = ['signatureVersion', 'signingKeyId', 'authorizationVersion', 'projectId', 'generationBlueprintHash', 'storyboardHash', 'productionInputHash', 'seedanceMasterHash', 'attemptId', 'provider', 'model', 'providerApiVersion', 'compilerVersion', 'policyVersion', 'requestHash', 'approvedAt', 'approvedBy', 'signature'];
+    if (record.status === 'approved' && currentFields.some((field) => record[field] === undefined)) {
+      workflow.generationApproval = {...record, status: 'invalidated'};
+      const release = workflow.releaseApproval;
+      if (release && typeof release === 'object' && !Array.isArray(release)) {
+        const releaseRecord = release as Record<string, unknown>;
+        workflow.releaseApproval = {...releaseRecord, status: releaseRecord.status === 'draft' ? 'draft' : 'invalidated'};
+      }
+    }
+  }
+  delete workflow.approval;
+  return workflow;
+};
+
+const workflowStateV3Schema = z.object({
   storyboard: storyboardSchema.optional(),
-  approval: approvalSchema.default({status: 'draft'}),
+  creativeApproval: creativeApprovalSchema.default({status: 'draft'}),
+  generationApproval: generationApprovalSchema.default({status: 'draft'}),
+  releaseApproval: releaseApprovalSchema.default({status: 'draft'}),
   higgsfieldAssets: z.array(higgsfieldAssetSchema).default([]),
   transitions: z.array(transitionSchema).default([]),
   effects: z.array(effectSpecSchema).max(1000).default([]),
   captions: z.array(captionCueSchema).max(5000).default([]),
+  postProduction: postProductionSchema,
   production: productionManifestSchema.default(() => createDefaultProductionManifest()),
   seedanceMaster: seedanceMasterSettingsSchema.default(() => buildDefaultSeedanceMasterSettings()),
 });
 
+export const workflowStateSchema = z.preprocess(migrateLegacyWorkflowApprovals, workflowStateV3Schema);
+
 export type Storyboard = z.infer<typeof storyboardSchema>;
 export type StoryboardCut = z.infer<typeof storyboardCutSchema>;
 export type StoryboardShot = z.infer<typeof storyboardShotSchema>;
-export type StoryboardApproval = z.infer<typeof approvalSchema>;
+export type LegacyStoryboardApproval = z.infer<typeof legacyApprovalSchema>;
+/** @deprecated Use CreativeApproval or GenerationApproval. */
+export type StoryboardApproval = LegacyStoryboardApproval;
+export type CreativeApproval = z.infer<typeof creativeApprovalSchema>;
+export type GenerationApproval = z.infer<typeof generationApprovalSchema>;
+export type ReleaseApproval = z.infer<typeof releaseApprovalSchema>;
 export type HiggsfieldAsset = z.infer<typeof higgsfieldAssetSchema>;
 export type TransitionSpec = z.infer<typeof transitionSchema>;
 export type EffectType = z.infer<typeof effectTypeSchema>;
@@ -157,14 +289,16 @@ export type CaptionPreset = z.infer<typeof captionPresetSchema>;
 export type CaptionPosition = z.infer<typeof captionPositionSchema>;
 export type CaptionWordTiming = z.infer<typeof captionWordTimingSchema>;
 export type CaptionCue = z.infer<typeof captionCueSchema>;
+export type PostProduction = z.infer<typeof postProductionSchema>;
 export type WorkflowState = z.infer<typeof workflowStateSchema>;
 
 export const createDefaultWorkflow = (): WorkflowState => ({
-  approval: {status: 'draft'},
+  ...draftApprovals(),
   higgsfieldAssets: [],
   transitions: [],
   effects: [],
   captions: [],
+  postProduction: postProductionSchema.parse({}),
   production: createDefaultProductionManifest(),
   seedanceMaster: buildDefaultSeedanceMasterSettings(),
 });

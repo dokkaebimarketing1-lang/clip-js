@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {initialState} from '@/app/store/slices/projectSlice';
-import {approveStoryboard, assertVideoGenerationAllowed} from './approval';
+import {approveGeneration, assertVideoGenerationAllowed} from './approval';
 import {
   createDefaultWorkflow,
   productionManifestSchema,
@@ -77,13 +77,13 @@ describe('Hell Grind production manifest', () => {
     expect(first).toContain('stable anatomy');
   });
 
-  it('makes production changes stale against the exact storyboard approval', async () => {
+  it('makes production input changes stale against the exact generation approval', async () => {
     const workflow = {...createDefaultWorkflow(), storyboard, production};
-    workflow.approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), production);
+    workflow.generationApproval = await approveGeneration(storyboard, production, workflow.seedanceMaster, 'owner', new Date('2026-01-01T00:00:00Z'));
     await expect(assertVideoGenerationAllowed(workflow)).resolves.toBeUndefined();
     const changed = structuredClone(workflow);
     changed.production.shotSpecs[0].camera = ['handheld orbit'];
-    await expect(assertVideoGenerationAllowed(changed)).rejects.toThrow(/production manifest changed/i);
+    await expect(assertVideoGenerationAllowed(changed)).rejects.toThrow(/generation blueprint changed/i);
   });
 
   it('records a take through Agent Preview with immutable provenance hashes', async () => {
@@ -107,6 +107,7 @@ describe('Hell Grind production manifest', () => {
     const failed = structuredClone(production);
     failed.takes = Array.from({length: 14}, (_, index) => ({
       id: `failed-${index}`,
+      scope: 'shot' as const,
       shotSpecId: 'shot-spec-1',
       structuredSpecHash: 'a'.repeat(64),
       compiledPromptHash: 'b'.repeat(64),
@@ -116,6 +117,8 @@ describe('Hell Grind production manifest', () => {
       model: 'seedance_2_5',
       verdict: 'bad-roll' as const,
       selected: false,
+      qcStatus: 'legacy' as const,
+      takeApproval: {status: 'draft' as const},
       createdAt: new Date(index * 1000).toISOString(),
     }));
     const take = await createGenerationTake(failed, {
@@ -138,7 +141,7 @@ describe('Hell Grind production manifest', () => {
   it('promotes only accepted takes and keeps one selection per shot spec', async () => {
     const project = structuredClone(initialState);
     project.workflow = {...createDefaultWorkflow(), storyboard, production};
-    project.workflow.approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), production);
+    project.workflow.generationApproval = await approveGeneration(storyboard, production, project.workflow.seedanceMaster, 'owner', new Date('2026-01-01T00:00:00Z'));
     const first = await previewAgentCommand(project, {
       type: 'record_generation_take', shotSpecId: 'shot-spec-1',
       provider: 'higgsfield', model: 'seedance_2_5', verdict: 'accepted', outputAssetId: 'clip-1',
@@ -152,7 +155,8 @@ describe('Hell Grind production manifest', () => {
     let takes = promoted.proposedProject.workflow.production.takes;
     expect(takes.filter((take) => take.selected)).toHaveLength(1);
     expect(takes.find((take) => take.id === firstTakeId)?.selected).toBe(true);
-    expect(promoted.proposedProject.workflow.approval.status).toBe('invalidated');
+    expect(promoted.proposedProject.workflow.generationApproval.status).toBe('approved');
+    expect(promoted.proposedProject.workflow.releaseApproval.status).toBe('draft');
     const switched = await previewAgentCommand(promoted.proposedProject, {
       type: 'select_generation_take', takeId: second.proposedProject.workflow.production.takes[1].id,
     });

@@ -163,6 +163,7 @@ export const createGenerationTake = async (
   const id = crypto.randomUUID();
   return {
     id,
+    scope: 'shot',
     shotSpecId: shot.id,
     parentTakeId: input.parentTakeId,
     structuredSpecHash: await sha256(shot),
@@ -178,6 +179,8 @@ export const createGenerationTake = async (
     resolution: input.resolution,
     extensionMode: input.extensionMode,
     outputAssetId: input.outputAssetId,
+    qcStatus: 'legacy',
+    takeApproval: {status: 'draft'},
     verdict,
     selected: false,
     createdAt: now.toISOString(),

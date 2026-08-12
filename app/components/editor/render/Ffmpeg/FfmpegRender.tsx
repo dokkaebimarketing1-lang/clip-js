@@ -70,7 +70,10 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                     const duration = positionEnd - positionStart;
 
                     // get the file data and write to ffmpeg
-                    const fileData = await getFile(sortedMediaFiles[i].fileId);
+                    const media = sortedMediaFiles[i];
+                    const fileId = media.source?.kind === 'indexeddb' ? media.source.fileId : media.fileId;
+                    if (!fileId) throw new Error(`Media ${media.id} is not available to the browser FFmpeg renderer.`);
+                    const fileData = await getFile(fileId);
                     const buffer = await fileData.arrayBuffer();
                     const ext = mimeToExt[fileData.type as keyof typeof mimeToExt] || fileData.type.split('/')[1];
                     await ffmpeg.writeFile(`input${i}.${ext}`, new Uint8Array(buffer));

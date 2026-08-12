@@ -1,123 +1,186 @@
-# ClipJS — Higgsfield + Storyboard + Remotion fork
+# ClipJS — Seedance 2.5 production and post-production
 
-A browser video editor built with Next.js, React, Remotion, IndexedDB and FFmpeg.wasm. This fork adds a fail-closed production workflow for Higgsfield-generated media and a frame-accurate server renderer.
-
-## Added in this fork
-
-- Storyboard-v2 JSON import/export with deterministic SHA-256 hash and owner-only server HMAC approval
-- Approval invalidation whenever a different storyboard is imported
-- Higgsfield clip, START/END frame, storyboard sheet and audio/SFX provenance
-- Automatic SFX placement at the mapped storyboard cut/shot time
-- Persistent project JSON (`*.clipjs.json`)
-- Official `@remotion/captions` SRT parsing plus a bounded dialogue/effect/variety Caption Registry
-- Self-hosted Noto Sans KR Variable rendering with deterministic word timing and font-load gating
-- Frame-accurate native transitions plus Remotion Dreamy Zoom, Film Burn and Linear Blur
-- MIT gl-transitions-derived Ripple, Crosswarp, Dissolve and Cross Zoom through Remotion's WebGL2 presentations
-- Timeline-bounded official Remotion Blur, Chromatic Aberration, Vignette, Film Noise, Pixelate and Glow effects
-- Media playback speed from 0.1× to 4×
-- One pure Remotion Composition shared by editor preview and final render
-- Server-side H.264/AAC MP4 rendering through `@remotion/renderer`
-- One canonical Remotion export path; the legacy FFmpeg renderer is not exposed by the editor
-- Agent preview API plus owner-token-gated Apply with stale-change protection
-- SSRF protection, including private-IP/DNS checks and a production media-host allowlist
-- Production bearer-token protection
-- HMAC-signed 10-minute render downloads and bounded render resources
-- Hell Grind-inspired Asset Registry V2, scene continuity locks, structured shot prompt compiler and generation Take Ledger
-- Owner approval binds the storyboard, exact production manifest, and exact Seedance Master settings hashes
-- Seedance 2.5 Master Builder의 28축을 프로젝트 상태로 저장하고, 승인된 스토리보드·감독 manifest를 Higgsfield `seedance_2_5` 요청으로 평탄화
-- Higgsfield가 노출한 필드만 허용하는 검증 및 owner-token-gated CLI 제출. Windows npm `.cmd` shim은 직접 실행하지 않고 실제 JavaScript entry를 Node로 안전하게 실행합니다.
-- 승인 서명+요청 해시별 원자적 claim과 직렬 큐로 새 승인 없이 같은 유료 작업이 중복 제출되는 것을 차단합니다. CLI 응답이 유실되거나 타임아웃되면 해당 claim은 `uncertain`으로 남아 자동 재제출을 금지합니다.
-
-## Installation
-
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-`npm run dev` first creates `remotion-bundle/`, then starts Next.js at <http://localhost:3000>. Server rendering fails closed unless `REMOTION_BROWSER_EXECUTABLE_PATH` points to a preinstalled Chrome/Chromium executable; render requests never download a browser on demand.
-
-Production:
-
-```bash
-npm run test
-npm run type-check
-npm run build
-CLIPJS_AGENT_TOKEN='a-long-random-secret' \
-CLIPJS_APPROVAL_TOKEN='a-different-owner-only-secret' \
-CLIPJS_RENDER_DOWNLOAD_SECRET='a-third-download-signing-secret' \
-REMOTION_BROWSER_EXECUTABLE_PATH='/path/to/chrome' \
-CLIPJS_MEDIA_HOSTS='assets.higgsfield.ai,*.cloudfront.net' \
-npm start
-```
-
-## Workflow
-
-1. The user chooses the video topic and core concept.
-2. Produce the cut-by-cut storyboard-v2 document and exact storyboard sheets.
-3. Import the approved JSON from [`docs/storyboard-example.json`](docs/storyboard-example.json).
-4. Build the production blueprint: lock stress-tested asset states, scene geometry/lighting, and structured shot specs.
-5. **Seedance 2.5 Master → Higgsfield**에서 28축을 고릅니다. 카메라·광학·감정·소리는 하나의 프롬프트로 합쳐지고, Higgsfield에는 `prompt/mode/duration/aspect_ratio/resolution/generate_audio`와 지원되는 참조 ID만 전달됩니다. 생성 원본은 화면 전체와 배경 소품까지 문자·숫자·Logo·watermark를 금지하며, 앱 UI·자막·브랜드·CTA는 ClipJS 후편집에서 정확히 합성합니다.
-6. Preview the deterministically compiled prompt, then click **Approve exact version**. Any storyboard, production-manifest, or Seedance Master setting change invalidates approval.
-7. 승인 뒤 agent token과 owner token을 입력하고 **Seedance 2.5 생성 시작**을 누르면 self-hosted 서버가 Higgsfield CLI에 작업을 제출합니다. `t2v`는 참조를 금지하고, `omni_reference`는 최소 1개 참조를 요구하며, 참조 합계는 50개로 제한됩니다.
-8. Record each take and import accepted HTTPS result URLs.
-9. Import Korean SRT captions and SFX/audio, then add transitions and timeline-bounded effects.
-10. Preview with the same Composition used by the final renderer.
-11. Render. The endpoint refuses an unapproved or modified storyboard/production manifest.
-
-### Caption Registry
-
-The browser Player and server renderer share these deterministic presets in `ProjectComposition`:
-
-- Dialogue: clean, speaker label, cinematic
-- Effect: word highlight, karaoke, typewriter, bounce, glow, impact
-- Variety: sticker, shock, shake, reaction, thought bubble, name tag, quote card
-
-Caption specs allow only a registered kind/preset pair, position, `0..1` intensity, six-digit accent color and cue-bounded word timings. Arbitrary CSS, fonts and animation code are not accepted. Noto Sans KR Variable is bundled locally from `@fontsource-variable/noto-sans-kr` and rendering fails closed if the font cannot load.
-
-Local IndexedDB media remains available to the FFmpeg.wasm exporter. The server Remotion renderer intentionally requires persistent public HTTPS URLs so a local object URL cannot silently produce a broken server render.
-
-## Agent API
-
-See [`docs/agent-api.md`](docs/agent-api.md). Mutations always follow:
+ClipJS is a Next.js 16 / React 19 / Remotion editor that combines the original Seedance 28-axis directing logic with BytePlus ModelArk's official Seedance 2.5 API. The builder decides creative direction; ClipJS owns projects, approvals, jobs, assets, Takes, timeline edits, post-production and rendering.
 
 ```text
-preview command → show summary/proposed project → user approves exact token → apply
+Original 28-axis builder  -> directing rules and deterministic prompt blocks
+ClipJS                    -> durable project, authorization, jobs, assets, QC, edit and render
+BytePlus ModelArk          -> Seedance 2.5 generation provider
 ```
 
-Rendering is the separate `POST /api/render` endpoint and retains the storyboard approval gate.
+The original HTML builder is **not** embedded in an iframe and does not maintain a parallel state system. Its 28 axis IDs, `requires` rules, five task classifications and prompt-block order are represented as typed, tested ClipJS data. Provider model names, endpoints, authentication and supported request fields come only from official BytePlus documentation.
 
-## Quality gates
+## Safety model
+
+Four approvals have different meanings and signatures:
+
+1. **Creative approval** — the current storyboard.
+2. **GenerationAuthorization** — `projectId + attemptId + canonical requestHash` for one exact provider request.
+3. **Take approval** — `takeId + generatedAssetId + contentSha256` after QC.
+4. **ReleaseApproval** — the complete semantic render snapshot.
+
+Changing the storyboard invalidates all downstream approvals. Changing immutable generation input invalidates generation and release approvals. Adding a Take or changing timeline, captions, effects, text, post-production or export settings invalidates only ReleaseApproval.
+
+A provider task is never submitted before an atomic `SubmissionClaim`. The same provider-scoped `projectId + attemptId + requestHash` can reach provider submission at most once. Network timeouts, response loss and receipt-write failure become `uncertain`; they are never automatically resubmitted. Recovery stays disabled until an authoritative provider-side receipt lookup is available.
+
+## Seedance 2.5 official request policy
+
+- BytePlus endpoint: `https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks`
+- Model candidate: `dreamina-seedance-2-5-260628` (account entitlement must be confirmed before a paid canary)
+- Resolution: `480p` or `720p`
+- Duration: 4–30 seconds; the first ClipJS paid slice is restricted to 20 or 30 seconds
+- Reference-to-video: up to 30 images, 10 videos and 10 audio files, maximum 50 total
+- Seedance 2.5 supports pure-audio reference input
+- Direct real-person image/video references are blocked unless the asset came through an official private portrait solution
+- Unsupported legacy fields such as `seed`, `camera_fixed`, Higgsfield CLI flags and `doubao-*` model IDs are never emitted
+- Generated source footage must contain no readable text, numbers, logos, UI or watermark; exact Korean dialogue, captions, app UI, branding and CTA are composed in ClipJS
+
+Result transport URLs are temporary and are not asset identity. The generation worker begins server-side ingest as soon as the provider reports success. Downloads are HTTPS-only, host-allowlisted, DNS-resolved and IP-pinned again on every redirect, byte-capped by both `Content-Length` and streaming count, magic-byte checked, probed with `ffprobe`, decode-smoked with `ffmpeg`, hashed and committed to the GeneratedAssetStore.
+
+## Durable pipeline
+
+```text
+Storyboard
+-> Production Blueprint
+-> 28-axis Seedance settings
+-> Creative approval
+-> canonical BytePlus request preview
+-> GenerationAuthorization
+-> atomic SubmissionClaim
+-> provider submit at most once
+-> lease worker polling
+-> provider_succeeded -> ingesting -> ready
+-> qc_pending Take
+-> signed Take approval
+-> IndexedDB transaction commit
+-> Redux projection
+-> one timeline placement
+-> Korean dialogue / ambience / SFX / optional BGM / captions / verified app UI / ending card
+-> ReleaseApproval
+-> durable RenderJob
+-> dedicated Remotion worker
+-> H.264 MP4
+```
+
+Provider polling and ingest never run in a GET route. Generation status GET routes are read-only projections of the server repository. `POST /api/render` validates and enqueues a durable RenderJob, returns HTTP 202, and never starts Chrome or ffmpeg in the request lifecycle.
+
+## Project persistence
+
+Project document schema and IndexedDB schema have independent versions. All ingress follows:
+
+```text
+unknown -> versioned migration -> strict validation
+```
+
+Legacy project bytes are backed up before migration. Legacy single approvals and incomplete pre-authorization generation approvals are invalidated. Multi-tab writes use Web Locks when available plus IndexedDB revision/CAS. `ProjectSaveCoordinator` reports failures to the UI instead of claiming success. Take import performs an IndexedDB read-modify-write transaction first and updates Redux only after commit acknowledgement.
+
+Media placement IDs are separate from binary IDs:
+
+```text
+MediaFile.id                    timeline placement
+MediaFile.source.fileId         IndexedDB local binary
+MediaFile.source.generatedAssetId server GeneratedAsset
+GenerationTake.id               QC candidate
+providerJobId                   provider receipt
+contentSha256                   immutable binary identity
+```
+
+## Post-production release gate
+
+Generated footage cannot receive ReleaseApproval until all of the following are true:
+
+- every generated timeline media item maps to an approved, server-signed Take with matching asset ID and SHA-256;
+- reviewed Korean dialogue cues reference real audio media;
+- every referenced local dialogue/audio/UI media item has been promoted to a server-managed asset with SHA-256 and decode validation;
+- each dialogue cue has an exact matching caption and timing;
+- generated source audio is muted or ducked when dialogue is present;
+- ambience or SFX is present; BGM is forbidden when the approved storyboard says no BGM;
+- app UI overlays reference actual visual media;
+- brand and CTA reference actual TextElements on the timeline;
+- Korean dialogue, captions, audio mix, app UI and CTA checklist flags are all confirmed.
+
+## Local setup
+
+Requirements:
+
+- Node.js 22.x
+- Chrome or Chromium
+- ffmpeg and ffprobe
 
 ```bash
-npm test          # Vitest domain tests
+npm ci
+npm test
 npm run type-check
-npm run build     # Remotion prebundle + Next production build
+npm run lint
+npm run build
 ```
 
-## Security and deployment
+Paid-provider-free real media/render E2E (Windows example):
 
-- Set distinct `CLIPJS_AGENT_TOKEN`, `CLIPJS_APPROVAL_TOKEN`, and `CLIPJS_RENDER_DOWNLOAD_SECRET` values in every environment; final render requests require both request credentials and download links use the third secret.
-- `HIGGSFIELD_CLI_PATH`는 Higgsfield JavaScript entry 또는 npm `.cmd` shim을 지정할 수 있습니다. 생략하면 Windows `PATH`에서 shim과 실제 entry를 함께 확인합니다. 제출 claim은 기본적으로 `~/.clipjs/higgsfield-claims/`에 영구 저장되며 `CLIPJS_HIGGSFIELD_CLAIM_DIR`로 변경할 수 있습니다. `uncertain` claim은 Higgsfield 작업 목록을 대조하기 전까지 삭제하거나 자동 재시도하지 않습니다.
-- Authentication fails closed in every environment. Local development must also set both tokens; request URLs and `Host` headers are not trusted as proof that a peer is local.
-- Rendering is intended for a self-hosted Node server. Remotion does not support placing `@remotion/bundler` inside a Next API route, so this project prebundles the Composition during build.
-- The self-hosted renderer requires `ffprobe` on `PATH` (or `CLIPJS_FFPROBE_PATH`) and rejects staged audio/video whose actual streams do not match the declared media kind.
-- Provision Chrome/Chromium before starting the service and set `REMOTION_BROWSER_EXECUTABLE_PATH`. This keeps browser startup bounded by Remotion's launcher timeout and prevents an on-request browser download from exhausting the 300-second route budget.
-- `CLIPJS_REMOTION_BUNDLE_DIR` and `CLIPJS_RENDER_OUTPUT_DIR` can override the default `<cwd>/remotion-bundle` and `<cwd>/renders` paths for container or service deployments.
-- For Vercel/cloud rendering, replace the local renderer with Remotion Lambda or the official Remotion-on-Vercel architecture.
-- Review the [Remotion license](https://www.remotion.dev/license) for your organization size and usage.
-- `gl-transitions` is MIT-licensed; the selected shaders are rendered through Remotion's maintained WebGL2 presentation wrappers.
-- `@remotion/captions` declares MIT; Noto Sans KR is bundled under OFL-1.1.
-- The upstream ClipJS code and this fork remain subject to the repository's MIT license.
+```bash
+CLIPJS_RUN_FULL_FAKE_E2E=1 REMOTION_BROWSER_EXECUTABLE_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe" npx vitest run app/lib/generation/fake-provider-e2e.server.test.ts
+```
 
-## Upstream editor features
+Create `.env.local` from `.env.example`. Keep every credential server-only; never use a `NEXT_PUBLIC_` prefix.
 
-- Multi-track video, audio, image and text timeline
-- Trim, split, duplicate and layer controls
-- Remotion real-time preview
-- IndexedDB local project/media storage
-- FFmpeg.wasm 1080p export
-- Keyboard shortcuts
+```dotenv
+CLIPJS_AGENT_TOKEN=replace-with-a-long-random-value
+CLIPJS_APPROVAL_TOKEN=replace-with-a-different-long-random-value
+CLIPJS_APPROVAL_SIGNING_SECRET=replace-with-a-third-high-entropy-server-only-value
+CLIPJS_APPROVAL_SIGNING_KEY_ID=primary
+CLIPJS_TRANSPORT_URL_ENCRYPTION_KEY=replace-with-a-fourth-high-entropy-server-only-value
+CLIPJS_ASSET_CAPABILITY_SECRET=replace-with-another-long-random-value
+CLIPJS_RENDER_DOWNLOAD_SECRET=replace-with-another-long-random-value
+REMOTION_BROWSER_EXECUTABLE_PATH=/path/to/chrome
 
-Upstream: <https://github.com/mohyware/clip-js>
+CLIPJS_GENERATION_PROVIDER=disabled
+BYTEPLUS_GENERATION_SUBMIT_ENABLED=false
+BYTEPLUS_ARK_API_KEY=
+BYTEPLUS_RESULT_HOSTS=
+```
+
+Start the web app and workers in separate processes on the same self-hosted machine:
+
+```bash
+npm run dev
+npm run worker:generation
+npm run worker:render
+```
+
+`worker:generation` requires `CLIPJS_GENERATION_PROVIDER=fake` in non-production tests or `byteplus` with an API key. A paid submit additionally requires `BYTEPLUS_GENERATION_SUBMIT_ENABLED=true`, a current signed GenerationAuthorization and a newly approved attempt ID.
+
+## Docker single-host deployment
+
+`Dockerfile` is pinned to Node 22 and installs Chromium, ffmpeg and Noto CJK fonts. `compose.yaml` runs the web process and render worker against one shared durable volume. The generation worker is in the `generation` profile so it cannot start accidentally.
+
+```bash
+docker compose up --build web render-worker
+docker compose --profile generation up generation-worker
+```
+
+This filesystem repository is supported only for a single self-hosted host. Do not deploy paid generation or durable rendering to Vercel or a multi-instance service with host-local state. Migrate jobs, leases and assets to shared durable storage before horizontal scaling. CI may run tests, build and fake-provider workflows, but must not perform paid video generation.
+
+## Browser preview and render assets
+
+Generated and managed asset preview uses a short-lived project/asset capability URL with `HEAD`, byte ranges, `Content-Length` and `ETag`. Capability URLs are runtime-only and are never persisted in IndexedDB or project exports. Use **Stage referenced local media** to promote browser-local TTS, ambience, SFX, BGM and app UI files before ReleaseApproval. The Remotion worker resolves server-owned asset IDs directly to verified local bytes; it does not reuse a browser capability URL.
+
+Legacy Higgsfield assets remain readable for migration. The Higgsfield paid route rejects BytePlus-scoped authorization and is not the default generation path.
+
+## Verification
+
+The repository includes tests for:
+
+- all 28 source axis IDs and original `requires` behavior;
+- official BytePlus payload fields, 30/10/10 references and pure-audio input;
+- request hashing independent of expiring transport URLs;
+- atomic claim/idempotency and fail-closed uncertain locking;
+- lease competition, fencing and worker takeover;
+- secure ingest, rich media probe, decode and asset quotas;
+- qc_pending Take recovery and exactly-once durable import;
+- post-production and Take-signature ReleaseApproval preflight;
+- durable RenderJob competition and takeover;
+- IndexedDB migration backup, CAS and autosave error propagation.
+
+## Licensing
+
+ClipJS and its upstream repository are MIT licensed; preserve `LICENSE` and upstream copyright notices in distributions. Noto Sans KR is OFL-1.1. Review Remotion's license for your organization size and usage.

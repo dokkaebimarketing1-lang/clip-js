@@ -1,0 +1,39 @@
+services:
+  web:
+    build: .
+    env_file:
+      - path: .env.local
+        required: false
+    ports:
+      - "3000:3000"
+    volumes:
+      - clipjs-data:/data
+    restart: unless-stopped
+
+  render-worker:
+    build: .
+    command: ["npm", "run", "worker:render"]
+    env_file:
+      - path: .env.local
+        required: false
+    volumes:
+      - clipjs-data:/data
+    restart: unless-stopped
+    depends_on:
+      - web
+
+  generation-worker:
+    build: .
+    command: ["npm", "run", "worker:generation"]
+    env_file:
+      - path: .env.local
+        required: false
+    volumes:
+      - clipjs-data:/data
+    restart: unless-stopped
+    profiles: ["generation"]
+    depends_on:
+      - web
+
+volumes:
+  clipjs-data:

@@ -2,6 +2,12 @@ import type {WorkflowState} from '@/app/lib/workflow/schema';
 
 export type MediaType = 'video' | 'audio' | 'image' | 'unknown';
 
+export type MediaSource =
+    | {kind: 'indexeddb'; fileId: string}
+    | {kind: 'generated'; generatedAssetId: string}
+    | {kind: 'managed'; assetId: string}
+    | {kind: 'external-unverified'; url: string};
+
 export interface UploadedFile {
     id: string;
     file: File;
@@ -12,7 +18,9 @@ export interface UploadedFile {
 export interface MediaFile {
     id: string;
     fileName: string;
-    fileId: string;
+    /** @deprecated Read only at the legacy IndexedDB migration boundary. */
+    fileId?: string;
+    source?: MediaSource;
     type: MediaType;
     startTime: number;  // within the source video
     src?: string;
@@ -38,9 +46,12 @@ export interface MediaFile {
     // Workflow provenance. Remote URLs are persisted for deterministic
     // Remotion rendering; `src` remains a browser-only object URL.
     remoteUrl?: string;
-    provider?: 'local' | 'higgsfield';
+    provider?: 'local' | 'higgsfield' | 'byteplus';
     model?: string;
     jobId?: string;
+    generatedAssetId?: string;
+    contentSha256?: string;
+    takeId?: string;
     cutId?: string;
     shotId?: string;
     storyboardRole?: 'start' | 'end' | 'clip' | 'audio' | 'storyboard-sheet';
@@ -96,6 +107,8 @@ export type ActiveElement = 'media' | 'text' | 'workflow' | 'export';
 
 
 export interface ProjectState {
+    projectSchemaVersion: 3;
+    revision: number;
     id: string;
     mediaFiles: MediaFile[];
     textElements: TextElement[];

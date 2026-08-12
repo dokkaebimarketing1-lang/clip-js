@@ -12,7 +12,8 @@ export async function GET(request: NextRequest, {params}: {params: Promise<{id: 
   if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({error: 'Invalid render id.'}, {status: 400});
   try {
     verifyRenderDownloadToken(id, request.nextUrl.searchParams.get('token') ?? '');
-    const filePath = path.join(process.cwd(), 'renders', `${id}.mp4`);
+    const outputDirectory = path.resolve(/*turbopackIgnore: true*/ process.env.CLIPJS_RENDER_OUTPUT_DIR || path.join(process.cwd(), 'renders'));
+    const filePath = path.join(outputDirectory, `${id}.mp4`);
     const metadata = await stat(filePath);
     const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
     return new NextResponse(stream, {headers: {
