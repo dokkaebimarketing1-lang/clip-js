@@ -91,8 +91,7 @@ export default function WorkflowPanel() {
   const [captionEnd, setCaptionEnd] = useState(2);
   const [captionIntensity, setCaptionIntensity] = useState(0.6);
   const [captionAccent, setCaptionAccent] = useState('#ffd43b');
-  const [vlogSentence, setVlogSentence] = useState('');
-  const [vlogBusy, setVlogBusy] = useState(false);
+  const vlogSentenceRef = useRef<HTMLTextAreaElement>(null);
   const [vlogResult, setVlogResult] = useState<{
     interviewBrief?: Record<string, unknown>;
     characterSheet?: Record<string, unknown>;
@@ -176,16 +175,16 @@ export default function WorkflowPanel() {
   };
 
   const runVlogCompose = async () => {
-    if (!vlogSentence.trim()) {
+    const sentence = vlogSentenceRef.current?.value?.trim() ?? '';
+    if (!sentence) {
       toast.error('한 문장을 입력하세요.');
       return;
     }
-    setVlogBusy(true);
     try {
       const res = await fetch('/api/vlog/compose', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
-        body: JSON.stringify({sentence: vlogSentence}),
+        body: JSON.stringify({sentence}),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -204,8 +203,6 @@ export default function WorkflowPanel() {
       toast.success('8단계 컴포즈 완료: 인터뷰→캐릭터→스토리보드→28축. 검토 후 승인하세요.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'compose failed');
-    } finally {
-      setVlogBusy(false);
     }
   };
 
@@ -700,9 +697,9 @@ export default function WorkflowPanel() {
     <div className="space-y-6 text-sm">
       <section className="space-y-2 rounded border border-white/10 p-3">
         <div className="flex items-center justify-between"><h3 className="font-semibold">VLOG 파이프라인 (8단계)</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">① 문장 → ② 인터뷰 → ③ 이미지 콘티 → ④ 캐릭터 → ⑥ 스토리보드 → ⑦ 28축</span></div>
-        <textarea className={`${fieldClass} min-h-20`} value={vlogSentence} onChange={(event) => setVlogSentence(event.target.value)} placeholder="예: 고양이와 인사하는 30초 VLOG 만들어줘" />
+        <textarea ref={vlogSentenceRef} className={`${fieldClass} min-h-20`} defaultValue="" placeholder="예: 고양이와 인사하는 30초 VLOG 만들어줘" />
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={runVlogCompose} disabled={vlogBusy}>{vlogBusy ? '컴포즈 중…' : '한 문장으로 8단계 컴포즈'}</button>
+          <button className={buttonClass} onClick={() => void runVlogCompose()}>한 문장으로 8단계 컴포즈</button>
         </div>
         {vlogResult ? (
           <pre className="max-h-64 overflow-auto rounded bg-black/40 p-2 text-xs text-white/80">{JSON.stringify({
