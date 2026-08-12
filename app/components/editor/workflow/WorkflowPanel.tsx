@@ -696,19 +696,53 @@ export default function WorkflowPanel() {
   return (
     <div className="space-y-6 text-sm">
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">VLOG 파이프라인 (8단계)</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">① 문장 → ② 인터뷰 → ③ 이미지 콘티 → ④ 캐릭터 → ⑥ 스토리보드 → ⑦ 28축</span></div>
-        <textarea ref={vlogSentenceRef} className={`${fieldClass} min-h-20`} defaultValue="" placeholder="예: 고양이와 인사하는 30초 VLOG 만들어줘" />
-        <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={() => void runVlogCompose()}>한 문장으로 8단계 컴포즈</button>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-fuchsia-500/20 text-xs font-bold text-fuchsia-300">V</span>
+            <h3 className="font-semibold text-white">VLOG 파이프라인</h3>
+            <span className="ml-auto text-xs text-gray-400">AI 감독 8단계 자동화</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+            {[
+              ['①', '문장'],
+              ['②', '인터뷰'],
+              ['③', '이미지 콘티'],
+              ['④', '캐릭터'],
+              ['⑤', '캐릭터 승인'],
+              ['⑥', '스토리보드'],
+              ['⑦', '28축'],
+              ['⑧', '프롬프트 확인'],
+            ].map(([num, label]) => (
+              <span key={num} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                <span className="font-bold text-fuchsia-300">{num}</span>{label}
+              </span>
+            ))}
+          </div>
+          <div className="rounded-xl border border-white/10 bg-gradient-to-br from-fuchsia-500/10 to-transparent p-3">
+            <label className="mb-1 block text-xs font-medium text-gray-300">한 문장으로 영상 컨셉을 말해주세요</label>
+            <textarea ref={vlogSentenceRef} className={`${fieldClass} min-h-20`} defaultValue="" placeholder="예: 고양이와 인사하는 30초 VLOG 만들어줘" />
+            <button className="mt-2 w-full rounded-lg bg-fuchsia-600 px-4 py-2 font-semibold text-white transition hover:bg-fuchsia-500" onClick={() => void runVlogCompose()}>⚡ 한 문장으로 8단계 컴포즈</button>
+          </div>
+          {vlogResult ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                ['인터뷰 brief', vlogResult.interviewBrief],
+                ['캐릭터 시트', vlogResult.characterSheet],
+                ['스토리보드', vlogResult.storyboard ?? vlogResult.imageStoryboard],
+                ['28축 프롬프트', vlogResult.seedanceMaster?.axes],
+              ].map((pair) => {
+                const label = pair[0] as string;
+                const value = pair[1];
+                return (
+                  <div key={label} className="rounded-lg border border-white/10 bg-black/40 p-2">
+                    <div className="mb-1 text-[11px] font-semibold text-fuchsia-300">{label}</div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-[10px] leading-snug text-gray-300">{JSON.stringify(value ?? null, null, 2)}</pre>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
-        {vlogResult ? (
-          <pre className="max-h-64 overflow-auto rounded bg-black/40 p-2 text-xs text-white/80">{JSON.stringify({
-            interviewBrief: vlogResult.interviewBrief,
-            characterSheet: vlogResult.characterSheet,
-            axes: vlogResult.seedanceMaster?.axes,
-            imageStoryboard: vlogResult.imageStoryboard,
-          }, null, 2)}</pre>
-        ) : null}
       </section>
       <section className="space-y-2 rounded border border-white/10 p-3">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Approval gate</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">{approvalLabel}</span></div>
