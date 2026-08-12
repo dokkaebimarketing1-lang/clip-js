@@ -30,6 +30,8 @@ describe('VLOG compose 라우트 (8단계 통합)', () => {
     const res = await post('강아지와 인사하는 20초 브이로그');
     const data = await res.json();
     expect(data.interviewBrief.durationSeconds).toBe(20);
+    expect(data.seedanceMaster.duration).toBe(20);
+    expect(data.seedanceMaster.resolution).toBe('480p');
     expect(data.seedanceMaster.axes.durationStructure).toBe('20s-4stage');
   });
 });

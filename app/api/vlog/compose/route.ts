@@ -33,6 +33,7 @@ export const POST = async (request: Request) => {
     ...buildDefaultSeedanceMasterSettings(),
     axes,
     duration: brief.durationSeconds,
+    resolution: brief.durationSeconds === 20 ? '480p' : '720p',
   });
 
   const imageStoryboard = storyboard.cuts.flatMap((cut) =>

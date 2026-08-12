@@ -20,6 +20,7 @@ import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-conv
 import {prepareApprovedTakeImport, ReadyGenerationCandidate, upsertQcPendingTake} from '@/app/lib/workflow/generated-take';
 import {takeApprovalSchema} from '@/app/lib/workflow/production-schema';
 import SeedanceMasterPanel from './SeedanceMasterPanel';
+import {seedanceMasterSettingsSchema} from '@/app/lib/workflow/seedance-master';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
@@ -113,6 +114,11 @@ export default function WorkflowPanel() {
   const [generationRecords, setGenerationRecords] = useState<GenerationProjectionUi[]>([]);
   const [previewRefreshNonce, setPreviewRefreshNonce] = useState(0);
   const mediaFilesRef = useRef(project.mediaFiles);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('clipjs:generation-status', {
+      detail: {hasSubmittedGeneration: generationRecords.length > 0},
+    }));
+  }, [generationRecords.length]);
   useEffect(() => { mediaFilesRef.current = project.mediaFiles; }, [project.mediaFiles]);
   const generatedAssetKey = useMemo(() => project.mediaFiles
     .filter((media) => media.source?.kind === 'generated' || media.source?.kind === 'managed')
@@ -194,11 +200,13 @@ export default function WorkflowPanel() {
       setVlogResult(data as typeof vlogResult);
       const storyboard = storyboardSchema.parse(data.storyboard);
       const characterSheet = characterSheetSchema.parse(data.characterSheet);
+      const seedanceMaster = seedanceMasterSettingsSchema.parse(data.seedanceMaster);
       dispatch(setWorkflow({
         ...project.workflow,
         interviewBrief: interviewBriefSchema.parse(data.interviewBrief),
         characterSheet,
         storyboard,
+        seedanceMaster,
       }));
       toast.success('8단계 컴포즈 완료: 인터뷰→캐릭터→스토리보드→28축. 검토 후 승인하세요.');
     } catch (error) {
@@ -695,7 +703,7 @@ export default function WorkflowPanel() {
 
   return (
     <div className="space-y-6 text-sm">
-      <section className="space-y-2 rounded border border-white/10 p-3">
+      <section id="generation-compose" className="scroll-mt-3 space-y-2 rounded border border-white/10 p-3">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-fuchsia-500/20 text-xs font-bold text-fuchsia-300">V</span>
@@ -744,10 +752,10 @@ export default function WorkflowPanel() {
           ) : null}
         </div>
       </section>
-      <section className="space-y-2 rounded border border-white/10 p-3">
+      <section id="generation-creative" className="scroll-mt-3 space-y-2 rounded border border-white/10 p-3">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Approval gate</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">{approvalLabel}</span></div>
         <textarea className={`${fieldClass} min-h-32`} value={storyboardJson} onChange={(event) => setStoryboardJson(event.target.value)} placeholder="Paste storyboard-v2 JSON" />
-        <div className="flex flex-wrap gap-2">
+        <div id="generation-authorization" className="scroll-mt-3 flex flex-wrap gap-2">
           <button className={buttonClass} onClick={importStoryboard}>Import storyboard</button>
           <button className={buttonClass} onClick={approve} disabled={!project.workflow.storyboard}>Creative approve</button>
           <button className={buttonClass} onClick={startNewAttempt}>New paid attempt</button>
@@ -766,9 +774,9 @@ export default function WorkflowPanel() {
         <p className="text-xs text-gray-400">Creative approval, paid generation authorization, take approval, and release approval are separate. Preview/sign never calls BytePlus.</p>
       </section>
 
-      <section className="space-y-2 rounded border border-white/10 p-3">
+      <section id="generation-jobs" className="scroll-mt-3 space-y-2 rounded border border-white/10 p-3">
         <div className="flex items-center justify-between"><h3 className="font-semibold">BytePlus generation jobs</h3><span className="text-xs text-gray-400">server repository projection</span></div>
-        <div className="flex flex-wrap gap-2">
+        <div id="generation-submit" className="scroll-mt-3 flex flex-wrap gap-2">
           <button className={buttonClass} onClick={submitAuthorizedAttempt} disabled={project.workflow.generationApproval.status !== 'approved'}>Submit authorized attempt</button>
           <button className={buttonClass} onClick={refreshGenerations}>Refresh status</button>
           <button className={buttonClass} onClick={() => setPreviewRefreshNonce((value) => value + 1)} disabled={!generatedAssetKey || !apiToken}>Refresh previews</button>

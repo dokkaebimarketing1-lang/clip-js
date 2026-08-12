@@ -19,6 +19,7 @@ import { MediaFile } from "@/app/types";
 import ProjectName from "../../../components/editor/player/ProjectName";
 import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
 import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
+import {deriveGenerationCtaState, type GenerationCtaTarget} from "@/app/lib/workflow/generation-cta";
 import {
     ProjectSaveCoordinator,
     type ProjectSaveStatus,
@@ -39,6 +40,31 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
     const [rightTab, setRightTab] = useState<'workflow' | 'props'>('workflow');
     const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('pipeline');
+    const [hasSubmittedGeneration, setHasSubmittedGeneration] = useState(false);
+
+    useEffect(() => {
+        const handleGenerationStatus = (event: Event) => {
+            const detail = (event as CustomEvent<{hasSubmittedGeneration?: boolean}>).detail;
+            setHasSubmittedGeneration(Boolean(detail?.hasSubmittedGeneration));
+        };
+        window.addEventListener('clipjs:generation-status', handleGenerationStatus);
+        return () => window.removeEventListener('clipjs:generation-status', handleGenerationStatus);
+    }, []);
+
+    const generationCta = deriveGenerationCtaState({
+        hasStoryboard: Boolean(projectState.workflow.storyboard),
+        creativeApproved: projectState.workflow.creativeApproval.status === 'approved',
+        generationApproved: projectState.workflow.generationApproval.status === 'approved',
+        hasSubmittedGeneration,
+    });
+
+    const openGenerationGate = (target: GenerationCtaTarget) => {
+        setCenterTab('pipeline');
+        setRightTab('workflow');
+        window.setTimeout(() => {
+            document.getElementById(`generation-${target}`)?.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }, 0);
+    };
 
     const router = useRouter();
     const { activeElement } = projectState;
@@ -256,9 +282,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         {saveStatus.state === 'saved' ? '저장됨' : saveStatus.state === 'saving' ? '저장 중…' : '저장 대기'}
                     </span>
                     <button
+                        type="button"
+                        aria-label={`영상 생성 다음 단계: ${generationCta.label}`}
                         className="rounded-lg bg-gradient-to-r from-fuchsia-600 to-purple-600 px-3 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110"
-                        onClick={() => setCenterTab('pipeline')}
-                    >⚡ 영상 생성</button>
+                        onClick={() => openGenerationGate(generationCta.target)}
+                    >⚡ {generationCta.label}</button>
                 </div>
             </header>
 
@@ -312,7 +340,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             onClick={() => setCenterTab('preview')}
                             className={`h-full px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${centerTab === 'preview' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >미리보기</button>
-                        <span className="ml-auto pr-2 font-mono text-[10px] tabular-nums text-gray-500">00:00 / 00:30</span>
+                        <span className="ml-auto pr-2 font-mono text-[10px] tabular-nums text-gray-500">00:00 / 00:{String(projectState.workflow.seedanceMaster.duration).padStart(2, '0')}</span>
                     </div>
                     <div className="min-h-0 flex-1 overflow-hidden">
                         {centerTab === 'preview' ? (
