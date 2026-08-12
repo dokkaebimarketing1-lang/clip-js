@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {compileShotPrompt} from './production';
 import {productionManifestSchema, type ProductionManifest} from './production-schema';
-import type {Storyboard} from './schema';
+import type {Storyboard, InterviewBrief, CharacterSheet} from './schema';
 
 const axisSchema = z.object({
   task: z.enum(['t2v', 'r2v', 'edit', 'ext', 'fl']),
@@ -107,6 +107,49 @@ export const buildDefaultSeedanceMasterSettings = (): SeedanceMasterSettings => 
   videoReferenceIds: [],
   audioReferenceIds: [],
 });
+
+/**
+ * VLOG 파이프라인 8단계 · 단계 ⑦ (인터뷰 기반 28축 추론)
+ *
+ * 인터뷰 brief + 캐릭터 시트에서 28축 axes를 추론하여 기본값을 덮어씬다.
+ * 규칙 기반(fake)이며, 실제 운영에서는 LLM이 이 필드들을 정교하게 채운다.
+ *
+ * fail-closed: 외부 모델 호출 없음. 항상 유효한 axisSchema 값만 반환.
+ */
+export const axesFromBrief = (brief: InterviewBrief, sheet?: CharacterSheet) => {
+  const isPet = brief.subject === '고양이' || brief.subject === '강아지';
+  const isGreeting = /인사|안녕/.test(brief.greetingLine);
+  return {
+    task: 't2v',
+    extra: 'none',
+    genre: 'tvc',
+    durationStructure: brief.durationSeconds === 20 ? '20s-4stage' : '30s-5stage',
+    shotSequence: 'timestamp',
+    dialogueLanguage: 'ko-seoul',
+    voice: isPet ? 'soft-slow' : 'calm-formal',
+    emotions: isGreeting ? ['joy', 'relief'] : ['anxiety', 'relief'],
+    emotionFlow: 'four-stage',
+    shotSize: 'wide-medium-close-wide',
+    timeWeather: 'morning',
+    camera: isPet ? 'vlog' : 'cinematic',
+    angle: 'eye',
+    optics: ['shallow-depth', 'macro'],
+    composition: 'thirds',
+    transition: 'hard-cut',
+    audioLanes: ['dialogue', 'sfx', 'ambience'],
+    musicGenre: 'none',
+    fxPresets: ['daily'],
+    quality: ['cinematic-hd', 'natural-color', 'real-skin', 'warm'],
+    visualStyle: isPet ? 'vlog' : 'documentary',
+    styleLock: 'bidirectional',
+    lighting: 'natural',
+    textGeneration: 'none',
+    referenceMaterials: sheet?.referenceImageId ? ['image-character'] : [],
+    subjectDefinition: 'single',
+    whiteModel: 'none',
+    keyframe: 'none',
+  } as const;
+};
 
 export const higgsfieldSeedanceRequestSchema = z.object({
   prompt: z.string().min(1).max(24_000),

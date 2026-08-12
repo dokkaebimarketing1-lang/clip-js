@@ -1,5 +1,5 @@
-import type {InterviewBrief} from '@/app/lib/workflow/schema';
-import {interviewBriefSchema} from '@/app/lib/workflow/schema';
+import type {InterviewBrief, CharacterSheet} from '@/app/lib/workflow/schema';
+import {interviewBriefSchema, characterSheetSchema} from '@/app/lib/workflow/schema';
 
 /**
  * VLOG 파이프라인 8단계 · 단계 ② (LLM 인터뷰)
@@ -44,9 +44,9 @@ export const deriveInterviewBrief = (sentence: string): InterviewBrief => {
  * 인터뷰 brief에서 주체 캐릭터 시트를 규칙 기반으로 분리한다.
  * 실제 운영에서는 이미지 콘티(단계 ③)에서 추출된 시각 특징을 병합한다.
  */
-export const deriveCharacterSheet = (brief: InterviewBrief) => ({
+export const deriveCharacterSheet = (brief: InterviewBrief): CharacterSheet => characterSheetSchema.parse({
   name: brief.characterName || brief.subject,
-  breed: brief.characterBreed,
+  breed: brief.characterBreed ?? '',
   palette: {dominant: '#cccccc', secondary: '#888888', accent: '#ffd43b'},
   visualTags: [brief.subject, brief.characterBreed].filter(Boolean) as string[],
   referenceImageId: undefined,
