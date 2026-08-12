@@ -40,6 +40,7 @@ describe('BytePlus Seedance 2.5 compile-only adapter', () => {
     expect(payload).toMatchObject({model: 'dreamina-seedance-2-5-260628', duration: 30, ratio: '16:9', resolution: '720p', generate_audio: false, watermark: false, return_last_frame: false});
     expect(payload.content).toHaveLength(1);
     expect(payload.content[0]).toMatchObject({type: 'text'});
+    expect(payload).not.toHaveProperty('omni_reference_task_type');
     expect(Object.keys(payload)).not.toEqual(expect.arrayContaining(['seed', 'camera_fixed', 'image_references', 'extension_mode']));
     expect(payload.model).not.toContain('doubao');
   });
@@ -53,6 +54,7 @@ describe('BytePlus Seedance 2.5 compile-only adapter', () => {
     const second = await materializeBytePlusCreateTaskRequest(canonical, async () => 'https://signed-b.example.test/ref?expires=2');
     expect(await computeBytePlusRequestHash(canonical)).toBe(hashBefore);
     expect(first).not.toEqual(second);
+    expect(first.omni_reference_task_type).toBe('reference');
     expect(first.content[1]).toMatchObject({type: 'image_url', role: 'reference_image'});
   });
 

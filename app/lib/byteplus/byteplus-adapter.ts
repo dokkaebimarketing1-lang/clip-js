@@ -13,7 +13,7 @@ export const BYTEPLUS_ARK_BASE_URL = 'https://ark.ap-southeast.bytepluses.com' a
 export const BYTEPLUS_CREATE_TASK_URL = `${BYTEPLUS_ARK_BASE_URL}/api/v3/contents/generations/tasks` as const;
 export const BYTEPLUS_SEEDANCE_25_MODEL = 'dreamina-seedance-2-5-260628' as const;
 export const BYTEPLUS_VIDEO_API_VERSION = 'v3' as const;
-export const BYTEPLUS_COMPILER_VERSION = 'byteplus-seedance-2.5/1' as const;
+export const BYTEPLUS_COMPILER_VERSION = 'byteplus-seedance-2.5/2' as const;
 
 const hex64 = z.string().regex(/^[a-f0-9]{64}$/);
 const assetId = z.string().regex(/^[A-Za-z0-9_-]{3,128}$/);
@@ -38,6 +38,7 @@ const canonicalRequestBase = z.object({
   compilerVersion: z.literal(BYTEPLUS_COMPILER_VERSION),
   model: z.literal(BYTEPLUS_SEEDANCE_25_MODEL),
   task: z.enum(['t2v', 'r2v', 'edit', 'ext', 'fl']),
+  omniReferenceTaskType: z.enum(['reference', 'edit', 'extend']).optional(),
   prompt: z.string().min(1).max(24_000),
   references: z.array(bytePlusReferenceIdentitySchema).max(50),
   generateAudio: z.boolean(),
@@ -73,6 +74,7 @@ export const bytePlusCreateTaskRequestSchema = z.object({
   resolution: z.enum(['480p', '720p']),
   watermark: z.literal(false),
   return_last_frame: z.literal(false),
+  omni_reference_task_type: z.enum(['reference', 'edit', 'extend']).optional(),
 }).strict();
 export type BytePlusCreateTaskRequest = z.infer<typeof bytePlusCreateTaskRequestSchema>;
 
@@ -145,6 +147,7 @@ export const compileBytePlusCanonicalRequest = (input: {
     compilerVersion: BYTEPLUS_COMPILER_VERSION,
     model: BYTEPLUS_SEEDANCE_25_MODEL,
     task: settings.axes.task,
+    ...(settings.axes.task === 'r2v' ? {omniReferenceTaskType: 'reference' as const} : {}),
     prompt: compileSeedanceMasterPrompt(storyboard, production, settings),
     references,
     generateAudio: settings.generateAudio,
@@ -181,6 +184,7 @@ export const materializeBytePlusCreateTaskRequest = async (
     resolution: canonical.resolution,
     watermark: canonical.watermark,
     return_last_frame: canonical.returnLastFrame,
+    ...(canonical.omniReferenceTaskType ? {omni_reference_task_type: canonical.omniReferenceTaskType} : {}),
   });
 };
 
