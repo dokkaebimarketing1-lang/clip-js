@@ -1,5 +1,13 @@
-import {describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {POST} from './route';
+
+beforeEach(() => {
+  vi.stubEnv('CLIPJS_PLANNING_PROVIDER', 'rules');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const post = (sentence: unknown) =>
   POST(new Request('http://localhost/api/vlog/compose', {
@@ -18,6 +26,8 @@ describe('VLOG compose 라우트 (8단계 통합)', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.stage).toBe('compose-preview');
+    expect(data.planningProvider).toBe('rules');
+    expect(data.planningModel).toBe('deterministic-rules-v1');
     expect(data.interviewBrief.subject).toBe('고양이');
     expect(data.characterSheet.name).toBe('루이');
     expect(data.storyboard.cuts).toHaveLength(3);

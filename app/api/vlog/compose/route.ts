@@ -1,6 +1,5 @@
 import {NextResponse} from 'next/server';
-import {deriveInterviewBrief, deriveCharacterSheet} from '@/app/lib/generation/interview-agent.server';
-import {buildStoryboardFromBrief} from '@/app/lib/generation/storyboard-from-brief.server';
+import {getConfiguredPlanningProvider} from '@/app/lib/generation/planning-runtime.server';
 import {axesFromBrief, buildDefaultSeedanceMasterSettings, seedanceMasterSettingsSchema} from '@/app/lib/workflow/seedance-master';
 import {interviewBriefSchema, characterSheetSchema, storyboardSchema} from '@/app/lib/workflow/schema';
 
@@ -25,9 +24,17 @@ export const POST = async (request: Request) => {
     return NextResponse.json({error: 'sentence required'}, {status: 400});
   }
 
-  const brief = deriveInterviewBrief(sentence);
-  const sheet = deriveCharacterSheet(brief);
-  const storyboard = buildStoryboardFromBrief(brief);
+  let plan;
+  const planningProvider = getConfiguredPlanningProvider();
+  try {
+    plan = await planningProvider.compose(sentence, request.signal);
+  } catch (error) {
+    console.error('VLOG planning failed.', error);
+    return NextResponse.json({error: 'planning provider unavailable'}, {status: 503});
+  }
+  const brief = plan.interviewBrief;
+  const sheet = plan.characterSheet;
+  const storyboard = plan.storyboard;
   const axes = axesFromBrief(brief, sheet);
   const seedanceMaster = seedanceMasterSettingsSchema.parse({
     ...buildDefaultSeedanceMasterSettings(),
@@ -46,6 +53,8 @@ export const POST = async (request: Request) => {
 
   return NextResponse.json({
     stage: 'compose-preview',
+    planningProvider: planningProvider.provider,
+    planningModel: planningProvider.model,
     interviewBrief: interviewBriefSchema.parse(brief),
     characterSheet: characterSheetSchema.parse(sheet),
     storyboard: storyboardSchema.parse(storyboard),
