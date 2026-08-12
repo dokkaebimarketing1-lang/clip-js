@@ -129,6 +129,15 @@ const assertTaskReferences = (task: BytePlusCanonicalRequest['task'], references
   }
 };
 
+const mapOmniReferenceTaskType = (
+  task: SeedanceMasterSettings['axes']['task'],
+): 'reference' | 'edit' | 'extend' | undefined => {
+  if (task === 'r2v') return 'reference';
+  if (task === 'edit') return 'edit';
+  if (task === 'ext') return 'extend';
+  return undefined;
+};
+
 export const compileBytePlusCanonicalRequest = (input: {
   storyboard: Storyboard;
   production: ProductionManifest;
@@ -140,6 +149,7 @@ export const compileBytePlusCanonicalRequest = (input: {
   const settings = seedanceMasterSettingsSchema.parse(input.settings);
   const references = input.references.map((reference) => bytePlusReferenceIdentitySchema.parse(reference));
   assertTaskReferences(settings.axes.task, references);
+  const omniReferenceTaskType = mapOmniReferenceTaskType(settings.axes.task);
   const request = {
     version: 1 as const,
     provider: 'byteplus' as const,
@@ -147,7 +157,7 @@ export const compileBytePlusCanonicalRequest = (input: {
     compilerVersion: BYTEPLUS_COMPILER_VERSION,
     model: BYTEPLUS_SEEDANCE_25_MODEL,
     task: settings.axes.task,
-    ...(settings.axes.task === 'r2v' ? {omniReferenceTaskType: 'reference' as const} : {}),
+    ...(omniReferenceTaskType ? {omniReferenceTaskType} : {}),
     prompt: compileSeedanceMasterPrompt(storyboard, production, settings),
     references,
     generateAudio: settings.generateAudio,

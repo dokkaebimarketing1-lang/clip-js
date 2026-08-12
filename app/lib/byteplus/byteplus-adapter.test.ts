@@ -58,6 +58,22 @@ describe('BytePlus Seedance 2.5 compile-only adapter', () => {
     expect(first.content[1]).toMatchObject({type: 'image_url', role: 'reference_image'});
   });
 
+  it('maps edit and extend tasks to the official omni reference task types', async () => {
+    const video = reference({mediaType: 'video', role: 'reference_video'});
+
+    const editSettings = buildDefaultSeedanceMasterSettings();
+    editSettings.axes.task = 'edit';
+    const editCanonical = compileBytePlusCanonicalRequest({storyboard, production, settings: editSettings, references: [video]});
+    const editPayload = await materializeBytePlusCreateTaskRequest(editCanonical, async () => 'https://signed.example.test/source.mp4');
+    expect(editPayload.omni_reference_task_type).toBe('edit');
+
+    const extendSettings = buildDefaultSeedanceMasterSettings();
+    extendSettings.axes.task = 'ext';
+    const extendCanonical = compileBytePlusCanonicalRequest({storyboard, production, settings: extendSettings, references: [video]});
+    const extendPayload = await materializeBytePlusCreateTaskRequest(extendCanonical, async () => 'https://signed.example.test/source.mp4');
+    expect(extendPayload.omni_reference_task_type).toBe('extend');
+  });
+
   it('supports pure-audio R2V and enforces the 2.5 30/10/10 media caps', () => {
     const settings = buildDefaultSeedanceMasterSettings();
     settings.axes.task = 'r2v';
