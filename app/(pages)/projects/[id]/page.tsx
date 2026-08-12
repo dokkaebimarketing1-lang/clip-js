@@ -13,6 +13,7 @@ import HomeButton from "../../../components/editor/AssetsPanel/SidebarButtons/Ho
 import MediaProperties from "../../../components/editor/PropertiesSection/MediaProperties";
 import TextProperties from "../../../components/editor/PropertiesSection/TextProperties";
 import { Timeline } from "../../../components/editor/timeline/Timline";
+import { PreviewPlayer } from "../../../components/editor/player/remotion/Player";
 import { MediaFile } from "@/app/types";
 
 import Image from "next/image";
@@ -39,6 +40,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
     const [leftTab, setLeftTab] = useState<'media' | 'text' | 'vlog'>('media');
     const [rightTab, setRightTab] = useState<'workflow' | 'props'>('workflow');
+    const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('pipeline');
 
     const router = useRouter();
     const { activeElement } = projectState;
@@ -243,6 +245,25 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     </div>
                 ) : null
             }
+            {/* 상단바: 로고/프로젝트명 + CTA + 저장상태 */}
+            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-800 bg-neutral-950 px-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-black tracking-tight text-fuchsia-400">ClipJS</span>
+                    <span className="h-4 w-px bg-gray-700" />
+                    <ProjectName />
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                    <span className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${saveStatus.state === 'saved' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${saveStatus.state === 'saved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                        {saveStatus.state === 'saved' ? '저장됨' : saveStatus.state === 'saving' ? '저장 중…' : '저장 대기'}
+                    </span>
+                    <button
+                        className="rounded-lg bg-gradient-to-r from-fuchsia-600 to-purple-600 px-3 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110"
+                        onClick={() => setCenterTab('pipeline')}
+                    >⚡ 영상 생성</button>
+                </div>
+            </header>
+
             <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* 좌측 아이콘 레일 */}
                 <div className="relative z-50 flex w-[64px] shrink-0 flex-col items-center gap-2 border-r border-gray-800 bg-neutral-950 p-3">
@@ -293,11 +314,30 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
                 {/* 중앙 미리보기 + 타임라인 */}
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                    <PipelineCanvas
-                        interviewBrief={projectState.workflow.interviewBrief}
-                        characterSheet={projectState.workflow.characterSheet}
-                        storyboard={projectState.workflow.storyboard}
-                    />
+                    <div className="flex shrink-0 items-center gap-1 border-b border-white/10 bg-neutral-950 px-2">
+                        <button
+                            onClick={() => setCenterTab('pipeline')}
+                            className={`px-3 py-2 text-xs font-semibold transition ${centerTab === 'pipeline' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                        >파이프라인</button>
+                        <button
+                            onClick={() => setCenterTab('preview')}
+                            className={`px-3 py-2 text-xs font-semibold transition ${centerTab === 'preview' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                        >미리보기</button>
+                    </div>
+                    {centerTab === 'preview' ? (
+                        <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
+                            <div className="flex flex-col items-center gap-3">
+                                <ProjectName />
+                                <PreviewPlayer />
+                            </div>
+                        </div>
+                    ) : (
+                        <PipelineCanvas
+                            interviewBrief={projectState.workflow.interviewBrief}
+                            characterSheet={projectState.workflow.characterSheet}
+                            storyboard={projectState.workflow.storyboard}
+                        />
+                    )}
                 </div>
 
                 {/* 오른쪽 설정창 (상시 노출) */}
@@ -359,6 +399,23 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <div className="flex h-full items-center justify-center gap-1 p-1.5">
                             <Image alt="Text" className="invert h-auto w-auto max-w-[18px] max-h-[18px]" height={18} width={18} src="https://www.svgrepo.com/show/535686/text.svg" />
                         </div>
+                    </div>
+                </div>
+                {/* transport 바 */}
+                <div className="flex h-8 shrink-0 items-center gap-3 border-t border-gray-800 bg-neutral-950 px-3 text-gray-300">
+                    <div className="flex items-center gap-2">
+                        <button className="rounded p-1 hover:bg-white/10" title="처음">⏮</button>
+                        <button className="rounded bg-white/10 p-1 hover:bg-white/20" title="재생/일시정지">⏯</button>
+                        <button className="rounded p-1 hover:bg-white/10" title="끝">⏭</button>
+                    </div>
+                    <span className="font-mono text-[11px] text-gray-400">00:00 / 00:30</span>
+                    <div className="ml-2 h-1 flex-1 rounded-full bg-white/10">
+                        <div className="h-1 w-0 rounded-full bg-fuchsia-500" />
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px]">
+                        <span>줌</span>
+                        <span className="rounded bg-white/10 px-1.5 py-0.5">−</span>
+                        <span className="rounded bg-white/10 px-1.5 py-0.5">+</span>
                     </div>
                 </div>
                 <Timeline />
