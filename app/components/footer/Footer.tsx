@@ -6,7 +6,7 @@ const Footer = () => {
   const currentYear = new Date().getFullYear();
   const pathname = usePathname();
 
-  if (pathname.startsWith("/projects/")) {
+  if (pathname.startsWith("/projects/") || pathname.startsWith("/studio-concept")) {
     return null;
   }
 
