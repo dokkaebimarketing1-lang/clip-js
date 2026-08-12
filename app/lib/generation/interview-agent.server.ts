@@ -46,7 +46,7 @@ export const deriveInterviewBrief = (sentence: string): InterviewBrief => {
  */
 export const deriveCharacterSheet = (brief: InterviewBrief): CharacterSheet => characterSheetSchema.parse({
   name: brief.characterName || brief.subject,
-  breed: brief.characterBreed ?? '',
+  breed: brief.characterBreed,
   palette: {dominant: '#cccccc', secondary: '#888888', accent: '#ffd43b'},
   visualTags: [brief.subject, brief.characterBreed].filter(Boolean) as string[],
   referenceImageId: undefined,

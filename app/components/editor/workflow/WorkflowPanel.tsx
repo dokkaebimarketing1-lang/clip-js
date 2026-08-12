@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {commitProjectMutation, getFile, getProject, useAppDispatch, useAppSelector} from '@/app/store';
 import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 
-import {creativeApprovalSchema, generationApprovalSchema, postProductionSchema, productionManifestSchema, releaseApprovalSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type GenerationTake, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {creativeApprovalSchema, generationApprovalSchema, postProductionSchema, productionManifestSchema, releaseApprovalSchema, storyboardSchema, interviewBriefSchema, characterSheetSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type GenerationTake, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
 import {assertRenderReleaseApproved} from '@/app/lib/workflow/approval-v3';
 import {EFFECT_CATALOG} from '@/app/lib/workflow/effect-catalog';
 import {TRANSITION_CATALOG, transitionProviderFor} from '@/app/lib/workflow/transition-catalog';
@@ -91,6 +91,15 @@ export default function WorkflowPanel() {
   const [captionEnd, setCaptionEnd] = useState(2);
   const [captionIntensity, setCaptionIntensity] = useState(0.6);
   const [captionAccent, setCaptionAccent] = useState('#ffd43b');
+  const [vlogSentence, setVlogSentence] = useState('');
+  const [vlogBusy, setVlogBusy] = useState(false);
+  const [vlogResult, setVlogResult] = useState<{
+    interviewBrief?: Record<string, unknown>;
+    characterSheet?: Record<string, unknown>;
+    storyboard?: Record<string, unknown>;
+    seedanceMaster?: Record<string, unknown>;
+    imageStoryboard?: Array<{cutId: string; shotId: string; placeholder: string}>;
+  } | null>(null);
   const [transitionType, setTransitionType] = useState<TransitionSpec['type']>('fade');
   const [fromMediaId, setFromMediaId] = useState('');
   const [toMediaId, setToMediaId] = useState('');
@@ -163,6 +172,40 @@ export default function WorkflowPanel() {
       toast.success('Storyboard imported. Previous approval was invalidated.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Invalid storyboard JSON.');
+    }
+  };
+
+  const runVlogCompose = async () => {
+    if (!vlogSentence.trim()) {
+      toast.error('한 문장을 입력하세요.');
+      return;
+    }
+    setVlogBusy(true);
+    try {
+      const res = await fetch('/api/vlog/compose', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({sentence: vlogSentence}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error((data as {error?: string}).error ?? 'compose failed');
+        return;
+      }
+      setVlogResult(data as typeof vlogResult);
+      const storyboard = storyboardSchema.parse(data.storyboard);
+      const characterSheet = characterSheetSchema.parse(data.characterSheet);
+      dispatch(setWorkflow({
+        ...project.workflow,
+        interviewBrief: interviewBriefSchema.parse(data.interviewBrief),
+        characterSheet,
+        storyboard,
+      }));
+      toast.success('8단계 컴포즈 완료: 인터뷰→캐릭터→스토리보드→28축. 검토 후 승인하세요.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'compose failed');
+    } finally {
+      setVlogBusy(false);
     }
   };
 
@@ -655,6 +698,21 @@ export default function WorkflowPanel() {
 
   return (
     <div className="space-y-6 text-sm">
+      <section className="space-y-2 rounded border border-white/10 p-3">
+        <div className="flex items-center justify-between"><h3 className="font-semibold">VLOG 파이프라인 (8단계)</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">① 문장 → ② 인터뷰 → ③ 이미지 콘티 → ④ 캐릭터 → ⑥ 스토리보드 → ⑦ 28축</span></div>
+        <textarea className={`${fieldClass} min-h-20`} value={vlogSentence} onChange={(event) => setVlogSentence(event.target.value)} placeholder="예: 고양이와 인사하는 30초 VLOG 만들어줘" />
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={runVlogCompose} disabled={vlogBusy}>{vlogBusy ? '컴포즈 중…' : '한 문장으로 8단계 컴포즈'}</button>
+        </div>
+        {vlogResult ? (
+          <pre className="max-h-64 overflow-auto rounded bg-black/40 p-2 text-xs text-white/80">{JSON.stringify({
+            interviewBrief: vlogResult.interviewBrief,
+            characterSheet: vlogResult.characterSheet,
+            axes: vlogResult.seedanceMaster?.axes,
+            imageStoryboard: vlogResult.imageStoryboard,
+          }, null, 2)}</pre>
+        ) : null}
+      </section>
       <section className="space-y-2 rounded border border-white/10 p-3">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Approval gate</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">{approvalLabel}</span></div>
         <textarea className={`${fieldClass} min-h-32`} value={storyboardJson} onChange={(event) => setStoryboardJson(event.target.value)} placeholder="Paste storyboard-v2 JSON" />

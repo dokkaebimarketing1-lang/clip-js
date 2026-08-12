@@ -48,7 +48,7 @@ export const interviewBriefSchema = z.object({
 // ④ 캐릭터 시트: 콘티 속 주체를 시각 자산으로 분리
 export const characterSheetSchema = z.object({
   name: z.string().min(1).max(80),
-  breed: z.string().min(1).max(80).default(''),
+  breed: z.string().min(1).max(80).optional(),
   palette: z.object({
     dominant: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#cccccc'),
     secondary: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#888888'),
