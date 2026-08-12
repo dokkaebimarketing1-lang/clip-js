@@ -20,6 +20,7 @@ import Image from "next/image";
 import ProjectName from "../../../components/editor/player/ProjectName";
 import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
 import VlogComposerCompact from "@/app/components/editor/workflow/VlogComposerCompact";
+import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
 import {
     ProjectSaveCoordinator,
     type ProjectSaveStatus,
@@ -293,12 +294,20 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
                 {/* 중앙 미리보기 + 타임라인 */}
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                    <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
-                        <div className="flex flex-col items-center gap-3">
-                            <ProjectName />
-                            <PreviewPlayer />
+                    {projectState.workflow.storyboard ? (
+                        <PipelineCanvas
+                            interviewBrief={projectState.workflow.interviewBrief}
+                            characterSheet={projectState.workflow.characterSheet}
+                            storyboard={projectState.workflow.storyboard}
+                        />
+                    ) : (
+                        <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
+                            <div className="flex flex-col items-center gap-3">
+                                <ProjectName />
+                                <PreviewPlayer />
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* 오른쪽 설정창 (상시 노출) */}
