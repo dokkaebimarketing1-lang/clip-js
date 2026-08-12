@@ -16,9 +16,30 @@ const STAGES: {id: StageId; num: string; label: string}[] = [
   {id: 'prompt', num: '⑧', label: '프롬프트'},
 ];
 
+// 임의 목업: 컴포즈 전에도 예시를 보여주기 위함
+const MOCK_INTERVIEW = {
+  subject: '루이(고양이)',
+  action: '인사하는 30초 VLOG',
+  durationSeconds: 30,
+  tone: '자연스러운 일상',
+} as const;
+
+const MOCK_CHARACTER = {
+  name: '루이',
+  breed: '폼메이션',
+  visualTags: ['크림색 털', '동그란 눈', '분홍색 목걸이'],
+} as const;
+
+const MOCK_SHOTS = [
+  {cut: '오프닝', startSeconds: 0, endSeconds: 8, camera: 'vlog', action: '루이가 창가에서 기지개를 켜며 카메라를 향해 눈을 깜빡인다', dialogue: '안녕~ 나 루이야', sfx: '새 소리'},
+  {cut: '본편', startSeconds: 8, endSeconds: 20, camera: 'medium', action: '루이가 소파 위를 가로지르며 장난감을 툭툭 친다', dialogue: '오늘도 신나는 하루!', sfx: '발톱 소리'},
+  {cut: '턴', startSeconds: 20, endSeconds: 30, camera: 'close-up', action: '루이가 카메라 가까이 다가와 큰 눈으로 인사하며 꼬리를 흔든다', dialogue: '다음에도 놀러와!', sfx: '고양이 소리'},
+] as const;
+
 /**
  * 중앙 캔버스: 8단계 파이프라인 노드 + 스토리보드 샷 노드.
  * 노드 클릭 → 디테일 패널. 연결선으로 흐름 표시.
+ * props가 비어있으면 목업 예시를 보여준다.
  */
 export default function PipelineCanvas({
   interviewBrief,
@@ -31,16 +52,23 @@ export default function PipelineCanvas({
 }) {
   const [selectedStage, setSelectedStage] = useState<StageId | null>(null);
   const [selectedShot, setSelectedShot] = useState<number | null>(null);
+  const isMock = !storyboard;
 
   const shots = storyboard?.cuts.flatMap((cut) =>
     cut.shots.map((shot) => ({cut: cut.title, ...shot})),
-  ) ?? [];
+  ) ?? MOCK_SHOTS;
+
+  const ib = interviewBrief ?? MOCK_INTERVIEW;
+  const cs = characterSheet ?? MOCK_CHARACTER;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-neutral-950">
       {/* 8단계 파이프라인 노드 라인 */}
       <div className="shrink-0 border-b border-white/10 p-3">
-        <div className="mb-2 text-xs font-semibold text-fuchsia-300">AI 감독 파이프라인</div>
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-fuchsia-300">
+          AI 감독 파이프라인
+          {isMock && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300">예시 목업</span>}
+        </div>
         <div className="flex items-center gap-1 overflow-x-auto">
           {STAGES.map((stage, i) => {
             const active = selectedStage === stage.id;
@@ -103,25 +131,25 @@ export default function PipelineCanvas({
           ) : selectedStage ? (
             <div className="space-y-2">
               <div className="text-xs font-semibold text-fuchsia-300">{STAGES.find((s) => s.id === selectedStage)?.num} {STAGES.find((s) => s.id === selectedStage)?.label} 단계</div>
-              {selectedStage === 'interview' && interviewBrief && (
+              {selectedStage === 'interview' && (
                 <>
-                  <DetailRow label="주체" value={interviewBrief.subject} />
-                  <DetailRow label="행동" value={interviewBrief.action} />
-                  <DetailRow label="길이" value={`${interviewBrief.durationSeconds}s`} />
-                  <DetailRow label="톤" value={interviewBrief.tone} />
+                  <DetailRow label="주체" value={ib.subject} />
+                  <DetailRow label="행동" value={ib.action} />
+                  <DetailRow label="길이" value={`${ib.durationSeconds}s`} />
+                  <DetailRow label="톤" value={ib.tone} />
                 </>
               )}
-              {selectedStage === 'character' && characterSheet && (
+              {selectedStage === 'character' && (
                 <>
-                  <DetailRow label="이름" value={characterSheet.name} />
-                  <DetailRow label="품종" value={characterSheet.breed ?? '—'} />
-                  <DetailRow label="외형" value={characterSheet.visualTags.join(', ')} />
+                  <DetailRow label="이름" value={cs.name} />
+                  <DetailRow label="품종" value={cs.breed ?? '—'} />
+                  <DetailRow label="외형" value={cs.visualTags.join(', ')} />
                 </>
               )}
-              {selectedStage === 'storyboard' && storyboard && (
+              {selectedStage === 'storyboard' && (
                 <>
-                  <DetailRow label="제목" value={storyboard.title} />
-                  <DetailRow label="컷 수" value={`${storyboard.cuts.length}`} />
+                  <DetailRow label="제목" value={storyboard?.title ?? '고양이 VLOG (예시)'} />
+                  <DetailRow label="컷 수" value={`${storyboard?.cuts.length ?? MOCK_SHOTS.length}`} />
                 </>
               )}
               {!interviewBrief && !characterSheet && !storyboard && (

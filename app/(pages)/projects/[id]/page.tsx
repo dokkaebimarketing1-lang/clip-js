@@ -13,7 +13,6 @@ import HomeButton from "../../../components/editor/AssetsPanel/SidebarButtons/Ho
 import MediaProperties from "../../../components/editor/PropertiesSection/MediaProperties";
 import TextProperties from "../../../components/editor/PropertiesSection/TextProperties";
 import { Timeline } from "../../../components/editor/timeline/Timline";
-import { PreviewPlayer } from "../../../components/editor/player/remotion/Player";
 import { MediaFile } from "@/app/types";
 
 import Image from "next/image";
@@ -294,20 +293,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
                 {/* 중앙 미리보기 + 타임라인 */}
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                    {projectState.workflow.storyboard ? (
-                        <PipelineCanvas
-                            interviewBrief={projectState.workflow.interviewBrief}
-                            characterSheet={projectState.workflow.characterSheet}
-                            storyboard={projectState.workflow.storyboard}
-                        />
-                    ) : (
-                        <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
-                            <div className="flex flex-col items-center gap-3">
-                                <ProjectName />
-                                <PreviewPlayer />
-                            </div>
-                        </div>
-                    )}
+                    <PipelineCanvas
+                        interviewBrief={projectState.workflow.interviewBrief}
+                        characterSheet={projectState.workflow.characterSheet}
+                        storyboard={projectState.workflow.storyboard}
+                    />
                 </div>
 
                 {/* 오른쪽 설정창 (상시 노출) */}
