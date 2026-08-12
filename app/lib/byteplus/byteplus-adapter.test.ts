@@ -63,9 +63,24 @@ describe('BytePlus Seedance 2.5 compile-only adapter', () => {
 
     const editSettings = buildDefaultSeedanceMasterSettings();
     editSettings.axes.task = 'edit';
+    editSettings.duration = 20;
+    editSettings.axes.durationStructure = '20s-4stage';
+    editSettings.aspectRatio = '16:9';
     const editCanonical = compileBytePlusCanonicalRequest({storyboard, production, settings: editSettings, references: [video]});
+    expect(editCanonical.duration).toBe(-1);
+    expect(editCanonical.ratio).toBe('adaptive');
     const editPayload = await materializeBytePlusCreateTaskRequest(editCanonical, async () => 'https://signed.example.test/source.mp4');
     expect(editPayload.omni_reference_task_type).toBe('edit');
+    expect(editPayload.duration).toBe(-1);
+    expect(editPayload.ratio).toBe('adaptive');
+
+    const editImage = reference({assetId: 'ga_editimage1234567890abcdef1234567890', role: 'reference_image'});
+    expect(() => compileBytePlusCanonicalRequest({
+      storyboard,
+      production,
+      settings: editSettings,
+      references: [video, editImage],
+    })).not.toThrow();
 
     const extendSettings = buildDefaultSeedanceMasterSettings();
     extendSettings.axes.task = 'ext';

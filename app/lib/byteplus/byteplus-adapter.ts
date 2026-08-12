@@ -13,7 +13,7 @@ export const BYTEPLUS_ARK_BASE_URL = 'https://ark.ap-southeast.bytepluses.com' a
 export const BYTEPLUS_CREATE_TASK_URL = `${BYTEPLUS_ARK_BASE_URL}/api/v3/contents/generations/tasks` as const;
 export const BYTEPLUS_SEEDANCE_25_MODEL = 'dreamina-seedance-2-5-260628' as const;
 export const BYTEPLUS_VIDEO_API_VERSION = 'v3' as const;
-export const BYTEPLUS_COMPILER_VERSION = 'byteplus-seedance-2.5/2' as const;
+export const BYTEPLUS_COMPILER_VERSION = 'byteplus-seedance-2.5/3' as const;
 
 const hex64 = z.string().regex(/^[a-f0-9]{64}$/);
 const assetId = z.string().regex(/^[A-Za-z0-9_-]{3,128}$/);
@@ -120,7 +120,9 @@ const assertTaskReferences = (task: BytePlusCanonicalRequest['task'], references
   }
   if (task === 'r2v' && references.some((reference) => !reference.role.startsWith('reference_'))) throw new Error('R2V accepts only reference_image, reference_video, or reference_audio roles.');
   if (task === 'edit' || task === 'ext') {
-    if (references.length !== 1 || references[0]?.role !== 'reference_video') throw new Error(`${task} requires exactly one reference_video.`);
+    if (videos.length < 1 || !references.some((reference) => reference.role === 'reference_video')) {
+      throw new Error(`${task} requires at least one reference_video.`);
+    }
   }
   if (task === 'fl') {
     const first = references.filter((reference) => reference.role === 'first_frame');
@@ -162,7 +164,7 @@ export const compileBytePlusCanonicalRequest = (input: {
     references,
     generateAudio: settings.generateAudio,
     ratio: settings.axes.task === 'edit' || settings.axes.task === 'ext' ? 'adaptive' as const : (settings.aspectRatio === 'auto' ? 'adaptive' as const : settings.aspectRatio),
-    duration: settings.duration,
+    duration: settings.axes.task === 'edit' ? -1 as const : settings.duration,
     resolution: settings.resolution,
     watermark: false as const,
     returnLastFrame: false as const,
