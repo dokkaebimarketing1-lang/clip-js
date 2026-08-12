@@ -13,7 +13,7 @@ export const BYTEPLUS_ARK_BASE_URL = 'https://ark.ap-southeast.bytepluses.com' a
 export const BYTEPLUS_CREATE_TASK_URL = `${BYTEPLUS_ARK_BASE_URL}/api/v3/contents/generations/tasks` as const;
 export const BYTEPLUS_SEEDANCE_25_MODEL = 'dreamina-seedance-2-5-260628' as const;
 export const BYTEPLUS_VIDEO_API_VERSION = 'v3' as const;
-export const BYTEPLUS_COMPILER_VERSION = 'byteplus-seedance-2.5/3' as const;
+export const BYTEPLUS_COMPILER_VERSION = 'byteplus-seedance-2.5/4' as const;
 
 const hex64 = z.string().regex(/^[a-f0-9]{64}$/);
 const assetId = z.string().regex(/^[A-Za-z0-9_-]{3,128}$/);
@@ -163,7 +163,9 @@ export const compileBytePlusCanonicalRequest = (input: {
     prompt: compileSeedanceMasterPrompt(storyboard, production, settings),
     references,
     generateAudio: settings.generateAudio,
-    ratio: settings.axes.task === 'edit' || settings.axes.task === 'ext' ? 'adaptive' as const : (settings.aspectRatio === 'auto' ? 'adaptive' as const : settings.aspectRatio),
+    ratio: settings.axes.task === 'edit' || settings.axes.task === 'ext' || settings.axes.task === 'fl'
+      ? 'adaptive' as const
+      : (settings.aspectRatio === 'auto' ? 'adaptive' as const : settings.aspectRatio),
     duration: settings.axes.task === 'edit' ? -1 as const : settings.duration,
     resolution: settings.resolution,
     watermark: false as const,

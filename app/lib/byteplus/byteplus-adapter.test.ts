@@ -106,8 +106,10 @@ describe('BytePlus Seedance 2.5 compile-only adapter', () => {
     expect(() => compileBytePlusCanonicalRequest({storyboard, production, settings, references: [reference({portraitHandling: 'direct-real-human-face'})]})).toThrow(/portrait/i);
 
     settings.axes.task = 'fl';
+    settings.aspectRatio = '16:9';
     expect(() => compileBytePlusCanonicalRequest({storyboard, production, settings, references: [reference({role: 'last_frame'})]})).toThrow(/first_frame/i);
-    expect(() => compileBytePlusCanonicalRequest({storyboard, production, settings, references: [reference({role: 'first_frame'}), reference({assetId: 'ga_abcdefabcdefabcdefabcdefabcdefab', role: 'last_frame'})]})).not.toThrow();
+    const firstLastCanonical = compileBytePlusCanonicalRequest({storyboard, production, settings, references: [reference({role: 'first_frame'}), reference({assetId: 'ga_abcdefabcdefabcdefabcdefabcdefab', role: 'last_frame'})]});
+    expect(firstLastCanonical.ratio).toBe('adaptive');
 
     settings.axes.task = 'edit';
     expect(() => compileBytePlusCanonicalRequest({storyboard, production, settings, references: [reference()]})).toThrow(/reference_video/i);
