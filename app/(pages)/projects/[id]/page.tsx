@@ -4,15 +4,11 @@ import { getFile, storeProject, useAppDispatch, useAppSelector } from "../../../
 import { getProject } from "../../../store";
 import { setCurrentProject, updateProject } from "../../../store/slices/projectsSlice";
 import { rehydrate } from '../../../store/slices/projectSlice';
-import { setActiveSection } from "../../../store/slices/projectSlice";
 import AddText from '../../../components/editor/AssetsPanel/tools-section/AddText';
 import AddMedia from '../../../components/editor/AssetsPanel/AddButtons/UploadMedia';
 import MediaList from '../../../components/editor/AssetsPanel/tools-section/MediaList';
 import { useRouter } from 'next/navigation';
-import TextButton from "@/app/components/editor/AssetsPanel/SidebarButtons/TextButton";
-import LibraryButton from "@/app/components/editor/AssetsPanel/SidebarButtons/LibraryButton";
-import ExportButton from "@/app/components/editor/AssetsPanel/SidebarButtons/ExportButton";
-import HomeButton from "@/app/components/editor/AssetsPanel/SidebarButtons/HomeButton";
+import HomeButton from "../../../components/editor/AssetsPanel/SidebarButtons/HomeButton";
 
 import MediaProperties from "../../../components/editor/PropertiesSection/MediaProperties";
 import TextProperties from "../../../components/editor/PropertiesSection/TextProperties";
@@ -23,6 +19,7 @@ import { MediaFile } from "@/app/types";
 import Image from "next/image";
 import ProjectName from "../../../components/editor/player/ProjectName";
 import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
+import VlogComposerCompact from "@/app/components/editor/workflow/VlogComposerCompact";
 import {
     ProjectSaveCoordinator,
     type ProjectSaveStatus,
@@ -40,9 +37,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const autosaveTimeoutRef = useRef<number | null>(null);
     const editorUrlRef = useRef('');
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
+    const [leftTab, setLeftTab] = useState<'media' | 'text' | 'vlog'>('media');
+    const [rightTab, setRightTab] = useState<'workflow' | 'props'>('workflow');
 
     const router = useRouter();
-    const { activeSection, activeElement } = projectState;
+    const { activeElement } = projectState;
     useEffect(() => {
         let cancelled = false;
         const objectUrls: string[] = [];
@@ -204,10 +203,6 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     }, [saveStatus.state]);
 
 
-    const handleFocus = (section: "media" | "text" | "workflow" | "export") => {
-        dispatch(setActiveSection(section));
-    };
-
     if (loadError) {
         return (
             <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
@@ -249,72 +244,98 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 ) : null
             }
             <div className="flex min-h-0 flex-1 overflow-hidden">
-                {/* Left Sidebar - Buttons */}
-                <div className="relative z-50 flex-[0.1] min-w-[60px] max-w-[100px] border-r border-gray-700 bg-black overflow-y-auto p-4">
-                    <div className="flex flex-col space-y-2">
-                        <HomeButton />
-                        <button
-                            aria-label="Production workflow"
-                            title="Production workflow"
-                            onClick={() => handleFocus("workflow")}
-                            className="flex h-12 w-full shrink-0 items-center justify-center rounded border border-white/10 text-xs font-bold hover:bg-white/10"
-                        >WF</button>
-                        <TextButton onClick={() => handleFocus("text")} />
-                        <LibraryButton onClick={() => handleFocus("media")} />
-                        <ExportButton onClick={() => handleFocus("workflow")} />
-                        {/* TODO: add shortcuts guide but in a better way */}
-                        {/* <ShortcutsButton onClick={() => handleFocus("export")} /> */}
-                    </div>
+                {/* 좌측 아이콘 레일 */}
+                <div className="relative z-50 flex w-[64px] shrink-0 flex-col items-center gap-2 border-r border-gray-800 bg-neutral-950 p-3">
+                    <HomeButton />
+                    <button
+                        aria-label="소스"
+                        title="소스"
+                        onClick={() => setLeftTab('media')}
+                        className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'media' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
+                    >미디어</button>
+                    <button
+                        aria-label="텍스트"
+                        title="텍스트"
+                        onClick={() => setLeftTab('text')}
+                        className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'text' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
+                    >텍스트</button>
+                    <button
+                        aria-label="VLOG"
+                        title="VLOG AI 감독"
+                        onClick={() => setLeftTab('vlog')}
+                        className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'vlog' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
+                    >VLOG</button>
                 </div>
 
-                {/* Add media and text */}
-                <div className="relative z-40 min-h-0 w-[380px] min-w-[360px] shrink-0 overflow-y-auto border-r border-gray-800 bg-black p-4">
-                    {activeSection === "media" && (
+                {/* 왼쪽 소스 패널 (상시 노출) */}
+                <div className="relative z-40 min-h-0 w-[320px] shrink-0 overflow-y-auto border-r border-gray-800 bg-neutral-900 p-4">
+                    {leftTab === 'media' && (
                         <div>
-                            <h2 className="text-lg flex flex-row gap-2 items-center justify-center font-semibold mb-2">
-                                <AddMedia />
-                            </h2>
-                            <MediaList />
+                            <h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 소스</h2>
+                            <AddMedia />
+                            <div className="mt-4"><MediaList /></div>
                         </div>
                     )}
-                    {activeSection === "text" && (
+                    {leftTab === 'text' && (
                         <div>
+                            <h2 className="mb-3 text-sm font-semibold text-gray-200">텍스트</h2>
                             <AddText />
                         </div>
                     )}
-                    {activeSection === "workflow" && (
+                    {leftTab === 'vlog' && (
                         <div>
-                            <h2 className="mb-3 text-xl font-bold">Production Workflow</h2>
-                            <WorkflowPanel />
-                        </div>
-                    )}
-                    {activeSection === "export" && (
-                        <div>
-                            <WorkflowPanel />
+                            <h2 className="mb-3 text-sm font-semibold text-gray-200">VLOG AI 감독</h2>
+                            <p className="mb-3 text-xs text-gray-400">한 문장으로 8단계 영상 파이프라인을 자동 구성합니다. 결과는 오른쪽 설정창에서 확인하세요.</p>
+                            <VlogComposerCompact />
                         </div>
                     )}
                 </div>
 
-                {/* Center - Video Preview */}
-                <div className="flex items-center justify-center flex-col flex-[1] overflow-hidden">
-                    <ProjectName />
-                    <PreviewPlayer />
+                {/* 중앙 미리보기 + 타임라인 */}
+                <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                    <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
+                        <div className="flex flex-col items-center gap-3">
+                            <ProjectName />
+                            <PreviewPlayer />
+                        </div>
+                    </div>
                 </div>
 
-                {/* Right Sidebar - Element Properties */}
-                <div className="min-h-0 flex-[0.4] min-w-[200px] overflow-y-auto border-l border-gray-800 p-4">
-                    {activeElement === "media" && (
-                        <div>
-                            <h2 className="text-lg font-semibold mb-4">Media Properties</h2>
-                            <MediaProperties />
-                        </div>
-                    )}
-                    {activeElement === "text" && (
-                        <div>
-                            <h2 className="text-lg font-semibold mb-4">Text Properties</h2>
-                            <TextProperties />
-                        </div>
-                    )}
+                {/* 오른쪽 설정창 (상시 노출) */}
+                <div className="flex min-h-0 w-[400px] shrink-0 flex-col border-l border-gray-800 bg-neutral-900">
+                    <div className="flex shrink-0 border-b border-gray-800">
+                        <button
+                            onClick={() => setRightTab('workflow')}
+                            className={`flex-1 px-3 py-2 text-xs font-semibold transition ${rightTab === 'workflow' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                        >워크플로우</button>
+                        <button
+                            onClick={() => setRightTab('props')}
+                            className={`flex-1 px-3 py-2 text-xs font-semibold transition ${rightTab === 'props' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                        >속성</button>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                        {rightTab === 'workflow' ? (
+                            <WorkflowPanel />
+                        ) : (
+                            <div className="space-y-4">
+                                {activeElement === 'media' && (
+                                    <div>
+                                        <h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 속성</h2>
+                                        <MediaProperties />
+                                    </div>
+                                )}
+                                {activeElement === 'text' && (
+                                    <div>
+                                        <h2 className="mb-3 text-sm font-semibold text-gray-200">텍스트 속성</h2>
+                                        <TextProperties />
+                                    </div>
+                                )}
+                                {!activeElement && (
+                                    <p className="text-xs text-gray-500">타임라인에서 미디어나 텍스트를 선택하면 속성이 표시됩니다.</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
             {/* Timeline at bottom */}
