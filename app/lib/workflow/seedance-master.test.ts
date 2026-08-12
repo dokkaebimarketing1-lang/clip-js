@@ -6,6 +6,8 @@ import {
   buildHiggsfieldCliArgs,
   compileHiggsfieldSeedanceRequest,
   higgsfieldSeedanceRequestSchema,
+  activeSeedanceAxisKeys,
+  ORIGINAL_SEEDANCE_AXIS_MAP,
   seedanceMasterSettingsSchema,
 } from './seedance-master';
 
@@ -54,6 +56,30 @@ describe('Seedance master → Higgsfield compiler', () => {
     const settings = buildDefaultSeedanceMasterSettings();
     expect(Object.keys(settings.axes)).toHaveLength(28);
     expect(settings.axes.task).toBe('t2v');
+  });
+
+  it('keeps semantic parity with all 28 source axis ids and original requires rules', () => {
+    expect(ORIGINAL_SEEDANCE_AXIS_MAP.map(([source]) => source)).toEqual([
+      'task', 'extra', 'genre', 'duration', 'shotseq', 'lang', 'voice', 'emotion', 'emotionflow',
+      'shotsize', 'timeweather', 'camera', 'angle', 'optical', 'composition', 'transition', 'audio',
+      'musicgenre', 'fxpreset', 'quality', 'stylepreset', 'stylelock', 'lighting', 'textgen', 'refmat',
+      'subjectdef', 'whitemodel', 'keyframe',
+    ]);
+    expect(activeSeedanceAxisKeys('t2v')).toHaveLength(28);
+    const editAxes = activeSeedanceAxisKeys('edit');
+    expect(editAxes).not.toEqual(expect.arrayContaining(['genre', 'camera', 'visualStyle', 'textGeneration']));
+    expect(editAxes).toEqual(expect.arrayContaining(['task', 'durationStructure', 'dialogueLanguage', 'quality', 'referenceMaterials']));
+  });
+
+  it('enforces BytePlus Seedance 2.5 30/10/10 reference caps and permits pure-audio R2V', () => {
+    const settings = buildDefaultSeedanceMasterSettings();
+    settings.axes.task = 'r2v';
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings})).toThrow(/requires at least one reference asset/i);
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings, imageReferences: Array.from({length: 31}, (_, index) => `image-${index}`)})).toThrow(/at most 30 image/i);
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings, videoReferences: Array.from({length: 11}, (_, index) => `video-${index}`)})).toThrow(/at most 10 video/i);
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings, audioReferences: Array.from({length: 11}, (_, index) => `audio-${index}`)})).toThrow(/at most 10 audio/i);
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings, audioReferences: ['audio-1']})).not.toThrow();
+    expect(() => compileHiggsfieldSeedanceRequest({storyboard, production, settings, imageReferences: Array.from({length: 30}, (_, index) => `image-${index}`), videoReferences: Array.from({length: 10}, (_, index) => `video-${index}`), audioReferences: Array.from({length: 10}, (_, index) => `audio-${index}`)})).not.toThrow();
   });
 
   it('keeps generated footage completely free of visible text and rejects text-generation modes', () => {

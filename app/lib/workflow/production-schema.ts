@@ -90,11 +90,29 @@ export const shotGenerationSpecSchema = z.object({
   });
 });
 
+export const takeApprovalSchema = z.object({
+  status: z.enum(['draft', 'approved', 'rejected']),
+  signatureVersion: z.literal(1).optional(),
+  signingKeyId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+  takeId: boundedId.optional(),
+  assetId: boundedId.optional(),
+  contentSha256: sha256Schema.optional(),
+  approvedAt: z.string().datetime().optional(),
+  approvedBy: z.string().min(1).max(128).optional(),
+  signature: sha256Schema.optional(),
+}).superRefine((approval, ctx) => {
+  if (approval.status === 'draft') return;
+  for (const field of ['takeId', 'assetId', 'contentSha256', 'approvedAt', 'approvedBy'] as const) {
+    if (!approval[field]) ctx.addIssue({code: z.ZodIssueCode.custom, path: [field], message: `Take approval requires ${field}.`});
+  }
+});
+
 export const generationTakeSchema = z.object({
   id: boundedId,
-  shotSpecId: boundedId,
+  scope: z.enum(['shot', 'production']).default('shot'),
+  shotSpecId: boundedId.optional(),
   parentTakeId: boundedId.optional(),
-  mode: z.enum(['t2v', 'omni_reference', 'video_edit', 'video_extension']).optional(),
+  mode: z.enum(['t2v', 'omni_reference', 'video_edit', 'video_extension', 'first_last_frame']).optional(),
   resolution: z.enum(['480p', '720p']).optional(),
   extensionMode: z.enum(['backward', 'forward']).optional(),
   structuredSpecHash: sha256Schema,
@@ -106,15 +124,26 @@ export const generationTakeSchema = z.object({
   newValueHash: sha256Schema.optional(),
   provider: z.string().min(1).max(100),
   model: z.string().min(1).max(200),
+  providerJobId: z.string().min(1).max(512).optional(),
+  requestKey: sha256Schema.optional(),
   outputAssetId: boundedId.optional(),
+  contentSha256: sha256Schema.optional(),
+  qcStatus: z.enum(['legacy', 'qc_pending', 'approved', 'rejected']).default('legacy'),
+  takeApproval: takeApprovalSchema.default({status: 'draft'}),
   verdict: z.enum(['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected']),
   selected: z.boolean().default(false),
   createdAt: z.string().datetime(),
 }).superRefine((take, ctx) => {
+  if (take.scope === 'shot' && !take.shotSpecId) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['shotSpecId'], message: 'Shot-scoped Take requires shotSpecId.'});
+  if (take.scope === 'production' && take.shotSpecId) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['shotSpecId'], message: 'Production-scoped Take must not bind to a shotSpecId.'});
   const hasDiffHashes = Boolean(take.previousValueHash && take.newValueHash);
   if (Boolean(take.changedPath) !== hasDiffHashes) ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Take diff provenance requires changedPath plus both value hashes.'});
   if (take.extensionMode && take.mode !== 'video_extension') ctx.addIssue({code: z.ZodIssueCode.custom, path: ['extensionMode'], message: "extensionMode is only allowed when mode is 'video_extension' (Seedance 2.5 rule)."});
   if (take.mode === 'video_extension' && !take.extensionMode) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['mode'], message: "mode 'video_extension' requires extensionMode (Seedance 2.5 rule)."});
+  if (take.qcStatus !== 'legacy' && (!take.outputAssetId || !take.contentSha256 || !take.requestKey)) {
+    ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Managed Take QC requires requestKey, outputAssetId, and contentSha256.'});
+  }
+  if (take.qcStatus === 'approved' && take.takeApproval.status !== 'approved') ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Approved Take QC requires a signed Take approval record.'});
 });
 
 export const productionManifestSchema = z.object({
@@ -146,12 +175,13 @@ export const productionManifestSchema = z.object({
     });
   });
   manifest.takes.forEach((take, index) => {
-    if (!shotIds.has(take.shotSpecId)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes', index, 'shotSpecId'], message: 'Take shot spec does not exist.'});
+    if (take.scope === 'shot' && (!take.shotSpecId || !shotIds.has(take.shotSpecId))) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes', index, 'shotSpecId'], message: 'Take shot spec does not exist.'});
     if (take.parentTakeId && (!takeIds.has(take.parentTakeId) || take.parentTakeId === take.id)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes', index, 'parentTakeId'], message: 'Take parent must reference another take.'});
   });
   const selectedPerShot = new Map<string, number>();
   manifest.takes.forEach((take) => {
-    if (take.selected) selectedPerShot.set(take.shotSpecId, (selectedPerShot.get(take.shotSpecId) ?? 0) + 1);
+    const selectionScope = take.scope === 'production' ? '__production__' : take.shotSpecId;
+    if (take.selected && selectionScope) selectedPerShot.set(selectionScope, (selectedPerShot.get(selectionScope) ?? 0) + 1);
   });
   selectedPerShot.forEach((count, shotSpecId) => {
     if (count > 1) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['takes'], message: `Shot spec ${shotSpecId} has more than one selected take.`});
@@ -162,6 +192,7 @@ export type ProductionAsset = z.infer<typeof productionAssetSchema>;
 export type SceneContinuityLock = z.infer<typeof sceneContinuityLockSchema>;
 export type ShotGenerationSpec = z.infer<typeof shotGenerationSpecSchema>;
 export type GenerationTake = z.infer<typeof generationTakeSchema>;
+export type TakeApproval = z.infer<typeof takeApprovalSchema>;
 export type ProductionManifest = z.infer<typeof productionManifestSchema>;
 
 export const createDefaultProductionManifest = (): ProductionManifest => ({

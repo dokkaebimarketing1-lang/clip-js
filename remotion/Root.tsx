@@ -5,6 +5,8 @@ import type {ProjectState} from '../app/types';
 import {createDefaultWorkflow} from '../app/lib/workflow/schema';
 
 const defaultProject: ProjectState = {
+  projectSchemaVersion: 3,
+  revision: 0,
   id: 'remotion-default',
   projectName: 'Untitled',
   createdAt: '1970-01-01T00:00:00.000Z',

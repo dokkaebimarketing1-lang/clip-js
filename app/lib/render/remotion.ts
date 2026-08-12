@@ -28,7 +28,8 @@ const removeExpiredRenders = async (outputDir: string): Promise<void> => {
   }));
 };
 
-const performRender = async (project: ProjectState): Promise<{renderId: string; outputLocation: string}> => {
+const performRender = async (project: ProjectState, signal?: AbortSignal): Promise<{renderId: string; outputLocation: string}> => {
+  signal?.throwIfAborted();
   const serveUrl = path.resolve(/*turbopackIgnore: true*/ process.env.CLIPJS_REMOTION_BUNDLE_DIR || path.join(process.cwd(), 'remotion-bundle'));
   const browserExecutable = getRenderBrowserExecutable();
   await access(path.join(serveUrl, 'index.html')).catch(() => {
@@ -40,6 +41,8 @@ const performRender = async (project: ProjectState): Promise<{renderId: string; 
   await removeExpiredRenders(outputDir);
   const outputLocation = path.join(outputDir, `${renderId}.mp4`);
   const stagingController = new AbortController();
+  const abortStaging = () => stagingController.abort(signal?.reason);
+  signal?.addEventListener('abort', abortStaging, {once: true});
   const staged = await withTimeout(
     stageRemoteMedia(project, serveUrl, renderId, stagingController.signal),
     STAGING_TIMEOUT_MS,
@@ -47,10 +50,18 @@ const performRender = async (project: ProjectState): Promise<{renderId: string; 
     () => stagingController.abort(),
   );
   let browser: Awaited<ReturnType<typeof openBrowser>> | null = null;
+  let cancelRender: (() => void) | undefined;
+  const abortActiveRender = () => {
+    cancelRender?.();
+    void browser?.close({silent: true}).catch(() => undefined);
+  };
   try {
+    signal?.throwIfAborted();
     const inputProps = {project: staged.project};
     const chromiumOptions = {headless: true};
     browser = await openBrowser('chrome', {browserExecutable, chromiumOptions});
+    signal?.addEventListener('abort', abortActiveRender, {once: true});
+    signal?.throwIfAborted();
     const compositionPromise = selectComposition({
       serveUrl,
       id: 'ClipJsProject',
@@ -67,6 +78,7 @@ const performRender = async (project: ProjectState): Promise<{renderId: string; 
       () => { void browser?.close({silent: true}).catch(() => undefined); },
     );
     const {cancelSignal, cancel} = makeCancelSignal();
+    cancelRender = cancel;
     await withTimeout(renderMedia({
       composition,
       serveUrl,
@@ -86,12 +98,14 @@ const performRender = async (project: ProjectState): Promise<{renderId: string; 
     await unlink(outputLocation).catch(() => undefined);
     throw error;
   } finally {
+    signal?.removeEventListener('abort', abortStaging);
+    signal?.removeEventListener('abort', abortActiveRender);
     if (browser) await browser.close({silent: true}).catch(() => undefined);
     await staged.cleanup();
   }
 };
 
-export const renderApprovedProject = (project: ProjectState): Promise<{renderId: string; outputLocation: string}> => {
+export const renderApprovedProject = (project: ProjectState, signal?: AbortSignal): Promise<{renderId: string; outputLocation: string}> => {
   const snapshot = structuredClone(project);
-  return enqueueRender(() => performRender(snapshot));
+  return enqueueRender(() => performRender(snapshot, signal));
 };

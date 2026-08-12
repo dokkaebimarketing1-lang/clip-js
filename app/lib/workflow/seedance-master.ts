@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {compileShotPrompt} from './production';
-import type {ProductionManifest} from './production-schema';
+import {productionManifestSchema, type ProductionManifest} from './production-schema';
 import type {Storyboard} from './schema';
 
 const axisSchema = z.object({
@@ -34,6 +34,26 @@ const axisSchema = z.object({
   keyframe: z.enum(['none', 'ordered', 'first-last']),
 }).strict();
 
+export const ORIGINAL_SEEDANCE_AXIS_MAP = [
+  ['task', 'task'], ['extra', 'extra'], ['genre', 'genre'], ['duration', 'durationStructure'],
+  ['shotseq', 'shotSequence'], ['lang', 'dialogueLanguage'], ['voice', 'voice'], ['emotion', 'emotions'],
+  ['emotionflow', 'emotionFlow'], ['shotsize', 'shotSize'], ['timeweather', 'timeWeather'], ['camera', 'camera'],
+  ['angle', 'angle'], ['optical', 'optics'], ['composition', 'composition'], ['transition', 'transition'],
+  ['audio', 'audioLanes'], ['musicgenre', 'musicGenre'], ['fxpreset', 'fxPresets'], ['quality', 'quality'],
+  ['stylepreset', 'visualStyle'], ['stylelock', 'styleLock'], ['lighting', 'lighting'], ['textgen', 'textGeneration'],
+  ['refmat', 'referenceMaterials'], ['subjectdef', 'subjectDefinition'], ['whitemodel', 'whiteModel'], ['keyframe', 'keyframe'],
+] as const;
+
+const ORIGINAL_REQUIRES_T2V_OR_R2V: ReadonlySet<string> = new Set([
+  'extra', 'genre', 'shotSequence', 'shotSize', 'timeWeather', 'camera', 'angle', 'optics',
+  'composition', 'transition', 'visualStyle', 'styleLock', 'lighting', 'textGeneration',
+] as const);
+
+export const activeSeedanceAxisKeys = (task: z.infer<typeof axisSchema>['task']): string[] =>
+  ORIGINAL_SEEDANCE_AXIS_MAP
+    .map(([, key]) => key)
+    .filter((key) => !ORIGINAL_REQUIRES_T2V_OR_R2V.has(key) || task === 't2v' || task === 'r2v');
+
 export const seedanceMasterSettingsSchema = z.object({
   axes: axisSchema,
   duration: z.union([z.literal(20), z.literal(30)]),
@@ -41,17 +61,34 @@ export const seedanceMasterSettingsSchema = z.object({
   resolution: z.enum(['480p', '720p']),
   generateAudio: z.boolean(),
   extensionMode: z.enum(['backward', 'forward']).optional(),
-  imageReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(50).default([]),
-  videoReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(50).default([]),
-  audioReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(50).default([]),
+  imageReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(30).default([]),
+  videoReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(10).default([]),
+  audioReferenceIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)).max(10).default([]),
 }).strict().superRefine((settings, ctx) => {
   const expected = settings.duration === 20 ? '20s-4stage' : '30s-5stage';
   if (settings.axes.durationStructure !== expected) {
     ctx.addIssue({code: z.ZodIssueCode.custom, path: ['axes', 'durationStructure'], message: '영상 길이와 단계 구조가 일치해야 합니다.'});
   }
+  const allReferences = settings.imageReferenceIds.length + settings.videoReferenceIds.length + settings.audioReferenceIds.length;
+  if (settings.axes.task === 't2v' && allReferences > 0) {
+    ctx.addIssue({code: z.ZodIssueCode.custom, path: ['axes', 'task'], message: 'Text-to-video must not include reference media.'});
+  }
 });
 
 export type SeedanceMasterSettings = z.infer<typeof seedanceMasterSettingsSchema>;
+
+export const assertSeedance25ReferencePolicy = (
+  task: SeedanceMasterSettings['axes']['task'],
+  images: readonly string[],
+  videos: readonly string[],
+  audio: readonly string[],
+): void => {
+  if (images.length > 30) throw new Error('Seedance 2.5 accepts at most 30 image references.');
+  if (videos.length > 10) throw new Error('Seedance 2.5 accepts at most 10 video references.');
+  if (audio.length > 10) throw new Error('Seedance 2.5 accepts at most 10 audio references.');
+  if (task === 't2v' && images.length + videos.length + audio.length > 0) throw new Error('T2V text-to-video must not include reference media.');
+  if (task === 'r2v' && images.length + videos.length + audio.length === 0) throw new Error('Reference-to-video requires at least one reference asset.');
+};
 
 export const buildDefaultSeedanceMasterSettings = (): SeedanceMasterSettings => ({
   axes: {
@@ -151,22 +188,48 @@ const axisValue = (key: keyof SeedanceMasterSettings['axes'], value: string): st
 
 const summarizeAxis = (settings: SeedanceMasterSettings): string => {
   const {axes} = settings;
+  const active = new Set(activeSeedanceAxisKeys(axes.task));
   const list = (key: keyof typeof axes, values: readonly string[]) => values.map((value) => axisValue(key, value)).join('、') || '无';
+  const generationParts = [
+    active.has('genre') ? axisValue('genre', axes.genre) : undefined,
+    `${settings.duration}秒`,
+    axisValue('durationStructure', axes.durationStructure),
+    active.has('shotSequence') ? axisValue('shotSequence', axes.shotSequence) : undefined,
+    active.has('extra') ? `额外能力：${axisValue('extra', axes.extra)}` : undefined,
+  ].filter(Boolean).join('；');
+  const cameraParts = [
+    active.has('shotSize') ? `景别：${axisValue('shotSize', axes.shotSize)}` : undefined,
+    active.has('timeWeather') ? `时间天气：${axisValue('timeWeather', axes.timeWeather)}` : undefined,
+    active.has('camera') ? axisValue('camera', axes.camera) : undefined,
+    active.has('angle') ? `机位：${axisValue('angle', axes.angle)}` : undefined,
+    active.has('optics') ? `光学：${list('optics', axes.optics)}` : undefined,
+    active.has('composition') ? `构图：${axisValue('composition', axes.composition)}` : undefined,
+    active.has('transition') ? `转场：${axisValue('transition', axes.transition)}` : undefined,
+  ].filter(Boolean).join('；');
+  const styleParts = [
+    list('quality', axes.quality),
+    active.has('visualStyle') ? axisValue('visualStyle', axes.visualStyle) : undefined,
+    active.has('styleLock') ? axisValue('styleLock', axes.styleLock) : undefined,
+    active.has('lighting') ? axisValue('lighting', axes.lighting) : undefined,
+    active.has('textGeneration') ? axisValue('textGeneration', axes.textGeneration) : undefined,
+  ].filter(Boolean).join('；');
   return [
-    `【生成目标】${axisValue('genre', axes.genre)}；${settings.duration}秒；${axisValue('durationStructure', axes.durationStructure)}；${axisValue('shotSequence', axes.shotSequence)}；额外能力：${axisValue('extra', axes.extra)}。`,
+    `【生成目标】${generationParts}。`,
     `【人物与情绪】台词语言：${axisValue('dialogueLanguage', axes.dialogueLanguage)}；语气：${axisValue('voice', axes.voice)}；情绪：${list('emotions', axes.emotions)}；情绪流：${axisValue('emotionFlow', axes.emotionFlow)}。`,
-    `【镜头与风格】景别：${axisValue('shotSize', axes.shotSize)}；时间天气：${axisValue('timeWeather', axes.timeWeather)}；${axisValue('camera', axes.camera)}；机位：${axisValue('angle', axes.angle)}；光学：${list('optics', axes.optics)}；构图：${axisValue('composition', axes.composition)}；转场：${axisValue('transition', axes.transition)}。每个镜头只使用一种运镜。`,
+    cameraParts ? `【镜头与风格】${cameraParts}。每个镜头只使用一种运镜。` : undefined,
     `【声音总则】声道：${list('audioLanes', axes.audioLanes)}；音乐：${axisValue('musicGenre', axes.musicGenre)}；效果音：${list('fxPresets', axes.fxPresets)}。`,
-    `【画质·风格·约束】${list('quality', axes.quality)}；${axisValue('visualStyle', axes.visualStyle)}；${axisValue('styleLock', axes.styleLock)}；${axisValue('lighting', axes.lighting)}；${axisValue('textGeneration', axes.textGeneration)}。`,
+    `【画质·风格·约束】${styleParts}。`,
     `【参考策略】${list('referenceMaterials', axes.referenceMaterials)}；${axisValue('subjectDefinition', axes.subjectDefinition)}；${axisValue('whiteModel', axes.whiteModel)}；${axisValue('keyframe', axes.keyframe)}。`,
-  ].join('\n');
+  ].filter((line): line is string => Boolean(line)).join('\n');
 };
 
-const compileMasterPrompt = (storyboard: Storyboard, production: ProductionManifest, settings: SeedanceMasterSettings): string => {
-  const taskLabel: Record<HiggsfieldSeedanceRequest['mode'], string> = {
-    t2v: '文生视频', omni_reference: '参考生视频', video_edit: '视频编辑', video_extension: '视频延长',
+export const compileSeedanceMasterPrompt = (storyboardInput: Storyboard, productionInput: ProductionManifest, settingsInput: SeedanceMasterSettings): string => {
+  const storyboard = storyboardInput;
+  const production = productionManifestSchema.parse(productionInput);
+  const settings = seedanceMasterSettingsSchema.parse(settingsInput);
+  const taskLabel: Record<SeedanceMasterSettings['axes']['task'], string> = {
+    t2v: '文生视频', r2v: '参考生视频', edit: '视频编辑', ext: '视频延长', fl: '首尾帧生视频',
   };
-  const mode = modeForTask(settings.axes.task);
   const stages = production.shotSpecs.map((spec) => {
     const cut = storyboard.cuts.find((candidate) => candidate.id === spec.cutId);
     const shot = cut?.shots.find((candidate) => candidate.id === spec.shotId);
@@ -177,7 +240,7 @@ const compileMasterPrompt = (storyboard: Storyboard, production: ProductionManif
   });
   if (!stages.length) throw new Error('Seedance master prompt requires at least one production shot.');
   const prompt = [
-    `【任务类型】${taskLabel[mode]}`,
+    `【任务类型】${taskLabel[settings.axes.task]}`,
     `【项目】${storyboard.title}`,
     summarizeAxis(settings),
     ...stages,
@@ -198,7 +261,7 @@ export const compileHiggsfieldSeedanceRequest = (input: {
   const settings = seedanceMasterSettingsSchema.parse(input.settings);
   const mode = modeForTask(settings.axes.task);
   const request: Record<string, unknown> = {
-    prompt: compileMasterPrompt(input.storyboard, input.production, settings),
+    prompt: compileSeedanceMasterPrompt(input.storyboard, input.production, settings),
     mode,
     duration: settings.duration,
     aspect_ratio: settings.aspectRatio,
@@ -208,6 +271,7 @@ export const compileHiggsfieldSeedanceRequest = (input: {
   const imageReferences = input.imageReferences ?? settings.imageReferenceIds;
   const videoReferences = input.videoReferences ?? settings.videoReferenceIds;
   const audioReferences = input.audioReferences ?? settings.audioReferenceIds;
+  assertSeedance25ReferencePolicy(settings.axes.task, imageReferences, videoReferences, audioReferences);
   if (imageReferences.length) request.image_references = imageReferences;
   if (videoReferences.length) request.video_references = videoReferences;
   if (audioReferences.length) request.audio_references = audioReferences;

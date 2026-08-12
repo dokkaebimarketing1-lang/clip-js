@@ -16,6 +16,7 @@
 /build
 /remotion-bundle
 /renders
+/.clipjs-runtime
 
 # misc
 .DS_Store

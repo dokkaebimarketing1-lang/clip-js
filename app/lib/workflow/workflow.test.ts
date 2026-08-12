@@ -1,10 +1,10 @@
 import {describe, expect, it} from 'vitest';
-import {approveStoryboard, assertVideoGenerationAllowed, ApprovalRequiredError, invalidateApproval} from './approval';
+import {approveGeneration, assertVideoGenerationAllowed, ApprovalRequiredError, invalidateApproval} from './approval';
 import {createDefaultWorkflow, type Storyboard} from './schema';
 import {approveAgentChange, previewAgentCommand} from '../agent/commands';
 import {assertSafeRemoteUrl, isHostnameAllowed} from '../security/remote-url';
 import projectReducer, {initialState, rehydrate, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
-import {importProjectIntoCurrentProject, parseRenderProjectRequest} from './project-file';
+import {importProjectIntoCurrentProject, parseRenderProjectRequest, serializeProject} from './project-file';
 import {assertRenderLimits} from '../render/limits';
 import {createRenderDownloadToken, verifyRenderDownloadToken} from '../security/api-auth';
 import {normalizeRenderDownloadUrl} from '../render/download-url';
@@ -19,13 +19,13 @@ describe('storyboard approval gate', () => {
     const workflow = {...createDefaultWorkflow(), storyboard};
     await expect(assertVideoGenerationAllowed(workflow)).rejects.toBeInstanceOf(ApprovalRequiredError);
   });
-  it('allows only the exact approved storyboard hash', async () => {
+  it('allows only the exact approved generation blueprint', async () => {
     const workflow = createDefaultWorkflow();
-    const approval = await approveStoryboard(storyboard, 'owner', new Date('2026-01-01T00:00:00Z'), workflow.production, workflow.seedanceMaster);
-    await expect(assertVideoGenerationAllowed({...workflow, storyboard, approval})).resolves.toBeUndefined();
-    await expect(assertVideoGenerationAllowed({...workflow, storyboard: {...storyboard, title: 'changed'}, approval})).rejects.toThrow('changed after approval');
-    await expect(assertVideoGenerationAllowed({...workflow, storyboard, seedanceMaster: {...workflow.seedanceMaster, duration: 20, axes: {...workflow.seedanceMaster.axes, durationStructure: '20s-4stage'}}, approval})).rejects.toThrow('Seedance Master changed after approval');
-    expect(invalidateApproval(approval).status).toBe('invalidated');
+    const generationApproval = await approveGeneration(storyboard, workflow.production, workflow.seedanceMaster, 'owner', new Date('2026-01-01T00:00:00Z'));
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard, generationApproval})).resolves.toBeUndefined();
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard: {...storyboard, title: 'changed'}, generationApproval})).rejects.toThrow('changed after approval');
+    await expect(assertVideoGenerationAllowed({...workflow, storyboard, seedanceMaster: {...workflow.seedanceMaster, duration: 20, axes: {...workflow.seedanceMaster.axes, durationStructure: '20s-4stage'}}, generationApproval})).rejects.toThrow('Generation blueprint changed after approval');
+    expect(invalidateApproval(generationApproval).status).toBe('invalidated');
   });
 });
 
@@ -168,6 +168,21 @@ describe('render request contract', () => {
     expect(parseRenderProjectRequest({project}).id).toBe('render-project');
     expect(() => parseRenderProjectRequest(project)).toThrow();
   });
+  it('never serializes runtime asset capability URLs', () => {
+    const project = {...structuredClone(initialState), id: 'capability-project', projectName: 'Capability'};
+    project.mediaFiles = [{
+      id: 'generated-media', fileName: 'generated.mp4', type: 'video', startTime: 0, endTime: 2,
+      positionStart: 0, positionEnd: 2, includeInMerge: true, playbackSpeed: 1, volume: 0, zIndex: 1, opacity: 100,
+      provider: 'byteplus', source: {kind: 'generated', generatedAssetId: `ga_${'a'.repeat(32)}`},
+      generatedAssetId: `ga_${'a'.repeat(32)}`, contentSha256: 'b'.repeat(64), takeId: 'take-1',
+      remoteUrl: '/api/projects/capability-project/assets/asset?token=expiring-secret-capability',
+      src: '/api/projects/capability-project/assets/asset?token=expiring-secret-capability',
+    }];
+    const serialized = serializeProject(project);
+    expect(serialized.project.mediaFiles[0]).not.toHaveProperty('src');
+    expect(serialized.project.mediaFiles[0].remoteUrl).toBeUndefined();
+    expect(JSON.stringify(serialized)).not.toContain('expiring-secret-capability');
+  });
   it('recomputes stale imported duration from actual timeline ranges', () => {
     const project = structuredClone(initialState);
     project.id = 'stale-duration';
@@ -176,28 +191,36 @@ describe('render request contract', () => {
     project.workflow.captions = [{id: 'cue', text: 'caption', startSeconds: 1, endSeconds: 3, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}];
     expect(parseRenderProjectRequest({project}).duration).toBe(3);
   });
-  it('imports another project into the open project ID and invalidates its approval', () => {
+  it('imports another project into the open project ID and invalidates every approval domain', () => {
     const imported = structuredClone(initialState);
     imported.id = 'exported-project';
     imported.projectName = 'Imported';
     imported.workflow = {
       ...createDefaultWorkflow(),
       storyboard,
-      approval: {status: 'approved', storyboardHash: 'hash', signature: 'signature'},
+      creativeApproval: {status: 'approved', storyboardHash: 'a'.repeat(64), approvedAt: '2026-01-01T00:00:00.000Z', approvedBy: 'owner', signature: '1'.repeat(64)},
+      generationApproval: {status: 'approved', storyboardHash: 'a'.repeat(64), productionInputHash: 'b'.repeat(64), seedanceMasterHash: 'c'.repeat(64), generationBlueprintHash: 'd'.repeat(64), approvedAt: '2026-01-01T00:00:00.000Z', approvedBy: 'owner', signature: '2'.repeat(64)},
+      releaseApproval: {status: 'approved', renderInputHash: 'e'.repeat(64), approvedAt: '2026-01-01T00:00:00.000Z', approvedBy: 'owner', signature: '3'.repeat(64)},
     };
     const normalized = importProjectIntoCurrentProject(imported, 'open-project');
     expect(normalized.id).toBe('open-project');
     expect(normalized.projectName).toBe('Imported');
-    expect(normalized.workflow.approval.status).toBe('invalidated');
+    expect(normalized.workflow.creativeApproval.status).toBe('invalidated');
+    expect(normalized.workflow.generationApproval.status).toBe('invalidated');
+    expect(normalized.workflow.releaseApproval.status).toBe('invalidated');
 
     const rehydrated = projectReducer({...structuredClone(initialState), id: 'open-project', projectName: 'Open'}, rehydrate(normalized));
     expect(rehydrated.id).toBe('open-project');
     expect(rehydrated.projectName).toBe('Imported');
-    expect(rehydrated.workflow.approval.status).toBe('invalidated');
+    expect(rehydrated.workflow.generationApproval.status).toBe('invalidated');
   });
-  it('invalidates legacy approvals that do not bind Seedance Master settings', () => {
+  it('invalidates a migrated legacy single approval', () => {
     const legacy = structuredClone(initialState);
-    legacy.workflow.approval = {
+    const legacyWorkflow = legacy.workflow as unknown as Record<string, unknown>;
+    delete legacyWorkflow.creativeApproval;
+    delete legacyWorkflow.generationApproval;
+    delete legacyWorkflow.releaseApproval;
+    legacyWorkflow.approval = {
       status: 'approved',
       storyboardHash: 'storyboard-hash',
       productionHash: 'a'.repeat(64),
@@ -206,19 +229,22 @@ describe('render request contract', () => {
       signature: 'legacy-signature',
     };
     const rehydrated = projectReducer(structuredClone(initialState), rehydrate(legacy));
-    expect(rehydrated.workflow.approval.status).toBe('invalidated');
+    expect(rehydrated.workflow.creativeApproval.status).toBe('invalidated');
+    expect(rehydrated.workflow.generationApproval.status).toBe('invalidated');
+    expect(rehydrated.workflow.releaseApproval.status).toBe('invalidated');
   });
-  it('normalizes legacy generated-text settings to post-production only and invalidates approval', () => {
+  it('normalizes legacy generated-text settings to post-production only and invalidates generation and release approval', () => {
     const legacy = structuredClone(initialState);
     (legacy.workflow.seedanceMaster.axes as unknown as Record<string, unknown>).textGeneration = 'subtitle';
-    legacy.workflow.approval = {
-      status: 'approved', storyboardHash: 'storyboard-hash', productionHash: 'a'.repeat(64),
-      seedanceMasterHash: 'b'.repeat(64), approvedAt: '2026-01-01T00:00:00.000Z',
-      approvedBy: 'owner', signature: 'legacy-signature',
+    legacy.workflow.generationApproval = {
+      status: 'approved', storyboardHash: 'd'.repeat(64), productionInputHash: 'a'.repeat(64),
+      seedanceMasterHash: 'b'.repeat(64), generationBlueprintHash: 'c'.repeat(64),
+      approvedAt: '2026-01-01T00:00:00.000Z', approvedBy: 'owner', signature: 'e'.repeat(64),
     };
-    const rehydrated = projectReducer(structuredClone(initialState), rehydrate(legacy as never));
+    const rehydrated = projectReducer(structuredClone(initialState), rehydrate(legacy));
     expect(rehydrated.workflow.seedanceMaster.axes.textGeneration).toBe('none');
-    expect(rehydrated.workflow.approval.status).toBe('invalidated');
+    expect(rehydrated.workflow.generationApproval.status).toBe('invalidated');
+    expect(rehydrated.workflow.releaseApproval.status).toBe('draft');
   });
   it('rejects transitions with missing, nonvisual, reversed, or identical endpoints', () => {
     const project = {...structuredClone(initialState), id: 'transition-integrity', projectName: 'Transitions'};
@@ -294,28 +320,51 @@ describe('render request contract', () => {
 });
 
 describe('project reducer workflow invariants', () => {
-  it('keeps caption duration when media changes and invalidates changed storyboard approval', () => {
-    const base = structuredClone(initialState);
-    base.workflow = {
-      ...createDefaultWorkflow(), storyboard,
-      approval: {status: 'approved', storyboardHash: 'signed-hash'},
-      captions: [{id: 'caption', text: '끝', startSeconds: 4, endSeconds: 5, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}],
-    };
-    const afterMedia = projectReducer(base, setMediaFiles([]));
-    expect(afterMedia.duration).toBe(5);
-    const changedStoryboard = {...storyboard, title: 'Changed'};
-    const afterStoryboard = projectReducer(afterMedia, setWorkflow({...afterMedia.workflow, storyboard: changedStoryboard, approval: {status: 'approved', storyboardHash: 'forged'}}));
-    expect(afterStoryboard.workflow.approval.status).toBe('invalidated');
+  const approvedWorkflow = () => ({
+    ...createDefaultWorkflow(),
+    storyboard,
+    creativeApproval: {status: 'approved' as const, storyboardHash: 'a'.repeat(64)},
+    generationApproval: {status: 'approved' as const, storyboardHash: 'a'.repeat(64), productionInputHash: 'b'.repeat(64), seedanceMasterHash: 'c'.repeat(64), generationBlueprintHash: 'd'.repeat(64)},
+    releaseApproval: {status: 'approved' as const, renderInputHash: 'e'.repeat(64)},
   });
 
-  it('invalidates approval when production or Seedance Master data changes and preserves it for caption-only edits', () => {
+  it('keeps caption duration when media changes and invalidates release only', () => {
     const base = structuredClone(initialState);
     base.workflow = {
-      ...createDefaultWorkflow(), storyboard,
-      approval: {status: 'approved', storyboardHash: 'signed-hash', productionHash: 'a'.repeat(64)},
+      ...approvedWorkflow(),
+      captions: [{id: 'caption', text: '끝', startSeconds: 4, endSeconds: 5, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}],
     };
+    const afterMedia = projectReducer(base, setMediaFiles([{id: 'clip', fileId: 'clip-file', source: {kind: 'indexeddb', fileId: 'clip-file'}, fileName: 'clip.mp4', type: 'video', startTime: 0, endTime: 2, positionStart: 0, positionEnd: 2, includeInMerge: true, playbackSpeed: 1, volume: 100, zIndex: 1, opacity: 100}]));
+    expect(afterMedia.duration).toBe(5);
+    expect(afterMedia.workflow.generationApproval.status).toBe('approved');
+    expect(afterMedia.workflow.releaseApproval.status).toBe('invalidated');
+  });
+
+  it('invalidates every approval when the storyboard changes even if a forged approval is supplied', () => {
+    const base = structuredClone(initialState);
+    base.workflow = approvedWorkflow();
+    const changedStoryboard = {...storyboard, title: 'Changed'};
+    const afterStoryboard = projectReducer(base, setWorkflow({
+      ...base.workflow,
+      storyboard: changedStoryboard,
+      creativeApproval: {status: 'approved', storyboardHash: 'forged'},
+    }));
+    expect(afterStoryboard.workflow.creativeApproval.status).toBe('invalidated');
+    expect(afterStoryboard.workflow.generationApproval.status).toBe('invalidated');
+    expect(afterStoryboard.workflow.releaseApproval.status).toBe('invalidated');
+  });
+
+  it('preserves generation approval for caption-only edits but invalidates release approval', () => {
+    const base = structuredClone(initialState);
+    base.workflow = approvedWorkflow();
     const captionOnly = projectReducer(base, setWorkflow({...base.workflow, captions: [{id: 'cue', text: '끝', startSeconds: 1, endSeconds: 2, kind: 'dialogue', preset: 'clean', position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true}]}));
-    expect(captionOnly.workflow.approval.status).toBe('approved');
+    expect(captionOnly.workflow.generationApproval.status).toBe('approved');
+    expect(captionOnly.workflow.releaseApproval.status).toBe('invalidated');
+  });
+
+  it('invalidates generation and release approval when production inputs or Seedance Master change', () => {
+    const base = structuredClone(initialState);
+    base.workflow = approvedWorkflow();
     const changedProduction = {
       ...base.workflow.production,
       assets: [{
@@ -325,11 +374,12 @@ describe('project reducer workflow invariants', () => {
       }],
     };
     const afterProduction = projectReducer(base, setWorkflow({...base.workflow, production: changedProduction}));
-    expect(afterProduction.workflow.approval.status).toBe('invalidated');
+    expect(afterProduction.workflow.generationApproval.status).toBe('invalidated');
+    expect(afterProduction.workflow.releaseApproval.status).toBe('invalidated');
     const afterSeedanceMaster = projectReducer(base, setWorkflow({
       ...base.workflow,
       seedanceMaster: {...base.workflow.seedanceMaster, duration: 20},
     }));
-    expect(afterSeedanceMaster.workflow.approval.status).toBe('invalidated');
+    expect(afterSeedanceMaster.workflow.generationApproval.status).toBe('invalidated');
   });
 });

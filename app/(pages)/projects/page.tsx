@@ -44,6 +44,8 @@ export default function Projects() {
 
         // TODO: use reducer not this to create new project
         const newProject: ProjectState = {
+            projectSchemaVersion: 3,
+            revision: 0,
             id: crypto.randomUUID(),
             projectName: newProjectName,
             createdAt: new Date().toISOString(),

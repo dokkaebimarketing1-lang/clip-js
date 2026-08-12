@@ -1,11 +1,11 @@
 "use client";
 
-import {useMemo, useState} from 'react';
+import {useMemo} from 'react';
 import toast from 'react-hot-toast';
 import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setWorkflow} from '@/app/store/slices/projectSlice';
 import {
-  compileHiggsfieldSeedanceRequest,
+  compileSeedanceMasterPrompt,
   seedanceMasterSettingsSchema,
   type SeedanceMasterSettings,
 } from '@/app/lib/workflow/seedance-master';
@@ -17,7 +17,7 @@ type Option = {value: string; label: string};
 type AxisControl = {key: AxisKey; label: string; options: Option[]};
 
 const singleAxes: AxisControl[] = [
-  {key: 'task', label: '① 작업 방식', options: [['t2v','글만으로 새 영상'],['r2v','참조 이미지·영상 사용'],['edit','기존 영상 수정'],['ext','기존 영상 연장'],['fl','시작·끝 프레임(힉스필드 미지원)']].map(([value,label])=>({value,label}))},
+  {key: 'task', label: '① 작업 방식', options: [['t2v','글만으로 새 영상'],['r2v','참조 이미지·영상 사용'],['edit','기존 영상 수정'],['ext','기존 영상 연장'],['fl','시작·끝 프레임(현재 유료 경로 비활성)']].map(([value,label])=>({value,label}))},
   {key: 'extra', label: '①-2 추가 능력', options: [['none','사용 안 함'],['one_click','사진 묶어 완성'],['seamless','영상 자연 연결'],['combined','여러 기능 조합']].map(([value,label])=>({value,label}))},
   {key: 'genre', label: '② 장르', options: [['tvc','광고 TVC'],['drama','단편 드라마'],['brand','브랜드 스토리'],['education','교육'],['ecommerce','전자상거래'],['travel','여행 Vlog']].map(([value,label])=>({value,label}))},
   {key: 'durationStructure', label: '③ 길이·단계', options: [['20s-4stage','20초·4단계'],['30s-5stage','30초·5단계']].map(([value,label])=>({value,label}))},
@@ -38,7 +38,7 @@ const singleAxes: AxisControl[] = [
   {key: 'textGeneration', label: '㉓ 화면 글자', options: [{value: 'none', label: '생성 금지 · 후편집 전용'}]},
   {key: 'subjectDefinition', label: '㉕ 주인공 정의', options: [['single','한 명'],['multi-material-single-subject','한 인물에 여러 참조'],['material-per-subject','인물별 참조']].map(([value,label])=>({value,label}))},
   {key: 'whiteModel', label: '㉖ 흰색 3D 모형', options: [['none','사용 안 함'],['coarse','동작 골격'],['detailed','세밀한 구조']].map(([value,label])=>({value,label}))},
-  {key: 'keyframe', label: '㉗ 핵심 프레임', options: [['none','사용 안 함'],['ordered','순서대로 사용'],['first-last','시작·끝(힉스필드 미지원)']].map(([value,label])=>({value,label}))},
+  {key: 'keyframe', label: '㉗ 핵심 프레임', options: [['none','사용 안 함'],['ordered','순서대로 사용'],['first-last','시작·끝(현재 유료 경로 비활성)']].map(([value,label])=>({value,label}))},
 ];
 
 const multiAxes: AxisControl[] = [
@@ -50,20 +50,15 @@ const multiAxes: AxisControl[] = [
   {key:'referenceMaterials',label:'㉔ 참조 재료',options:[['image-character','인물 이미지'],['image-scene','배경 이미지'],['image-multi-subject','다주체 이미지'],['video-action','동작 영상'],['video-effects','효과 영상'],['audio-voice','목소리 오디오']].map(([value,label])=>({value,label}))},
 ];
 
-const splitIds = (value: string): string[] => value.split(/[\s,]+/).map((entry) => entry.trim()).filter(Boolean);
-
 export default function SeedanceMasterPanel() {
   const project = useAppSelector((state) => state.projectState);
   const dispatch = useAppDispatch();
   const settings = project.workflow.seedanceMaster;
-  const [agentToken, setAgentToken] = useState('');
-  const [approvalToken, setApprovalToken] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [jobResult, setJobResult] = useState('');
+
   const compiled = useMemo(() => {
     try {
       if (!project.workflow.storyboard) throw new Error('먼저 스토리보드를 가져오세요.');
-      return {request: compileHiggsfieldSeedanceRequest({storyboard: project.workflow.storyboard, production: project.workflow.production, settings})};
+      return {prompt: compileSeedanceMasterPrompt(project.workflow.storyboard, project.workflow.production, settings)};
     } catch (error) {
       return {error: error instanceof Error ? error.message : '요청을 만들 수 없습니다.'};
     }
@@ -84,41 +79,18 @@ export default function SeedanceMasterPanel() {
     const current = raw as readonly string[];
     setAxis(key, current.includes(value) ? current.filter((entry: string) => entry !== value) : [...current, value]);
   };
-  const copy = async (kind: 'prompt'|'json') => {
-    if (!compiled.request) return;
+  const copy = async () => {
+    if (!compiled.prompt) return;
     try {
-      await navigator.clipboard.writeText(kind === 'prompt' ? compiled.request.prompt : JSON.stringify(compiled.request, null, 2));
-      toast.success(kind === 'prompt' ? 'Higgsfield 프롬프트를 복사했습니다.' : 'Higgsfield 요청값을 복사했습니다.');
+      await navigator.clipboard.writeText(compiled.prompt);
+      toast.success('Seedance 감독 프롬프트를 복사했습니다.');
     } catch {
       toast.error('클립보드에 복사하지 못했습니다. 브라우저 권한을 확인하세요.');
     }
   };
-  const submit = async () => {
-    setSubmitting(true);
-    setJobResult('');
-    try {
-      const response = await fetch('/api/higgsfield/generate', {
-        method: 'POST',
-        headers: {'content-type': 'application/json', authorization: `Bearer ${agentToken}`, 'x-clipjs-approval-token': approvalToken},
-        body: JSON.stringify({project}),
-      });
-      const responseText = await response.text();
-      let body: {job?: unknown; error?: string} = {};
-      try { body = JSON.parse(responseText) as {job?: unknown; error?: string}; } catch { /* sanitized below */ }
-      if (!response.ok) throw new Error(body.error || 'Higgsfield 작업 생성에 실패했습니다.');
-      setJobResult(JSON.stringify(body.job, null, 2));
-      setAgentToken('');
-      setApprovalToken('');
-      toast.success('Higgsfield에 Seedance 2.5 작업을 제출했습니다.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Higgsfield 작업 생성에 실패했습니다.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return <section className="space-y-3 rounded border border-blue-400/30 bg-blue-500/5 p-3">
-    <div><h3 className="font-semibold">Seedance 2.5 Master → Higgsfield</h3><p className="text-xs text-gray-400">28축을 프로젝트에 저장하고, 승인된 스토리보드·감독 설계를 합쳐 Higgsfield가 받는 값만 만듭니다.</p></div>
+    <div><h3 className="font-semibold">Seedance 2.5 Director → BytePlus ModelArk</h3><p className="text-xs text-gray-400">원본 28축 판단을 프로젝트에 저장하고, provider-independent 감독 프롬프트를 만듭니다. 유료 제출은 GenerationAuthorization 단계에서만 가능합니다.</p></div>
     <div className="grid grid-cols-2 gap-2">
       <label className="text-xs text-gray-400">영상 길이<select className={fieldClass} value={settings.duration} onChange={(e)=>{const duration=Number(e.target.value) as 20|30; save({...settings,duration,axes:{...settings.axes,durationStructure:duration===20?'20s-4stage':'30s-5stage'}});}}><option value={20}>20초</option><option value={30}>30초</option></select></label>
       <label className="text-xs text-gray-400">화면 비율<select className={fieldClass} value={settings.aspectRatio} onChange={(e)=>save({...settings,aspectRatio:e.target.value as SeedanceMasterSettings['aspectRatio']})}>{['auto','21:9','16:9','4:3','1:1','3:4','9:16'].map(v=><option key={v}>{v}</option>)}</select></label>
@@ -130,22 +102,10 @@ export default function SeedanceMasterPanel() {
       <div className="mt-3 space-y-2">{multiAxes.map(axis=><div key={axis.key}><div className="text-xs text-gray-400">{axis.label}</div><div className="flex flex-wrap gap-1">{axis.options.map(o=>{const selected=(settings.axes[axis.key] as string[]).includes(o.value); return <button type="button" aria-pressed={selected} key={o.value} onClick={()=>toggleMulti(axis.key,o.value)} className={`rounded border px-2 py-1 text-xs ${selected?'border-blue-300 bg-blue-500/30':'border-white/15 bg-black/20'}`}>{o.label}</button>;})}</div></div>)}</div>
     </details>
     {settings.axes.task === 'ext' && <label className="text-xs text-gray-400">연장 방향<select className={fieldClass} value={settings.extensionMode ?? ''} onChange={(e)=>save({...settings,extensionMode:e.target.value ? e.target.value as 'forward'|'backward' : undefined})}><option value="">선택</option><option value="forward">뒤로 이어 만들기</option><option value="backward">앞으로 이어 만들기</option></select></label>}
-    <details className="rounded border border-white/10 p-2"><summary className="cursor-pointer font-semibold">Higgsfield 업로드 ID</summary><p className="my-1 text-xs text-gray-500">파일 경로가 아니라 Higgsfield에 먼저 올린 파일의 ID를 한 줄에 하나씩 넣습니다.</p>
-      <textarea className={`${fieldClass} min-h-16`} value={settings.imageReferenceIds.join('\n')} onChange={(e)=>save({...settings,imageReferenceIds:splitIds(e.target.value)})} placeholder="이미지 업로드 ID"/>
-      <textarea className={`${fieldClass} mt-1 min-h-16`} value={settings.videoReferenceIds.join('\n')} onChange={(e)=>save({...settings,videoReferenceIds:splitIds(e.target.value)})} placeholder="영상 업로드 ID"/>
-      <textarea className={`${fieldClass} mt-1 min-h-16`} value={settings.audioReferenceIds.join('\n')} onChange={(e)=>save({...settings,audioReferenceIds:splitIds(e.target.value)})} placeholder="오디오 업로드 ID"/>
-    </details>
     {compiled.error ? <div className="rounded border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs text-yellow-200">아직 생성 준비가 안 됐습니다: {compiled.error}</div> : <>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs text-gray-200">{compiled.request?.prompt}</pre>
-      <div className="flex flex-wrap gap-2"><button className={buttonClass} onClick={()=>copy('prompt')}>프롬프트 복사</button><button className={buttonClass} onClick={()=>copy('json')}>Higgsfield 요청값 복사</button></div>
-      <p className="text-xs text-green-300">전송 필드: {Object.keys(compiled.request ?? {}).join(', ')}</p>
-      <details className="rounded border border-red-400/20 bg-red-500/5 p-2"><summary className="cursor-pointer font-semibold">Higgsfield에 직접 생성 요청</summary>
-        <p className="my-1 text-xs text-gray-400">승인된 프로젝트만 제출됩니다. 토큰은 저장하지 않습니다.</p>
-        <input className={fieldClass} type="password" value={agentToken} onChange={(e)=>setAgentToken(e.target.value)} placeholder="Agent token" autoComplete="off"/>
-        <input className={`${fieldClass} mt-1`} type="password" value={approvalToken} onChange={(e)=>setApprovalToken(e.target.value)} placeholder="Owner approval token" autoComplete="off"/>
-        <button className={`${buttonClass} mt-2`} disabled={submitting || !agentToken || !approvalToken} onClick={submit}>{submitting?'제출 중…':'Seedance 2.5 생성 시작'}</button>
-        {jobResult && <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs">{jobResult}</pre>}
-      </details>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs text-gray-200">{compiled.prompt}</pre>
+      <button className={buttonClass} onClick={copy}>감독 프롬프트 복사</button>
+      <p className="text-xs text-green-300">Provider model·endpoint·auth는 이 패널이 소유하지 않습니다.</p>
     </>}
   </section>;
 }

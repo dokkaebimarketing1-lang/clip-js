@@ -2,13 +2,32 @@ import {z} from 'zod';
 import type {ProjectState} from '@/app/types';
 import {initialState} from '@/app/store/slices/projectSlice';
 import {workflowStateSchema} from './schema';
-import {invalidateApproval} from './approval';
+import {invalidateForCreativeChange} from './approval';
 
-export const PROJECT_FILE_VERSION = 2 as const;
+export const PROJECT_FILE_VERSION = 3 as const;
 
-const mediaFileSchema = z.object({
+const mediaSourceSchema = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('indexeddb'), fileId: z.string().min(1).max(128)}).strict(),
+  z.object({kind: z.literal('generated'), generatedAssetId: z.string().min(1).max(256)}).strict(),
+  z.object({kind: z.literal('managed'), assetId: z.string().min(1).max(256)}).strict(),
+  z.object({kind: z.literal('external-unverified'), url: z.string().url().max(4096)}).strict(),
+]);
+
+const migrateMediaSource = (input: unknown): unknown => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const media = {...input as Record<string, unknown>};
+  if (!media.source) {
+    if (typeof media.generatedAssetId === 'string') media.source = {kind: 'generated', generatedAssetId: media.generatedAssetId};
+    else if (typeof media.remoteUrl === 'string') media.source = {kind: 'external-unverified', url: media.remoteUrl};
+    else if (typeof media.fileId === 'string') media.source = {kind: 'indexeddb', fileId: media.fileId};
+  }
+  return media;
+};
+
+const mediaFileBaseSchema = z.object({
   id: z.string().min(1).max(128),
-  fileId: z.string().min(1).max(128),
+  fileId: z.string().min(1).max(128).optional(),
+  source: mediaSourceSchema,
   fileName: z.string().min(1).max(512),
   type: z.enum(['video', 'audio', 'image', 'unknown']),
   startTime: z.number().finite().nonnegative(),
@@ -22,7 +41,16 @@ const mediaFileSchema = z.object({
   opacity: z.number().finite().min(0).max(100),
   src: z.string().max(4096).optional(),
   remoteUrl: z.string().url().max(4096).optional(),
-}).passthrough().refine((media) => media.endTime > media.startTime && media.positionEnd > media.positionStart, 'Media ranges must have positive duration.');
+  provider: z.enum(['local', 'higgsfield', 'byteplus']).optional(),
+  generatedAssetId: z.string().min(1).max(256).optional(),
+  contentSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  takeId: z.string().min(1).max(256).optional(),
+}).passthrough().superRefine((media, ctx) => {
+  if (!(media.endTime > media.startTime && media.positionEnd > media.positionStart)) ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Media ranges must have positive duration.'});
+  if (media.source.kind === 'generated' && media.generatedAssetId && media.generatedAssetId !== media.source.generatedAssetId) ctx.addIssue({code: z.ZodIssueCode.custom, message: 'Generated media source identity mismatch.'});
+});
+
+const mediaFileSchema = z.preprocess(migrateMediaSource, mediaFileBaseSchema);
 
 const textElementSchema = z.object({
   id: z.string().min(1).max(128),
@@ -31,7 +59,9 @@ const textElementSchema = z.object({
   positionEnd: z.number().finite().positive(),
 }).passthrough().refine((text) => text.positionEnd > text.positionStart, 'Text range must have positive duration.');
 
-export const projectStateSchema = z.object({
+const projectStateV3Schema = z.object({
+  projectSchemaVersion: z.literal(3),
+  revision: z.number().int().nonnegative(),
   id: z.string().min(1),
   projectName: z.string().min(1),
   duration: z.number().finite().nonnegative().optional(),
@@ -92,11 +122,28 @@ export const projectStateSchema = z.object({
   });
 });
 
+const migrateProjectStateInput = (input: unknown): unknown => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const project = {...input as Record<string, unknown>};
+  project.projectSchemaVersion = 3;
+  project.revision = Number.isSafeInteger(project.revision) && Number(project.revision) >= 0 ? project.revision : 0;
+  return project;
+};
+
+export const projectStateSchema = z.preprocess(migrateProjectStateInput, projectStateV3Schema);
+
 const projectDocumentSchema = z.object({
   kind: z.literal('clipjs-storyboard-project'),
   schemaVersion: z.literal(PROJECT_FILE_VERSION),
   exportedAt: z.string().datetime(),
   project: projectStateSchema,
+});
+
+const projectDocumentIngressSchema = z.object({
+  kind: z.literal('clipjs-storyboard-project'),
+  schemaVersion: z.number().int().min(1).max(PROJECT_FILE_VERSION),
+  exportedAt: z.string().datetime(),
+  project: z.unknown(),
 });
 
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
@@ -125,11 +172,22 @@ export const serializeProject = (project: ProjectState): ProjectDocument => {
 export const parseProjectState = (input: unknown): ProjectState => {
   const project = projectStateSchema.parse(input) as unknown as ProjectState;
   const workflow = workflowStateSchema.parse(project.workflow);
-  const mediaFiles = project.mediaFiles.map((media) => ({
-    ...media,
-    src: media.remoteUrl ?? media.src,
-    provider: media.provider ?? (media.remoteUrl ? 'higgsfield' : 'local'),
-  }));
+  const mediaFiles = project.mediaFiles.map((media) => {
+    const source = media.source
+      ?? (media.generatedAssetId
+        ? {kind: 'generated' as const, generatedAssetId: media.generatedAssetId}
+        : media.remoteUrl
+          ? {kind: 'external-unverified' as const, url: media.remoteUrl}
+          : {kind: 'indexeddb' as const, fileId: media.fileId!});
+    return {
+      ...media,
+      source,
+      generatedAssetId: source.kind === 'generated' ? source.generatedAssetId : media.generatedAssetId,
+      remoteUrl: source.kind === 'external-unverified' ? source.url : undefined,
+      src: source.kind === 'external-unverified' ? source.url : undefined,
+      provider: media.provider ?? (source.kind === 'generated' ? 'byteplus' : source.kind === 'external-unverified' ? 'higgsfield' : 'local'),
+    };
+  });
   const duration = Math.max(
     0,
     ...mediaFiles.map((media) => media.positionEnd),
@@ -139,6 +197,8 @@ export const parseProjectState = (input: unknown): ProjectState => {
   return {
     ...structuredClone(initialState),
     ...project,
+    projectSchemaVersion: 3,
+    revision: project.revision ?? 0,
     workflow,
     mediaFiles,
     duration,
@@ -155,10 +215,8 @@ export const importProjectIntoCurrentProject = (input: unknown, currentProjectId
   return {
     ...imported,
     id: currentProjectId,
-    workflow: {
-      ...imported.workflow,
-      approval: invalidateApproval(imported.workflow.approval),
-    },
+    revision: 0,
+    workflow: invalidateForCreativeChange(imported.workflow),
   };
 };
 
@@ -168,7 +226,7 @@ export const parseRenderProjectRequest = (input: unknown): ProjectState => {
 };
 
 export const parseProjectDocument = (input: unknown): ProjectState => {
-  const document = projectDocumentSchema.parse(input);
+  const document = projectDocumentIngressSchema.parse(input);
   return parseProjectState(document.project);
 };
 

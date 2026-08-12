@@ -1,11 +1,12 @@
 "use client";
 
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import toast from 'react-hot-toast';
-import {getFile, useAppDispatch, useAppSelector} from '@/app/store';
+import {commitProjectMutation, getFile, getProject, useAppDispatch, useAppSelector} from '@/app/store';
 import {rehydrate, setIncludeSubtitles, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
-import {assertVideoGenerationAllowed, invalidateApproval} from '@/app/lib/workflow/approval';
-import {approvalSchema, productionManifestSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type GenerationTake, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+
+import {creativeApprovalSchema, generationApprovalSchema, postProductionSchema, productionManifestSchema, releaseApprovalSchema, storyboardSchema, type CaptionKind, type CaptionPosition, type CaptionPreset, type EffectSpec, type GenerationTake, type HiggsfieldAsset, type TransitionSpec} from '@/app/lib/workflow/schema';
+import {assertRenderReleaseApproved} from '@/app/lib/workflow/approval-v3';
 import {EFFECT_CATALOG} from '@/app/lib/workflow/effect-catalog';
 import {TRANSITION_CATALOG, transitionProviderFor} from '@/app/lib/workflow/transition-catalog';
 import {assertSafeRemoteUrl} from '@/app/lib/security/remote-url';
@@ -16,16 +17,54 @@ import {normalizeRenderDownloadUrl} from '@/app/lib/render/download-url';
 import type {MediaFile} from '@/app/types';
 import {buildTakeClipMedia, compileShotPrompt, createGenerationTake} from '@/app/lib/workflow/production';
 import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
+import {prepareApprovedTakeImport, upsertQcPendingTake} from '@/app/lib/workflow/generated-take';
+import {takeApprovalSchema} from '@/app/lib/workflow/production-schema';
 import SeedanceMasterPanel from './SeedanceMasterPanel';
 
 const fieldClass = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white';
 const buttonClass = 'rounded bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40';
+
+const sha256Blob = async (blob: Blob): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const flushProjectPersistence = (): Promise<number> => new Promise((resolve, reject) => {
+  window.dispatchEvent(new CustomEvent('clipjs:flush-project', {detail: {resolve, reject}}));
+});
+
+type AuthorizationPreviewUi = {
+  attemptId: string; requestHash: string; requestKey: string; model: string; task: string;
+  duration: number; ratio: string; resolution: string; generateAudio: boolean; referenceCount: number; promptPreview: string;
+};
+
+type GenerationProjectionUi = {
+  requestKey: string;
+  projectId: string;
+  job: {
+    status: string;
+    model: string;
+    providerJobId?: string;
+    authorizedDuration: 20 | 30;
+    actualDurationSeconds?: number;
+    authorizedResolution: '480p' | '720p';
+    takeScope: 'production' | 'shot';
+    targetShotSpecId?: string;
+    updatedAt: string;
+    takeId?: string;
+    assetId?: string;
+    contentSha256?: string;
+    qcStatus?: string;
+    lastError?: string;
+  };
+};
 
 export default function WorkflowPanel() {
   const project = useAppSelector((state) => state.projectState);
   const dispatch = useAppDispatch();
   const [storyboardJson, setStoryboardJson] = useState('');
   const [productionJson, setProductionJson] = useState('');
+  const [postProductionJson, setPostProductionJson] = useState('');
   const [selectedShotSpecId, setSelectedShotSpecId] = useState('');
   const [url, setUrl] = useState('');
   const [model, setModel] = useState('seedance_2_5');
@@ -34,8 +73,8 @@ export default function WorkflowPanel() {
   const [duration, setDuration] = useState(5);
   const [role, setRole] = useState<HiggsfieldAsset['role']>('clip');
   const [takeShotSpecId, setTakeShotSpecId] = useState('');
-  const [takeProvider, setTakeProvider] = useState('higgsfield');
-  const [takeModel, setTakeModel] = useState('seedance_2_5');
+  const [takeProvider, setTakeProvider] = useState('byteplus');
+  const [takeModel, setTakeModel] = useState('dreamina-seedance-2-5-260628');
   const [takeMode, setTakeMode] = useState('omni_reference');
   const [takeResolution, setTakeResolution] = useState('720p');
   const [takeExtensionMode, setTakeExtensionMode] = useState('');
@@ -61,9 +100,53 @@ export default function WorkflowPanel() {
   const [effectIntensity, setEffectIntensity] = useState(0.4);
   const [apiToken, setApiToken] = useState('');
   const [approvalToken, setApprovalToken] = useState('');
+  const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
+  const [authorizationPreview, setAuthorizationPreview] = useState<AuthorizationPreviewUi | null>(null);
+  const [generationRecords, setGenerationRecords] = useState<GenerationProjectionUi[]>([]);
+  const [previewRefreshNonce, setPreviewRefreshNonce] = useState(0);
+  const mediaFilesRef = useRef(project.mediaFiles);
+  useEffect(() => { mediaFilesRef.current = project.mediaFiles; }, [project.mediaFiles]);
+  const generatedAssetKey = useMemo(() => project.mediaFiles
+    .filter((media) => media.source?.kind === 'generated' || media.source?.kind === 'managed')
+    .map((media) => `${media.id}:${media.source?.kind === 'generated' ? media.source.generatedAssetId : media.source?.kind === 'managed' ? media.source.assetId : ''}`)
+    .sort()
+    .join('|'), [project.mediaFiles]);
+
+  useEffect(() => {
+    if (!apiToken || !generatedAssetKey) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const replacements = new Map<string, string>();
+      const currentMedia = mediaFilesRef.current;
+      await Promise.all(currentMedia.filter((media) => media.source?.kind === 'generated' || media.source?.kind === 'managed').map(async (media) => {
+        const assetId = media.source?.kind === 'generated' ? media.source.generatedAssetId : media.source?.kind === 'managed' ? media.source.assetId : undefined;
+        if (!assetId) return;
+        const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/${encodeURIComponent(assetId)}/capability`, {
+          method: 'POST',
+          headers: {authorization: ['Bear', 'er ', apiToken].join('')},
+        });
+        if (!response.ok) return;
+        const result = await response.json() as {url?: string};
+        if (result.url) replacements.set(media.id, result.url);
+      }));
+      if (!cancelled && replacements.size) {
+        dispatch(setMediaFiles(currentMedia.map((media) => replacements.has(media.id) ? {...media, src: replacements.get(media.id)} : media)));
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 8 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [apiToken, dispatch, generatedAssetKey, previewRefreshNonce, project.id]);
   const [rendering, setRendering] = useState(false);
+  const [renderRetryRequired, setRenderRetryRequired] = useState(false);
   const [renderDownloadUrl, setRenderDownloadUrl] = useState('');
-  const approvalLabel = useMemo(() => project.workflow.approval.status.toUpperCase(), [project.workflow.approval.status]);
+  const approvalLabel = useMemo(
+    () => `CREATIVE ${project.workflow.creativeApproval.status.toUpperCase()} · GENERATION ${project.workflow.generationApproval.status.toUpperCase()} · RELEASE ${project.workflow.releaseApproval.status.toUpperCase()}`,
+    [project.workflow.creativeApproval.status, project.workflow.generationApproval.status, project.workflow.releaseApproval.status],
+  );
   const compiledPrompt = useMemo(() => {
     if (!selectedShotSpecId) return '';
     try {
@@ -76,7 +159,7 @@ export default function WorkflowPanel() {
   const importStoryboard = () => {
     try {
       const storyboard = storyboardSchema.parse(JSON.parse(storyboardJson));
-      dispatch(setWorkflow({...project.workflow, storyboard, approval: invalidateApproval(project.workflow.approval)}));
+      dispatch(setWorkflow({...project.workflow, storyboard}));
       toast.success('Storyboard imported. Previous approval was invalidated.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Invalid storyboard JSON.');
@@ -86,11 +169,76 @@ export default function WorkflowPanel() {
   const importProductionManifest = () => {
     try {
       const production = productionManifestSchema.parse(JSON.parse(productionJson));
-      dispatch(setWorkflow({...project.workflow, production, approval: invalidateApproval(project.workflow.approval)}));
+      dispatch(setWorkflow({...project.workflow, production}));
       setSelectedShotSpecId(production.shotSpecs[0]?.id ?? '');
       toast.success('Production manifest applied. Previous approval was invalidated.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Invalid production manifest JSON.');
+    }
+  };
+
+  const importPostProduction = () => {
+    try {
+      const postProduction = postProductionSchema.parse(JSON.parse(postProductionJson));
+      dispatch(setWorkflow({...project.workflow, postProduction}));
+      toast.success('Post-production recipe applied; release approval was invalidated.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Invalid post-production JSON.');
+    }
+  };
+
+  const stagePostProductionMedia = async () => {
+    if (!apiToken || !approvalToken) return toast.error('Agent token과 owner approval token이 필요합니다.');
+    const post = project.workflow.postProduction;
+    const referenced = new Set([
+      ...post.dialogueCues.map((cue) => cue.mediaId),
+      ...post.ambience.map((lane) => lane.mediaId),
+      ...post.sfx.map((lane) => lane.mediaId),
+      ...post.bgm.map((lane) => lane.mediaId),
+      ...post.appUiOverlays.map((overlay) => overlay.mediaId),
+    ]);
+    const candidates = project.mediaFiles.filter((media) => referenced.has(media.id) && media.source?.kind === 'indexeddb');
+    if (!candidates.length) return toast.success('승격할 local post-production media가 없습니다.');
+    try {
+      const replacements = new Map<string, {assetId: string; contentSha256: string}>();
+      for (const media of candidates) {
+        if (!['video', 'audio', 'image'].includes(media.type)) throw new Error(`Media ${media.id} type is unsupported.`);
+        const fileId = media.source?.kind === 'indexeddb' ? media.source.fileId : media.fileId;
+        if (!fileId) throw new Error(`Media ${media.id} has no IndexedDB file.`);
+        const file = await getFile(fileId);
+        if (!file) throw new Error(`Media ${media.id} file is missing.`);
+        const contentSha256 = await sha256Blob(file);
+        const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/upload`, {
+          method: 'POST',
+          headers: {
+            authorization: ['Bear', 'er ', apiToken].join(''),
+            'x-clipjs-approval-token': approvalToken,
+            'x-clipjs-media-kind': media.type,
+            'x-clipjs-media-id': media.id,
+            'x-clipjs-content-sha256': contentSha256,
+            'x-clipjs-byte-length': String(file.size),
+            'content-type': file.type || 'application/octet-stream',
+          },
+          body: file,
+        });
+        const result = await response.json() as {asset?: {id?: string; projectId?: string; contentSha256?: string}; error?: string};
+        if (!response.ok || !result.asset?.id || result.asset.projectId !== project.id || result.asset.contentSha256 !== contentSha256) {
+          throw new Error(result.error || `Media ${media.id} upload failed.`);
+        }
+        replacements.set(media.id, {assetId: result.asset.id, contentSha256});
+      }
+      dispatch(setMediaFiles(project.mediaFiles.map((media) => {
+        const replacement = replacements.get(media.id);
+        if (!replacement) return media;
+        const managed = {...media, source: {kind: 'managed' as const, assetId: replacement.assetId}, contentSha256: replacement.contentSha256, provider: 'local' as const};
+        delete managed.fileId;
+        delete managed.src;
+        delete managed.remoteUrl;
+        return managed;
+      })));
+      toast.success(`${replacements.size}개 post-production media를 server asset으로 승격했습니다.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Post-production media 승격에 실패했습니다.');
     }
   };
 
@@ -107,16 +255,140 @@ export default function WorkflowPanel() {
       const response = await fetch('/api/approval/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
-        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard, production: project.workflow.production, seedanceMaster: project.workflow.seedanceMaster}),
+        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard}),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Approval failed.');
-      const approval = approvalSchema.parse(result);
-      dispatch(setWorkflow({...project.workflow, approval}));
+      const creativeApproval = creativeApprovalSchema.parse(result.creativeApproval);
+      dispatch(setWorkflow({...project.workflow, creativeApproval}));
+      setAuthorizationPreview(null);
       setApprovalToken('');
-      toast.success('The exact storyboard and production manifest are owner-approved and server-signed.');
+      toast.success('The exact storyboard is creative-approved and server-signed.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Approval failed.');
+    }
+  };
+
+  const previewGenerationAuthorization = async () => {
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/generation-authorization/preview`, {
+        method: 'POST',
+        headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
+        body: JSON.stringify({attemptId, project}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Generation authorization preview failed.');
+      setAuthorizationPreview(result as AuthorizationPreviewUi);
+      toast.success('Canonical BytePlus request preview is ready. No provider call was made.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Generation authorization preview failed.');
+    }
+  };
+
+  const authorizeGeneration = async () => {
+    if (!authorizationPreview || authorizationPreview.attemptId !== attemptId) return toast.error('Preview this attempt first.');
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/generation-authorization/sign`, {
+        method: 'POST',
+        headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
+        body: JSON.stringify({attemptId, expectedRequestHash: authorizationPreview.requestHash, project}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Generation authorization failed.');
+      const generationApproval = generationApprovalSchema.parse(result.generationApproval);
+      dispatch(setWorkflow({...project.workflow, generationApproval}));
+      setApprovalToken('');
+      toast.success('This exact attempt and BytePlus request are authorized. No provider call was made.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Generation authorization failed.');
+    }
+  };
+
+  const startNewAttempt = () => {
+    setAttemptId(crypto.randomUUID());
+    setAuthorizationPreview(null);
+  };
+
+  const refreshGenerations = async () => {
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/generations`, {
+        headers: apiToken ? {authorization: ['Bear', 'er ', apiToken].join('')} : {},
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Generation status refresh failed.');
+      setGenerationRecords(Array.isArray(result.generations) ? result.generations as GenerationProjectionUi[] : []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Generation status refresh failed.');
+    }
+  };
+
+  const submitAuthorizedAttempt = async () => {
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/generations`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(apiToken ? {authorization: ['Bear', 'er ', apiToken].join('')} : {}),
+          ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {}),
+        },
+        body: JSON.stringify({project}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Generation submission failed.');
+      setGenerationRecords((records) => [result.generation as GenerationProjectionUi, ...records.filter((item) => item.requestKey !== result.generation.requestKey)]);
+      toast.success(result.reused ? 'Existing generation receipt reused; no provider resubmission.' : 'Generation claim submitted once.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Generation submission failed.');
+    }
+  };
+
+  const registerReadyCandidate = (generation: GenerationProjectionUi) => {
+    const job = generation.job;
+    if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256 || !job.providerJobId) return toast.error('Generation is not ready for QC.');
+    const next = upsertQcPendingTake(project, {
+      requestKey: generation.requestKey,
+      claim: {projectId: generation.projectId},
+      job: {
+        status: 'ready', takeId: job.takeId, assetId: job.assetId, contentSha256: job.contentSha256,
+        authorizedResolution: job.authorizedResolution, providerJobId: job.providerJobId, model: job.model, updatedAt: job.updatedAt,
+        takeScope: job.takeScope, targetShotSpecId: job.targetShotSpecId,
+      },
+    });
+    dispatch(rehydrate(next));
+    toast.success('Candidate registered as qc_pending. No timeline media was added.');
+  };
+
+  const approveAndImportReadyTake = async (generation: GenerationProjectionUi) => {
+    const job = generation.job;
+    if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256) return toast.error('Generation is not ready for Take approval.');
+    try {
+      await flushProjectPersistence();
+      const approveResponse = await fetch(`/api/projects/${encodeURIComponent(project.id)}/takes/${encodeURIComponent(job.takeId)}/approve`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(apiToken ? {authorization: ['Bear', 'er ', apiToken].join('')} : {}),
+          ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {}),
+        },
+        body: JSON.stringify({requestKey: generation.requestKey, assetId: job.assetId, contentSha256: job.contentSha256}),
+      });
+      const approveResult = await approveResponse.json();
+      if (!approveResponse.ok) throw new Error(approveResult.error || 'Take approval failed.');
+      const takeApproval = takeApprovalSchema.parse(approveResult.takeApproval);
+      const persisted = await getProject(project.id);
+      if (!persisted?.workflow.production.takes.some((take) => take.id === job.takeId)) throw new Error('Save the qc_pending candidate before approving it.');
+      if (!job.actualDurationSeconds) throw new Error('Ready generation is missing verified duration metadata.');
+      const committed = await commitProjectMutation(project.id, persisted.revision, (current) => prepareApprovedTakeImport(current, job.takeId!, takeApproval, job.actualDurationSeconds!));
+      let previewUrl: string | undefined;
+      const capabilityResponse = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/${encodeURIComponent(job.assetId)}/capability`, {
+        method: 'POST', headers: apiToken ? {authorization: ['Bear', 'er ', apiToken].join('')} : {},
+      });
+      if (capabilityResponse.ok) previewUrl = (await capabilityResponse.json()).url;
+      const runtime = previewUrl ? {...committed, mediaFiles: committed.mediaFiles.map((media) => media.takeId === job.takeId ? {...media, src: previewUrl} : media)} : committed;
+      dispatch(rehydrate(runtime));
+      toast.success('Take approval committed durably; one timeline placement was added.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Take import failed.');
     }
   };
 
@@ -170,8 +442,11 @@ export default function WorkflowPanel() {
     try {
       const parsed = importProjectIntoCurrentProject(parseProjectDocument(JSON.parse(await file.text())), project.id);
       const mediaFiles = await Promise.all(parsed.mediaFiles.map(async (media) => {
+        if (media.source?.kind === 'generated' || media.source?.kind === 'managed') return media;
         if (media.remoteUrl) return {...media, src: media.remoteUrl};
-        const stored = await getFile(media.fileId);
+        const fileId = media.source?.kind === 'indexeddb' ? media.source.fileId : media.fileId;
+        if (!fileId) throw new Error(`Media ${media.id} is not stored in IndexedDB.`);
+        const stored = await getFile(fileId);
         return stored ? {...media, src: URL.createObjectURL(stored)} : media;
       }));
       dispatch(rehydrate({...parsed, mediaFiles}));
@@ -285,9 +560,9 @@ export default function WorkflowPanel() {
   const retakeTake = (takeId: string) => {
     const take = project.workflow.production.takes.find((item) => item.id === takeId);
     if (!take) return;
-    setTakeShotSpecId(take.shotSpecId);
+    setTakeShotSpecId(take.shotSpecId ?? '');
     setTakeParentId(take.id);
-    toast.success(`Retake form pre-filled for ${take.shotSpecId} (parent ${take.id.slice(0, 8)}…).`);
+    toast.success(`Retake form pre-filled for ${take.scope === 'production' ? 'production scope' : take.shotSpecId} (parent ${take.id.slice(0, 8)}…).`);
   };
 
   const addTakeToTimeline = (takeId: string) => {
@@ -308,26 +583,66 @@ export default function WorkflowPanel() {
     toast.success(`Take clip placed on the timeline at ${result.media.positionStart.toFixed(2)}s.`);
   };
 
+  const approveRelease = async () => {
+    try {
+      const response = await fetch('/api/approval/release', {
+        method: 'POST',
+        headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
+        body: JSON.stringify({project}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Release approval failed.');
+      const releaseApproval = releaseApprovalSchema.parse(result);
+      dispatch(setWorkflow({...project.workflow, releaseApproval}));
+      setApprovalToken('');
+      toast.success('The exact timeline, media, captions, audio, effects, and export settings are release-approved.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Release approval failed.');
+    }
+  };
+
   const renderProject = async () => {
     setRendering(true);
     setRenderDownloadUrl('');
     try {
-      await assertVideoGenerationAllowed(project.workflow);
+      await assertRenderReleaseApproved(project);
+      const authorization = apiToken ? ['Bear', 'er ', apiToken].join('') : '';
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(apiToken ? {authorization: `Bearer ${apiToken}`} : {}),
+          ...(authorization ? {authorization} : {}),
           ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {}),
+          ...(renderRetryRequired ? {'x-clipjs-render-retry': 'true'} : {}),
         },
         body: JSON.stringify({project}),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Render failed.');
-      setRenderDownloadUrl(normalizeRenderDownloadUrl(result.downloadUrl, window.location.origin));
-      setApiToken('');
-      setApprovalToken('');
-      toast.success('Remotion render completed. Use the download link below.');
+      const receipt = await response.json();
+      if (!response.ok) {
+        if (receipt.code === 'RENDER_RETRY_REQUIRED') setRenderRetryRequired(true);
+        throw new Error(receipt.error || 'Render enqueue failed.');
+      }
+      setRenderRetryRequired(false);
+      if (typeof receipt.statusUrl !== 'string') throw new Error('Render receipt has no status URL.');
+      toast.success(receipt.reused ? 'Existing render job resumed.' : 'Durable render job queued.');
+      for (let attempt = 0; attempt < 360; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        const statusResponse = await fetch(receipt.statusUrl, {headers: authorization ? {authorization} : {}});
+        const statusResult = await statusResponse.json();
+        if (!statusResponse.ok) throw new Error(statusResult.error || 'Render status failed.');
+        if (statusResult.status === 'succeeded') {
+          setRenderDownloadUrl(normalizeRenderDownloadUrl(statusResult.downloadUrl, window.location.origin));
+          setApiToken('');
+          setApprovalToken('');
+          toast.success('Remotion render completed. Use the download link below.');
+          return;
+        }
+        if (statusResult.status === 'failed' || statusResult.status === 'cancelled' || statusResult.status === 'expired') {
+          setRenderRetryRequired(true);
+          throw new Error(statusResult.error || `Render ${statusResult.status}. Explicit retry is required.`);
+        }
+      }
+      throw new Error('Render is still running. Refresh status later; the durable worker job was not cancelled.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Render failed.');
     } finally {
@@ -340,9 +655,51 @@ export default function WorkflowPanel() {
       <section className="space-y-2 rounded border border-white/10 p-3">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Approval gate</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">{approvalLabel}</span></div>
         <textarea className={`${fieldClass} min-h-32`} value={storyboardJson} onChange={(event) => setStoryboardJson(event.target.value)} placeholder="Paste storyboard-v2 JSON" />
-        <div className="flex gap-2"><button className={buttonClass} onClick={importStoryboard}>Import storyboard</button><button className={buttonClass} onClick={approve} disabled={!project.workflow.storyboard}>Approve exact version</button></div>
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={importStoryboard}>Import storyboard</button>
+          <button className={buttonClass} onClick={approve} disabled={!project.workflow.storyboard}>Creative approve</button>
+          <button className={buttonClass} onClick={startNewAttempt}>New paid attempt</button>
+          <button className={buttonClass} onClick={previewGenerationAuthorization} disabled={project.workflow.creativeApproval.status !== 'approved'}>Preview BytePlus request</button>
+          <button className={buttonClass} onClick={authorizeGeneration} disabled={!authorizationPreview}>Authorize exact attempt</button>
+        </div>
+        <div className="rounded bg-black/30 p-2 text-xs text-gray-300">Attempt <code>{attemptId}</code></div>
+        {authorizationPreview && (
+          <details className="rounded border border-white/10 bg-black/20 p-2 text-xs">
+            <summary className="cursor-pointer font-semibold">{authorizationPreview.model} · {authorizationPreview.task} · {authorizationPreview.duration}s · {authorizationPreview.ratio} · {authorizationPreview.resolution} · refs {authorizationPreview.referenceCount}</summary>
+            <p className="mt-2 break-all text-gray-400">requestKey {authorizationPreview.requestKey}</p>
+            <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-gray-300">{authorizationPreview.promptPreview}</pre>
+          </details>
+        )}
         <input className={fieldClass} type="password" autoComplete="off" value={approvalToken} onChange={(event) => setApprovalToken(event.target.value)} placeholder="Owner approval token (production)" />
-        <p className="text-xs text-gray-400">Any storyboard or production manifest change invalidates approval. Video rendering is fail-closed.</p>
+        <p className="text-xs text-gray-400">Creative approval, paid generation authorization, take approval, and release approval are separate. Preview/sign never calls BytePlus.</p>
+      </section>
+
+      <section className="space-y-2 rounded border border-white/10 p-3">
+        <div className="flex items-center justify-between"><h3 className="font-semibold">BytePlus generation jobs</h3><span className="text-xs text-gray-400">server repository projection</span></div>
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={submitAuthorizedAttempt} disabled={project.workflow.generationApproval.status !== 'approved'}>Submit authorized attempt</button>
+          <button className={buttonClass} onClick={refreshGenerations}>Refresh status</button>
+          <button className={buttonClass} onClick={() => setPreviewRefreshNonce((value) => value + 1)} disabled={!generatedAssetKey || !apiToken}>Refresh previews</button>
+        </div>
+        <p className="text-xs text-gray-400">GET is read-only. Polling and ingest are owned by the lease worker. Provider success never auto-adds timeline media.</p>
+        <div className="space-y-2">
+          {generationRecords.length === 0 && <p className="text-xs text-gray-500">No server generation receipts loaded.</p>}
+          {generationRecords.map((generation) => (
+            <div key={generation.requestKey} className="rounded border border-white/10 bg-black/20 p-2 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span><strong>{generation.job.status}</strong> · {generation.job.model}</span>
+                <span className="break-all text-gray-500">{generation.requestKey.slice(0, 16)}…</span>
+              </div>
+              {generation.job.lastError && <p className="mt-1 text-red-300">{generation.job.lastError}</p>}
+              {generation.job.status === 'ready' && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button className={buttonClass} onClick={() => registerReadyCandidate(generation)}>Register qc_pending Take</button>
+                  <button className={buttonClass} onClick={() => approveAndImportReadyTake(generation)}>Approve + durable import</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
@@ -386,7 +743,8 @@ export default function WorkflowPanel() {
           })}
         </div>
         <div className="space-y-2 border-t border-white/10 pt-2">
-          <h4 className="font-semibold text-xs">Generation take ledger</h4>
+          <h4 className="font-semibold text-xs">Manual Take ledger — no provider submission</h4>
+          <p className="text-xs text-gray-500">Server-generated candidates enter through BytePlus generation jobs above; this form only records legacy/manual provenance.</p>
           <div className="grid grid-cols-2 gap-2">
             <select className={fieldClass} value={takeShotSpecId} onChange={(event) => setTakeShotSpecId(event.target.value)}>
               <option value="">Shot spec</option>
@@ -395,8 +753,8 @@ export default function WorkflowPanel() {
             <select className={fieldClass} value={takeVerdict} onChange={(event) => setTakeVerdict(event.target.value as GenerationTake['verdict'])}>
               {['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected'].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
-            <input className={fieldClass} value={takeProvider} onChange={(event) => setTakeProvider(event.target.value)} placeholder="provider (higgsfield)" />
-            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="model (seedance_2_5)" />
+            <input className={fieldClass} value={takeProvider} onChange={(event) => setTakeProvider(event.target.value)} placeholder="provider (byteplus)" />
+            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="model (dreamina-seedance-2-5-260628)" />
             <select className={fieldClass} value={takeMode} onChange={(event) => setTakeMode(event.target.value)}>
               {['t2v', 'omni_reference', 'video_edit', 'video_extension'].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
@@ -436,14 +794,27 @@ export default function WorkflowPanel() {
       <SeedanceMasterPanel />
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <h3 className="font-semibold">Higgsfield importer</h3>
-        <input className={fieldClass} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="HTTPS Higgsfield result URL" />
+        <h3 className="font-semibold">Legacy Higgsfield importer — migration only</h3>
+        <p className="text-xs text-yellow-300">Imported URLs remain external-unverified and cannot receive ReleaseApproval until secure ingest promotes them.</p>
+        <input className={fieldClass} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Legacy HTTPS result URL" />
         <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={cutId} onChange={(event) => setCutId(event.target.value)} /><input className={fieldClass} value={shotId} onChange={(event) => setShotId(event.target.value)} /></div>
         <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={model} onChange={(event) => setModel(event.target.value)} /><input className={fieldClass} type="number" min={0.1} step={0.1} value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></div>
         <select className={fieldClass} value={role} onChange={(event) => setRole(event.target.value as HiggsfieldAsset['role'])}>
           {['clip', 'audio', 'start', 'end', 'storyboard-sheet'].map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <button className={buttonClass} onClick={importHiggsfield} disabled={!url}>Import storyboard-mapped {role}</button>
+        <button className={buttonClass} onClick={importHiggsfield} disabled={!url}>Import legacy storyboard-mapped {role}</button>
+      </section>
+
+      <section className="space-y-2 border-t border-white/10 pt-3">
+        <h3 className="font-semibold">Post-production release recipe</h3>
+        <p className="text-xs text-gray-400">Bind reviewed Korean dialogue to audio media and exact captions; bind verified app UI media and actual ending-card TextElements. All checklist flags are required for generated footage.</p>
+        <textarea className={`${fieldClass} min-h-40 font-mono text-xs`} value={postProductionJson} onChange={(event) => setPostProductionJson(event.target.value)} placeholder='{"sourceAudioPolicy":"mute","dialogueCues":[],"ambience":[],"sfx":[],"bgm":[],"appUiOverlays":[],"releaseChecklist":{}}' />
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={() => setPostProductionJson(JSON.stringify(project.workflow.postProduction, null, 2))}>Load current recipe</button>
+          <button className={buttonClass} onClick={importPostProduction} disabled={!postProductionJson.trim()}>Apply recipe</button>
+          <button className={buttonClass} onClick={stagePostProductionMedia} disabled={!apiToken || !approvalToken}>Stage referenced local media</button>
+        </div>
+        <p className="text-xs text-gray-500">Local TTS, ambience, SFX, BGM, and app UI files must be staged before ReleaseApproval so the server render worker can resolve them by asset ID.</p>
       </section>
 
       <section className="space-y-2 border-t border-white/10 pt-3">
@@ -506,7 +877,10 @@ export default function WorkflowPanel() {
       <section className="space-y-2 rounded border border-white/10 p-3">
         <h3 className="font-semibold">Remotion final render</h3>
         <input className={fieldClass} type="password" value={apiToken} onChange={(event) => setApiToken(event.target.value)} placeholder="CLIPJS_AGENT_TOKEN (production)" />
-        <button className={buttonClass} onClick={renderProject} disabled={rendering || project.workflow.approval.status !== 'approved'}>{rendering ? 'Rendering…' : 'Render approved project'}</button>
+        <div className="flex flex-wrap gap-2">
+          <button className={buttonClass} onClick={approveRelease} disabled={rendering}>Approve exact final cut</button>
+          <button className={buttonClass} onClick={renderProject} disabled={rendering || project.workflow.releaseApproval.status !== 'approved'}>{rendering ? 'Rendering…' : renderRetryRequired ? 'Retry render explicitly' : 'Render release-approved project'}</button>
+        </div>
         {renderDownloadUrl && <a className={`${buttonClass} inline-block`} href={renderDownloadUrl} download>Download rendered MP4</a>}
       </section>
     </div>

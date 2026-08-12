@@ -1,24 +1,24 @@
 import {NextRequest, NextResponse} from 'next/server';
 import {z} from 'zod';
-import {approveStoryboard} from '@/app/lib/workflow/approval';
-import {productionManifestSchema, seedanceMasterSettingsSchema, storyboardSchema} from '@/app/lib/workflow/schema';
+import {approveCreative} from '@/app/lib/workflow/approval';
+import {storyboardSchema} from '@/app/lib/workflow/schema';
 import {authorizeApprovalRequest} from '@/app/lib/security/api-auth';
-import {signStoryboardApproval} from '@/app/lib/security/approval-signature';
+import {signCreativeApproval} from '@/app/lib/security/approval-signature';
 import {readLimitedJson} from '@/app/lib/security/request-body';
 
 const requestSchema = z.object({
   projectId: z.string().min(1).max(128),
   storyboard: storyboardSchema,
-  production: productionManifestSchema.default({assets: [], continuityLocks: [], shotSpecs: [], takes: []}),
-  seedanceMaster: seedanceMasterSettingsSchema,
+
 }).strict();
 
 export async function POST(request: NextRequest) {
   try {
     authorizeApprovalRequest(request);
-    const {projectId, storyboard, production, seedanceMaster} = requestSchema.parse(await readLimitedJson(request));
-    const approval = await approveStoryboard(storyboard, 'project-owner', new Date(), production, seedanceMaster);
-    return NextResponse.json(signStoryboardApproval(projectId, approval));
+    const {projectId, storyboard} = requestSchema.parse(await readLimitedJson(request));
+    const now = new Date();
+    const creativeApproval = signCreativeApproval(projectId, await approveCreative(storyboard, 'project-owner', now));
+    return NextResponse.json({creativeApproval});
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Approval failed.';
     const status = /Unauthorized|required in production/i.test(message) ? 401 : 400;

@@ -58,6 +58,7 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
     width: media.width ?? '100%',
     height: media.height ?? '100%',
     opacity: media.opacity === undefined ? 1 : media.opacity / 100,
+    zIndex: media.zIndex,
     transform: `rotate(${media.rotation ?? 0}deg)`,
   };
   const source = mediaSource(media);
@@ -97,7 +98,7 @@ const TextLayer: React.FC<{item: TextElement; fps: number}> = ({item, fps}) => (
     durationInFrames={Math.max(1, Math.round((item.positionEnd - item.positionStart) * fps))}
     layout="none"
   >
-    <div style={{position: 'absolute', left: item.x, top: item.y, width: item.width ?? 1200, fontFamily: item.font ?? 'Arial', fontSize: item.fontSize ?? 64, color: item.color ?? '#fff', backgroundColor: item.backgroundColor ?? 'transparent', textAlign: item.align ?? 'center', opacity: (item.opacity ?? 100) / 100, whiteSpace: 'pre-wrap'}}>
+    <div style={{position: 'absolute', left: item.x, top: item.y, width: item.width ?? 1200, zIndex: item.zIndex, fontFamily: item.font ?? 'Arial', fontSize: item.fontSize ?? 64, color: item.color ?? '#fff', backgroundColor: item.backgroundColor ?? 'transparent', textAlign: item.align ?? 'center', opacity: (item.opacity ?? 100) / 100, whiteSpace: 'pre-wrap'}}>
       {item.text}
     </div>
   </Sequence>
@@ -124,24 +125,27 @@ const TransitionPairContent: React.FC<{transition: TransitionSpec; source: Media
   const progress = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 1], {extrapolateRight: 'clamp'});
   const peak = Math.sin(progress * Math.PI);
   const rotation = (media: MediaFile) => `rotate(${media.rotation ?? 0}deg)`;
-  let sourceStyle: React.CSSProperties = {opacity: 1 - progress, transform: rotation(source)};
-  let targetStyle: React.CSSProperties = {opacity: progress, transform: rotation(target)};
+  const sourceOpacity = (source.opacity ?? 100) / 100;
+  const targetOpacity = (target.opacity ?? 100) / 100;
+  const transitionZIndex = Math.max(source.zIndex ?? 0, target.zIndex ?? 0) + 1;
+  let sourceStyle: React.CSSProperties = {opacity: (1 - progress) * sourceOpacity, transform: rotation(source)};
+  let targetStyle: React.CSSProperties = {opacity: progress * targetOpacity, transform: rotation(target)};
 
   if (transition.type === 'wipe') {
-    sourceStyle = {opacity: 1, transform: rotation(source)};
-    targetStyle = {opacity: 1, clipPath: `inset(0 ${(1 - progress) * 100}% 0 0)`, transform: rotation(target)};
+    sourceStyle = {opacity: sourceOpacity, transform: rotation(source)};
+    targetStyle = {opacity: targetOpacity, clipPath: `inset(0 ${(1 - progress) * 100}% 0 0)`, transform: rotation(target)};
   } else if (transition.type === 'slide' || transition.type === 'push') {
-    sourceStyle = {opacity: 1, transform: `${rotation(source)} translateX(${-progress * 100}%)`};
-    targetStyle = {opacity: 1, transform: `${rotation(target)} translateX(${(1 - progress) * 100}%)`};
+    sourceStyle = {opacity: sourceOpacity, transform: `${rotation(source)} translateX(${-progress * 100}%)`};
+    targetStyle = {opacity: targetOpacity, transform: `${rotation(target)} translateX(${(1 - progress) * 100}%)`};
   } else if (transition.type === 'whip-pan') {
-    sourceStyle = {opacity: 1 - progress, filter: `blur(${peak * 22}px)`, transform: `${rotation(source)} translateX(${-progress * 120}%)`};
-    targetStyle = {opacity: progress, filter: `blur(${peak * 22}px)`, transform: `${rotation(target)} translateX(${(1 - progress) * 120}%)`};
+    sourceStyle = {opacity: (1 - progress) * sourceOpacity, filter: `blur(${peak * 22}px)`, transform: `${rotation(source)} translateX(${-progress * 120}%)`};
+    targetStyle = {opacity: progress * targetOpacity, filter: `blur(${peak * 22}px)`, transform: `${rotation(target)} translateX(${(1 - progress) * 120}%)`};
   } else if (transition.type === 'blur') {
-    sourceStyle = {opacity: 1 - progress, filter: `blur(${progress * 28}px)`, transform: rotation(source)};
-    targetStyle = {opacity: progress, filter: `blur(${(1 - progress) * 28}px)`, transform: rotation(target)};
+    sourceStyle = {opacity: (1 - progress) * sourceOpacity, filter: `blur(${progress * 28}px)`, transform: rotation(source)};
+    targetStyle = {opacity: progress * targetOpacity, filter: `blur(${(1 - progress) * 28}px)`, transform: rotation(target)};
   } else if (transition.type === 'zoom') {
-    sourceStyle = {opacity: 1 - progress, transform: `${rotation(source)} scale(${1 + progress * 0.18})`};
-    targetStyle = {opacity: progress, transform: `${rotation(target)} scale(${0.82 + progress * 0.18})`};
+    sourceStyle = {opacity: (1 - progress) * sourceOpacity, transform: `${rotation(source)} scale(${1 + progress * 0.18})`};
+    targetStyle = {opacity: progress * targetOpacity, transform: `${rotation(target)} scale(${0.82 + progress * 0.18})`};
   }
 
   const halfFrames = Math.max(1, Math.floor(durationInFrames / 2));
@@ -151,10 +155,10 @@ const TransitionPairContent: React.FC<{transition: TransitionSpec; source: Media
   const sourceLastFrame = Math.max(source.startTime, source.endTime - 1 / fps);
   const officialPresentation = isOfficialTransition(transition.type) ? officialPresentationFor(transition.type) : null;
   if (officialPresentation) {
-    const sourceRotation: React.CSSProperties = {transform: rotation(source)};
-    const targetRotation: React.CSSProperties = {transform: rotation(target)};
+    const sourceRotation: React.CSSProperties = {transform: rotation(source), opacity: sourceOpacity};
+    const targetRotation: React.CSSProperties = {transform: rotation(target), opacity: targetOpacity};
     return (
-      <AbsoluteFill style={{pointerEvents: 'none'}}>
+      <AbsoluteFill style={{pointerEvents: 'none', zIndex: transitionZIndex}}>
         <TransitionSeries>
           <TransitionSeries.Sequence durationInFrames={durationInFrames}>
             <AbsoluteFill>
@@ -174,7 +178,7 @@ const TransitionPairContent: React.FC<{transition: TransitionSpec; source: Media
     );
   }
   return (
-    <AbsoluteFill style={{pointerEvents: 'none'}}>
+    <AbsoluteFill style={{pointerEvents: 'none', zIndex: transitionZIndex}}>
       <Sequence durationInFrames={halfFrames} layout="none"><TransitionAsset media={source} fps={fps} trimStart={sourceTrim} style={sourceStyle} effects={sourceEffects} /></Sequence>
       <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={source} fps={fps} trimStart={sourceLastFrame} style={sourceStyle} effects={sourceEffects} /></Freeze></Sequence>
       <Sequence durationInFrames={halfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetStyle} effects={targetEffects} /></Freeze></Sequence>
@@ -194,8 +198,8 @@ export const ProjectComposition: React.FC<ProjectCompositionProps> = ({project})
   const fps = project.fps || 30;
   return (
     <AbsoluteFill style={{backgroundColor: '#000', overflow: 'hidden'}}>
-      {[...project.mediaFiles].sort((a, b) => a.zIndex - b.zIndex).map((media) => <MediaLayer key={media.id} media={media} fps={fps} effects={project.workflow.effects} />)}
-      {project.textElements.map((item) => <TextLayer key={item.id} item={item} fps={fps} />)}
+      {[...project.mediaFiles].filter((media) => media.includeInMerge !== false).sort((a, b) => a.zIndex - b.zIndex).map((media) => <MediaLayer key={media.id} media={media} fps={fps} effects={project.workflow.effects} />)}
+      {project.textElements.filter((item) => item.includeInMerge !== false).map((item) => <TextLayer key={item.id} item={item} fps={fps} />)}
       {project.exportSettings.includeSubtitles && project.workflow.captions.map((cue) => {
         const durationInFrames = Math.max(1, Math.round((cue.endSeconds - cue.startSeconds) * fps));
         return <Sequence key={cue.id} from={Math.round(cue.startSeconds * fps)} durationInFrames={durationInFrames} layout="none"><CaptionContent cue={cue} durationInFrames={durationInFrames} /></Sequence>;
@@ -203,7 +207,7 @@ export const ProjectComposition: React.FC<ProjectCompositionProps> = ({project})
       {project.workflow.transitions.map((transition) => {
         const source = project.mediaFiles.find((media) => media.id === transition.fromMediaId);
         const target = project.mediaFiles.find((media) => media.id === transition.toMediaId);
-        if (!source || !target || transition.type === 'none') return null;
+        if (!source || !target || source.includeInMerge === false || target.includeInMerge === false || transition.type === 'none') return null;
         const durationInFrames = Math.max(1, Math.round(transition.durationSeconds * fps));
         const boundary = Math.min(source.positionEnd, target.positionStart || source.positionEnd);
         const from = Math.max(0, Math.round((boundary - transition.durationSeconds / 2) * fps));
