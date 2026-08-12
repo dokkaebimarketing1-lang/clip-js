@@ -19,7 +19,9 @@ import { MediaFile } from "@/app/types";
 import ProjectName from "../../../components/editor/player/ProjectName";
 import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
 import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
+import StageWorkspace from "@/app/components/editor/workflow/StageWorkspace";
 import {deriveGenerationCtaState, type GenerationCtaTarget} from "@/app/lib/workflow/generation-cta";
+import {getProjectWorkspaceLayout, PROJECT_WORKSPACES, type ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
 import {
     ProjectSaveCoordinator,
     type ProjectSaveStatus,
@@ -40,6 +42,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
     const [rightTab, setRightTab] = useState<'workflow' | 'props'>('workflow');
     const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('pipeline');
+    const [workspace, setWorkspace] = useState<ProjectWorkspaceId>('interview');
     const [hasSubmittedGeneration, setHasSubmittedGeneration] = useState(false);
 
     useEffect(() => {
@@ -59,6 +62,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     });
 
     const openGenerationGate = (target: GenerationCtaTarget) => {
+        setWorkspace('generation');
         setCenterTab('pipeline');
         setRightTab('workflow');
         window.setTimeout(() => {
@@ -68,6 +72,13 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
     const router = useRouter();
     const { activeElement } = projectState;
+    const workspaceLayout = getProjectWorkspaceLayout(workspace);
+    const openWorkflowForStage = () => {
+        setRightTab('workflow');
+        window.setTimeout(() => {
+            document.getElementById(workspace === 'interview' ? 'generation-compose' : 'generation-creative')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }, 0);
+    };
     useEffect(() => {
         let cancelled = false;
         const objectUrls: string[] = [];
@@ -291,26 +302,32 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
             </header>
 
             <div className="flex min-h-0 flex-1 overflow-hidden">
-                {/* 좌측 아이콘 레일 */}
-                <div className="relative z-50 flex w-[52px] shrink-0 flex-col items-center gap-2 border-r border-gray-800 bg-neutral-950 p-2">
-                    <HomeButton />
-                    <button
-                        aria-label="소스"
-                        title="소스"
-                        onClick={() => setLeftTab('media')}
-                        className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'media' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
-                    >소스</button>
-                    <button
-                        aria-label="텍스트"
-                        title="텍스트"
-                        onClick={() => setLeftTab('text')}
-                        className={`flex h-12 w-full items-center justify-center rounded-lg border text-xs font-bold transition ${leftTab === 'text' ? 'border-fuchsia-500 bg-fuchsia-500/15 text-fuchsia-300' : 'border-white/10 text-gray-300 hover:bg-white/10'}`}
-                    >T</button>
-
-                </div>
+                {/* 프로젝트 제작 단계 내비게이션 */}
+                <nav aria-label="프로젝트 제작 단계" className="relative z-50 flex w-[132px] shrink-0 flex-col border-r border-gray-800 bg-neutral-950 p-2">
+                    <div className="mb-2 [&_a]:h-10 [&_a]:w-full [&_a]:flex-row [&_a]:gap-2 [&_a]:px-2 [&_img]:max-h-[16px] [&_img]:max-w-[16px] [&_span]:text-[10px]"><HomeButton /></div>
+                    <div className="mb-2 border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">Production</div>
+                    <div className="space-y-1">
+                        {PROJECT_WORKSPACES.map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                aria-current={workspace === item.id ? 'page' : undefined}
+                                onClick={() => setWorkspace(item.id)}
+                                className={`group flex w-full items-center gap-2 rounded-lg border px-2 py-2.5 text-left transition ${workspace === item.id ? 'border-fuchsia-500/60 bg-fuchsia-500/15 text-white shadow-[inset_3px_0_0_#d946ef]' : 'border-transparent text-gray-400 hover:border-white/10 hover:bg-white/5 hover:text-gray-200'}`}
+                            >
+                                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-black ${workspace === item.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-500 group-hover:text-gray-300'}`}>{item.step}</span>
+                                <span className="whitespace-nowrap text-[11px] font-bold leading-tight">{item.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </nav>
 
                 {/* 왼쪽 소스 패널 (상시 노출) */}
-                <div className="relative z-40 min-h-0 w-[260px] shrink-0 overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3">
+                {workspaceLayout.showSources && <div className="relative z-40 min-h-0 w-[260px] shrink-0 overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3">
+                    <div className="mb-3 flex gap-1 rounded-lg bg-black/30 p-1">
+                        <button type="button" onClick={() => setLeftTab('media')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'media' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>미디어</button>
+                        <button type="button" onClick={() => setLeftTab('text')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'text' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>텍스트</button>
+                    </div>
                     {leftTab === 'media' && (
                         <div>
                             <h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 소스</h2>
@@ -325,11 +342,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         </div>
                     )}
 
-                </div>
+                </div>}
 
-                {/* 중앙: 파이프라인/미리보기 + 전용 타임라인 도크 */}
+                {/* 중앙: 단계별 워크스페이스 + 편집 타임라인 */}
                 <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/10 bg-neutral-950 px-2">
+                    {workspace === 'edit' && <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/10 bg-neutral-950 px-2">
                         <button
                             type="button"
                             onClick={() => setCenterTab('pipeline')}
@@ -341,9 +358,18 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             className={`h-full px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${centerTab === 'preview' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >미리보기</button>
                         <span className="ml-auto pr-2 font-mono text-[10px] tabular-nums text-gray-500">00:00 / 00:{String(projectState.workflow.seedanceMaster.duration).padStart(2, '0')}</span>
-                    </div>
+                    </div>}
                     <div className="min-h-0 flex-1 overflow-hidden">
-                        {centerTab === 'preview' ? (
+                        {workspace !== 'edit' ? (
+                            <StageWorkspace
+                                workspace={workspace}
+                                interviewBrief={projectState.workflow.interviewBrief}
+                                characterSheet={projectState.workflow.characterSheet}
+                                storyboard={projectState.workflow.storyboard}
+                                onOpenWorkflow={openWorkflowForStage}
+                                onOpenEdit={() => setWorkspace('edit')}
+                            />
+                        ) : centerTab === 'preview' ? (
                             <div className="flex h-full items-center justify-center overflow-hidden bg-black">
                                 <PreviewPlayer />
                             </div>
@@ -355,9 +381,9 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             />
                         )}
                     </div>
-                    <section aria-label="타임라인 편집기" className="h-[210px] shrink-0 overflow-y-auto border-t border-gray-700 bg-[#17161a] px-2 pb-2">
+                    {workspaceLayout.showTimeline && <section aria-label="타임라인 편집기" className="h-[210px] shrink-0 overflow-y-auto border-t border-gray-700 bg-[#17161a] px-2 pb-2">
                         <Timeline />
-                    </section>
+                    </section>}
                 </main>
 
                 {/* 오른쪽 설정창 (상시 노출) */}
