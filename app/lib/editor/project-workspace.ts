@@ -17,3 +17,39 @@ export const getProjectWorkspaceLayout = (workspace: ProjectWorkspaceId) => ({
   showSources: workspace === 'edit',
   showTimeline: workspace === 'edit',
 });
+
+export type WorkspaceInternalStep = {
+  id: string;
+  label: string;
+};
+
+const INTERNAL_STEPS: Record<ProjectWorkspaceId, ReadonlyArray<WorkspaceInternalStep>> = {
+  interview: [
+    {id: 'sentence', label: '문장 해석'},
+    {id: 'interview', label: 'AI 인터뷰'},
+  ],
+  reference: [
+    {id: 'image-storyboard', label: '이미지 콘티'},
+    {id: 'character', label: '캐릭터 기준'},
+    {id: 'reference-approval', label: '기준 승인'},
+  ],
+  storyboard: [
+    {id: 'storyboard', label: '스토리보드'},
+    {id: 'direction', label: '연출 상세'},
+    {id: 'prompt-review', label: '프롬프트 검수'},
+  ],
+  generation: [
+    {id: 'generation-approval', label: '생성 승인'},
+    {id: 'paid-submit', label: '유료 제출'},
+  ],
+  edit: [
+    {id: 'takes', label: '생성본 선택'},
+    {id: 'timeline', label: '타임라인 편집'},
+    {id: 'render', label: '최종 렌더'},
+  ],
+};
+
+export const getWorkspaceInternalSteps = (workspace: ProjectWorkspaceId) => INTERNAL_STEPS[workspace];
+
+export const shouldShowSampleMedia = ({sampleMode, mediaCount}: {sampleMode: boolean; mediaCount: number}) =>
+  sampleMode && mediaCount === 0;
