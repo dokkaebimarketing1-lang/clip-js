@@ -1,5 +1,8 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {NextRequest} from 'next/server';
+import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {extname, join} from 'node:path';
+import {tmpdir} from 'node:os';
 
 vi.mock('server-only', () => ({}));
 const submit = vi.fn();
@@ -60,10 +63,20 @@ describe('project character image generation route', () => {
     const anchor = {id: referenceId, projectId: 'project-1', state: 'ready', mimeType: 'image/png', styleLineage: {styleBibleHash, styleReferenceImageIds: []}};
     getAsset.mockResolvedValue(anchor);
     listProject.mockResolvedValue([anchor]);
+    const root = mkdtempSync(join(tmpdir(), 'clipjs-character-route-'));
+    const managedObject = join(root, `${referenceId}.bin`);
+    writeFileSync(managedObject, 'verified-image-bytes');
+    resolveLocalPath.mockReturnValue(managedObject);
     const response = await POST(makePost({prompt: 'a valid referenced character prompt', styleReferenceImageIds: [referenceId], confirmCreditCost: 1}), context);
     expect(response.status).toBe(202);
     expect(resolveLocalPath).toHaveBeenCalledWith(referenceId);
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({imageReferencePaths: [`C:\\clipjs\\${referenceId}.bin`]}));
+    const submitted = submit.mock.calls[0][0] as {imageReferencePaths: string[]};
+    expect(submitted.imageReferencePaths).toHaveLength(1);
+    expect(extname(submitted.imageReferencePaths[0])).toBe('.png');
+    expect(submitted.imageReferencePaths[0]).not.toBe(managedObject);
+    expect(existsSync(submitted.imageReferencePaths[0])).toBe(false);
+    expect(existsSync(managedObject)).toBe(true);
+    rmSync(root, {recursive: true, force: true});
   });
 
   it('rejects a later paid character request before submission when the approved anchor is omitted', async () => {

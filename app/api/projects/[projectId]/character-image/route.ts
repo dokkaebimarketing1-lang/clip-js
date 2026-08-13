@@ -3,6 +3,7 @@ import {createAssetCapability} from '@/app/lib/assets/asset-capability.server';
 import {ingestHiggsfieldCharacterImage} from '@/app/lib/assets/secure-higgsfield-image-ingest.server';
 import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
 import {getHiggsfieldGenerationJob, parseHiggsfieldSubmittedJobId, submitHiggsfieldCharacterImageJob} from '@/app/lib/higgsfield/generate.server';
+import {stageHiggsfieldImageReferences} from '@/app/lib/higgsfield/image-reference-staging.server';
 import {readLimitedJson} from '@/app/lib/security/request-body';
 
 export const runtime = 'nodejs';
@@ -59,7 +60,6 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     if (anchors.length > 0 && !anchors.some((anchor) => styleReferenceImageIds.includes(anchor.id))) {
       throw new Error('A later character image must reference the approved project style anchor.');
     }
-    const imageReferencePaths = styleReferenceImageIds.map((id) => assetStore.resolveLocalPath(id));
     const lineage = {styleBibleHash, styleReferenceImageIds};
     const active = activeProjects.get(projectId);
     if (active) {
@@ -69,7 +69,17 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
       if (active.lineage.styleBibleHash !== styleBibleHash || active.lineage.styleReferenceImageIds.join(',') !== styleReferenceImageIds.join(',')) throw new Error('Active image job lineage does not match.');
       return NextResponse.json({jobId: active.jobId, characterId, lineage, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: true}, {status: 202});
     }
-    const result = await submitHiggsfieldCharacterImageJob({prompt, imageReferencePaths, aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
+    const staged = stageHiggsfieldImageReferences(referenceAssets.map((asset) => ({
+      assetId: asset!.id,
+      sourcePath: assetStore.resolveLocalPath(asset!.id),
+      mimeType: asset!.mimeType,
+    })));
+    let result: unknown;
+    try {
+      result = await submitHiggsfieldCharacterImageJob({prompt, imageReferencePaths: staged.paths, aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
+    } finally {
+      staged.cleanup();
+    }
     const jobId = parseHiggsfieldSubmittedJobId(result);
     if (!jobId) throw new Error('Higgsfield did not return a valid job ID.');
     activeProjects.set(projectId, {jobId, characterId, lineage});
