@@ -9,6 +9,7 @@ const createCapability = vi.fn(() => 'preview-token');
 vi.mock('@/app/lib/higgsfield/generate.server', () => ({
   submitHiggsfieldCharacterImageJob: submit,
   getHiggsfieldGenerationJob: getJob,
+  parseHiggsfieldSubmittedJobId: (value: unknown) => Array.isArray(value) ? value[0] : (value as {id?: string})?.id,
 }));
 vi.mock('@/app/lib/assets/secure-higgsfield-image-ingest.server', () => ({ingestHiggsfieldCharacterImage: ingest}));
 vi.mock('@/app/lib/assets/asset-capability.server', () => ({createAssetCapability: createCapability}));
@@ -25,7 +26,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   vi.stubEnv('CLIPJS_HIGGSFIELD_TEMP_SUBMIT_ENABLED', 'true');
-  submit.mockResolvedValue({id: '4e97908e-4b6d-413a-96e8-d64c560267bc'});
+  submit.mockResolvedValue(['4e97908e-4b6d-413a-96e8-d64c560267bc']);
   getJob.mockResolvedValue({id: '4e97908e-4b6d-413a-96e8-d64c560267bc', status: 'completed', job_type: 'nano_banana_2_lite', result_url: 'https://d8j0ntlcm91z4.cloudfront.net/result.png'});
   ingest.mockResolvedValue({assetId: 'ga_0123456789abcdef0123456789abcdef', contentSha256: 'a'.repeat(64)});
 });

@@ -90,6 +90,23 @@ describe('ModelArk DeepSeek planning provider', () => {
     expect(result.storyboard.cuts[0].shots[0].endFrame).toContain('종료 화면');
   });
 
+  it('keeps two distinct main characters and their per-cut assignments', async () => {
+    const multiPlan = structuredClone(validPlan) as typeof validPlan & {characterSheets?: unknown[]};
+    multiPlan.characterSheets = [
+      {...multiPlan.characterSheet, id: 'CHAR01', name: '코코', breed: '강아지'},
+      {...multiPlan.characterSheet, id: 'CHAR02', name: '토리', breed: '다람쥐'},
+    ];
+    multiPlan.characterSheet = multiPlan.characterSheets[0] as typeof multiPlan.characterSheet;
+    multiPlan.storyboard.cuts[0] = {...multiPlan.storyboard.cuts[0], characterIds: ['CHAR01', 'CHAR02']} as typeof multiPlan.storyboard.cuts[0];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({choices: [{message: {content: JSON.stringify(multiPlan)}}]}), {status: 200}));
+    const provider = createDeepSeekPlanningProvider({apiKey: 'test-key', fetchImpl});
+
+    const result = await provider.compose('강아지 코코와 다람쥐 토리가 함께 인사하는 20초 영상');
+
+    expect(result.characterSheets.map((sheet) => sheet.name)).toEqual(['코코', '토리']);
+    expect(result.storyboard.cuts[0].characterIds).toEqual(['CHAR01', 'CHAR02']);
+  });
+
   it('스키마에 맞지 않는 모델 응답을 fail-closed로 거부한다', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       choices: [{message: {content: '{"interviewBrief":{}}'}}],

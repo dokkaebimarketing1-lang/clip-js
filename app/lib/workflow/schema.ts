@@ -27,6 +27,7 @@ export const storyboardCutSchema = z.object({
   endFrameAssetId: z.string().regex(/^ga_[a-f0-9]{32}$/).optional(),
   previewAssetId: z.string().regex(/^ga_[a-f0-9]{32}$/).optional(),
   generatedTakeIds: z.array(z.string().min(1).max(128)).max(100).optional(),
+  characterIds: z.array(z.string().regex(/^CHAR\d{2}$/)).max(10).optional(),
 }).refine((cut) => cut.absoluteEndSeconds > cut.absoluteStartSeconds, 'Cut end must be after start');
 
 export const storyboardSchema = z.object({
@@ -51,6 +52,7 @@ export const interviewBriefSchema = z.object({
 
 // ④ 캐릭터 시트: 콘티 속 주체를 시각 자산으로 분리
 export const characterSheetSchema = z.object({
+  id: z.string().regex(/^CHAR\d{2}$/).optional(),
   name: z.string().min(1).max(80),
   breed: z.string().min(1).max(80).optional(),
   palette: z.object({
@@ -282,6 +284,21 @@ const migrateLegacyWorkflowApprovals = (input: unknown): unknown => {
       }
     }
   }
+  const sheets = Array.isArray(workflow.characterSheets)
+    ? workflow.characterSheets
+    : workflow.characterSheet
+      ? [workflow.characterSheet]
+      : [];
+  if (sheets.length > 0) {
+    const normalizedSheets = sheets.map((sheet, index) => ({
+      ...(sheet as Record<string, unknown>),
+      id: typeof (sheet as Record<string, unknown>).id === 'string'
+        ? (sheet as Record<string, unknown>).id
+        : `CHAR${String(index + 1).padStart(2, '0')}`,
+    }));
+    workflow.characterSheets = normalizedSheets;
+    workflow.characterSheet = normalizedSheets[0];
+  }
   delete workflow.approval;
   return workflow;
 };
@@ -289,6 +306,7 @@ const migrateLegacyWorkflowApprovals = (input: unknown): unknown => {
 const workflowStateV3Schema = z.object({
   interviewBrief: interviewBriefSchema.optional(),
   characterSheet: characterSheetSchema.optional(),
+  characterSheets: z.array(characterSheetSchema).min(1).max(10).optional(),
   storyboard: storyboardSchema.optional(),
   creativeApproval: creativeApprovalSchema.default({status: 'draft'}),
   generationApproval: generationApprovalSchema.default({status: 'draft'}),
@@ -331,6 +349,7 @@ export const createDefaultWorkflow = (): WorkflowState => ({
   ...draftApprovals(),
   interviewBrief: undefined,
   characterSheet: undefined,
+  characterSheets: undefined,
   higgsfieldAssets: [],
   transitions: [],
   effects: [],

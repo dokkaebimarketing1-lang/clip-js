@@ -376,6 +376,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 workspace={workspace}
                                 interviewBrief={projectState.workflow.interviewBrief}
                                 characterSheet={projectState.workflow.characterSheet}
+                                characterSheets={projectState.workflow.characterSheets}
                                 storyboard={projectState.workflow.storyboard}
                                 sampleMode={sampleMode}
                                 onEnableSample={enableSampleMode}

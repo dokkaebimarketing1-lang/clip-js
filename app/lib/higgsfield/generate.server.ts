@@ -38,6 +38,27 @@ export type HiggsfieldCharacterImageRequest = {
   resolution: '1k';
   thinking: 'HIGH';
 };
+
+const HIGGSFIELD_JOB_ID = /^[a-f0-9-]{36}$/i;
+
+export const parseHiggsfieldSubmittedJobId = (value: unknown): string | undefined => {
+  if (typeof value === 'string') return HIGGSFIELD_JOB_ID.test(value) ? value : undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const id = parseHiggsfieldSubmittedJobId(item);
+      if (id) return id;
+    }
+    return undefined;
+  }
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ['id', 'jobId', 'job_id', 'job', 'data', 'jobs']) {
+    const id = parseHiggsfieldSubmittedJobId(record[key]);
+    if (id) return id;
+  }
+  return undefined;
+};
+
 type LaunchOptions = {
   cliPath?: string;
   pathValue?: string;

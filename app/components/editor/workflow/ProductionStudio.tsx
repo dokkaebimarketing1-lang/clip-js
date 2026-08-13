@@ -6,7 +6,7 @@ import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {attachCutFrameAsset, reorderStoryboardCuts, selectTakeForTimeline} from '@/app/lib/workflow/project-production';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
-import {storyboardCutSchema, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
+import {storyboardCutSchema, type CharacterSheet, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
 import {deriveGenerationPreflight} from '@/app/lib/workflow/generation-preflight';
 
 const sha256 = async (file: File) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -66,7 +66,7 @@ function FrameUpload({projectId, cutId, role, assetId}: {projectId: string; cutI
   </div>;
 }
 
-export function StoryboardStudio({storyboard}: {storyboard: Storyboard}) {
+export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard: Storyboard; characterSheets?: CharacterSheet[]}) {
   const dispatch = useAppDispatch();
   const project = useAppSelector((state) => state.projectState);
   const imageGenerationEnabled = process.env.NEXT_PUBLIC_CLIPJS_IMAGE_GENERATION_ENABLED === 'true';
@@ -97,7 +97,7 @@ export function StoryboardStudio({storyboard}: {storyboard: Storyboard}) {
       const payload = await response.json() as {cut?: unknown; error?: string};
       if (!response.ok || !payload.cut) throw new Error(payload.error ?? 'AI 컷 수정을 완료하지 못했습니다.');
       const edited = storyboardCutSchema.parse(payload.cut);
-      setPreviewCut({...edited, startFrameAssetId: selected.startFrameAssetId, endFrameAssetId: selected.endFrameAssetId, previewAssetId: selected.previewAssetId, generatedTakeIds: selected.generatedTakeIds});
+      setPreviewCut({...edited, characterIds: selected.characterIds, startFrameAssetId: selected.startFrameAssetId, endFrameAssetId: selected.endFrameAssetId, previewAssetId: selected.previewAssetId, generatedTakeIds: selected.generatedTakeIds});
       setMessage('수정 미리보기를 확인한 뒤 적용하세요. 프로젝트는 아직 변경되지 않았습니다.');
     } catch (error) { setMessage(error instanceof Error ? error.message : '수정 요청을 적용하지 못했습니다.'); }
     finally { setEditing(false); }
@@ -115,6 +115,10 @@ export function StoryboardStudio({storyboard}: {storyboard: Storyboard}) {
       {storyboard.cuts.map((cut) => <article key={cut.id} draggable onDragStart={() => setDraggedId(cut.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(cut.id)} onClick={() => setSelectedCutId(cut.id)} className={`cursor-grab rounded-3xl border bg-[#15131a] p-4 transition ${selected?.id === cut.id ? 'border-fuchsia-400/60 shadow-[0_0_0_1px_rgba(217,70,239,.2)]' : 'border-white/10 hover:border-white/25'}`}>
         <div className="flex items-center justify-between text-xs"><span className="font-black text-fuchsia-300">⠿ {cut.id}</span><span className="tabular-nums text-gray-500">{cut.absoluteStartSeconds}–{cut.absoluteEndSeconds}초</span></div>
         <h2 className="mt-3 text-lg font-black text-white">{cut.title}</h2>
+        {cut.characterIds?.length ? <div className="mt-3 flex flex-wrap gap-2">{cut.characterIds.map((characterId) => {
+          const character = characterSheets.find((sheet) => sheet.id === characterId);
+          return <span key={characterId} className="rounded-full border border-fuchsia-400/20 bg-fuchsia-400/[0.08] px-2.5 py-1 text-[11px] font-bold text-fuchsia-200">{character?.name ?? characterId}</span>;
+        })}</div> : null}
         <p className="mt-2 line-clamp-2 min-h-12 text-sm leading-6 text-gray-400">{cut.shots.map((shot) => shot.action).join(' · ')}</p>
         <div className="mt-4 grid grid-cols-2 gap-3"><FrameUpload projectId={project.id} cutId={cut.id} role="start" assetId={cut.startFrameAssetId}/><FrameUpload projectId={project.id} cutId={cut.id} role="end" assetId={cut.endFrameAssetId}/></div>
         <button type="button" disabled={!imageGenerationEnabled} title={imageGenerationEnabled ? '선택 컷의 시작·끝 프레임을 생성합니다.' : '이미지 생성 모델과 유료 제출이 서버에서 비활성화되어 있습니다.'} className="mt-3 w-full rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-gray-400 disabled:cursor-not-allowed disabled:opacity-50">{imageGenerationEnabled ? 'AI 시작·끝 프레임 생성' : 'AI 이미지 생성 잠김'}</button>

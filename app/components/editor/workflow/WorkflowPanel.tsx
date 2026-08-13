@@ -400,7 +400,7 @@ export default function WorkflowPanel() {
       const response = await fetch('/api/approval/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json', ...(approvalToken ? {'x-clipjs-approval-token': approvalToken} : {})},
-        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard}),
+        body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard, characterSheets: project.workflow.characterSheets ?? (project.workflow.characterSheet ? [project.workflow.characterSheet] : undefined)}),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || '승인에 실패했습니다.');

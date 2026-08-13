@@ -34,6 +34,7 @@ export const POST = async (request: Request) => {
   }
   const brief = plan.interviewBrief;
   const sheet = plan.characterSheet;
+  const sheets = plan.characterSheets ?? [sheet];
   const storyboard = plan.storyboard;
   const axes = axesFromBrief(brief, sheet);
   const seedanceMaster = seedanceMasterSettingsSchema.parse({
@@ -57,6 +58,7 @@ export const POST = async (request: Request) => {
     planningModel: planningProvider.model,
     interviewBrief: interviewBriefSchema.parse(brief),
     characterSheet: characterSheetSchema.parse(sheet),
+    characterSheets: sheets.map((character) => characterSheetSchema.parse(character)),
     storyboard: storyboardSchema.parse(storyboard),
     imageStoryboard,
     seedanceMaster,

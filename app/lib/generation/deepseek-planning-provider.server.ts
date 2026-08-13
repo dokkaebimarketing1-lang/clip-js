@@ -7,7 +7,23 @@ export const DEEPSEEK_PLANNING_MODEL = 'deepseek-v4-flash-ga-260731';
 const planningOutputSchema = z.object({
   interviewBrief: interviewBriefSchema,
   characterSheet: characterSheetSchema,
+  characterSheets: z.array(characterSheetSchema).min(1).max(10),
   storyboard: storyboardSchema,
+}).superRefine((plan, ctx) => {
+  const ids = plan.characterSheets.map((sheet) => sheet.id).filter((id): id is string => Boolean(id));
+  if (ids.length !== plan.characterSheets.length || new Set(ids).size !== ids.length) {
+    ctx.addIssue({code: z.ZodIssueCode.custom, path: ['characterSheets'], message: 'Every main character requires a unique ID.'});
+    return;
+  }
+  const used = new Set(plan.storyboard.cuts.flatMap((cut) => cut.characterIds ?? []));
+  for (const cut of plan.storyboard.cuts) {
+    for (const characterId of cut.characterIds ?? []) {
+      if (!ids.includes(characterId)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['storyboard', 'cuts'], message: `Unknown character ID: ${characterId}`});
+    }
+  }
+  for (const id of ids) {
+    if (!used.has(id)) ctx.addIssue({code: z.ZodIssueCode.custom, path: ['storyboard', 'cuts'], message: `Main character ${id} is not assigned to any cut.`});
+  }
 });
 
 const chatResponseSchema = z.object({
@@ -19,6 +35,7 @@ const chatResponseSchema = z.object({
 export type PlanningOutput = {
   interviewBrief: InterviewBrief;
   characterSheet: CharacterSheet;
+  characterSheets: CharacterSheet[];
   storyboard: Storyboard;
 };
 
@@ -31,11 +48,11 @@ export type PlanningProvider = {
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 const systemPrompt = `You are the planning director for a Korean commercial AI-video production system.
-Convert one user sentence into strict JSON with exactly three top-level keys: interviewBrief, characterSheet, storyboard.
+Convert one user sentence into strict JSON with exactly four top-level keys: interviewBrief, characterSheet, characterSheets, storyboard.
 Do not output commentary or markdown.
 interviewBrief fields: subject, action, durationSeconds (20 or 30 only), tone, optional characterName, optional characterBreed, greetingLine, extraNotes.
-characterSheet fields: name, optional breed, palette with dominant/secondary/accent as 6-digit hex colors, visualTags as strings. Omit unknown optional fields; never return empty strings.
-storyboard fields: version="v1", title, noBgm=true, cuts. Each cut has id, title, absoluteStartSeconds, absoluteEndSeconds, shots. Each shot has id, startSeconds, endSeconds, startFrame, endFrame, camera, action, dialogue, sfx.
+characterSheet is the first primary character for backward compatibility. characterSheets contains every visually distinct main character who appears on screen (for example, a dog and a squirrel must be two separate entries). Each character has id CHAR01, CHAR02..., name, optional breed, palette with dominant/secondary/accent as 6-digit hex colors, and visualTags. Omit incidental background extras. Never merge two distinct main characters into one sheet.
+storyboard fields: version="v1", title, noBgm=true, cuts. Each cut has id, title, characterIds listing the CHAR IDs visible in that cut, absoluteStartSeconds, absoluteEndSeconds, shots. Each shot has id, startSeconds, endSeconds, startFrame, endFrame, camera, action, dialogue, sfx.
 20-second plan: exactly 4 cuts. 30-second plan: exactly 6 cuts. Each cut must contain exactly 1 shot.
 Keep startFrame, endFrame, camera, action, dialogue, and sfx concise; each field must be at most 120 Korean characters.
 startFrame and endFrame are visual scene descriptions, never frame numbers or timestamps.
@@ -52,8 +69,21 @@ const normalizePlanningOutput = (value: unknown): unknown => {
   const root = value as {
     interviewBrief?: Record<string, unknown>;
     characterSheet?: Record<string, unknown>;
+    characterSheets?: Array<Record<string, unknown>>;
     storyboard?: {cuts?: Array<{shots?: Array<Record<string, unknown>>}>};
   };
+  const sheets = Array.isArray(root.characterSheets)
+    ? root.characterSheets
+    : root.characterSheet
+      ? [root.characterSheet]
+      : [];
+  root.characterSheets = sheets.map((sheet, index) => {
+    const normalized: Record<string, unknown> = {...sheet, id: sheet.id || `CHAR${String(index + 1).padStart(2, '0')}`};
+    if (normalized.breed === '') delete normalized.breed;
+    if (normalized.referenceImageId === '') delete normalized.referenceImageId;
+    return normalized;
+  });
+  if (!root.characterSheet && root.characterSheets[0]) root.characterSheet = root.characterSheets[0];
   for (const [object, key] of [
     [root.interviewBrief, 'characterName'],
     [root.interviewBrief, 'characterBreed'],
@@ -65,6 +95,8 @@ const normalizePlanningOutput = (value: unknown): unknown => {
   const cuts = root.storyboard?.cuts ?? [];
   for (let cutIndex = 0; cutIndex < cuts.length; cutIndex += 1) {
     const cut = cuts[cutIndex];
+    const cutRecord = cut as Record<string, unknown>;
+    if (!Array.isArray(cutRecord.characterIds) && root.characterSheets.length === 1) cutRecord.characterIds = [root.characterSheets[0].id];
     if (typeof (cut as Record<string, unknown>).id !== 'string') {
       (cut as Record<string, unknown>).id = `CUT${String(cutIndex + 1).padStart(2, '0')}`;
     }

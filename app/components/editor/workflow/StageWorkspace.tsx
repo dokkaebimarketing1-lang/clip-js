@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import {FormEvent, useEffect, useState} from 'react';
+import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react';
 import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setWorkflow} from '@/app/store/slices/projectSlice';
 import {StoryboardStudio, TakeStudio} from './ProductionStudio';
@@ -22,6 +22,7 @@ type StageWorkspaceProps = {
   workspace: ProjectWorkspaceId;
   interviewBrief?: InterviewBrief;
   characterSheet?: CharacterSheet;
+  characterSheets?: CharacterSheet[];
   storyboard?: Storyboard;
   sampleMode: boolean;
   onEnableSample: () => void;
@@ -52,32 +53,54 @@ const EmptyState = ({title, description, action}: {title: string; description: s
   </div>
 );
 
-export default function StageWorkspace({workspace, interviewBrief, characterSheet, storyboard, sampleMode, onEnableSample, onOpenEdit, onNavigate}: StageWorkspaceProps) {
+export default function StageWorkspace({workspace, interviewBrief, characterSheet, characterSheets, storyboard, sampleMode, onEnableSample, onOpenEdit, onNavigate}: StageWorkspaceProps) {
   const dispatch = useAppDispatch();
   const projectId = useAppSelector((state) => state.projectState.id);
   const workflow = useAppSelector((state) => state.projectState.workflow);
   const [sentence, setSentence] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
-  const [characterPreviewUrl, setCharacterPreviewUrl] = useState<string | null>(null);
+  const allCharacterSheets = useMemo(
+    () => characterSheets?.length ? characterSheets : characterSheet ? [characterSheet] : [],
+    [characterSheet, characterSheets],
+  );
+  const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
+  const activeCharacter = allCharacterSheets.find((sheet) => sheet.id === activeCharacterId) ?? allCharacterSheets[0];
+  const [characterPreviewUrls, setCharacterPreviewUrls] = useState<Record<string, string>>({});
   const [isUploadingCharacter, setIsUploadingCharacter] = useState(false);
   const [characterUploadError, setCharacterUploadError] = useState<string | null>(null);
   const [showRecompose, setShowRecompose] = useState(false);
   const [confirmImageCredit, setConfirmImageCredit] = useState(false);
   const [imageGenerationJobId, setImageGenerationJobId] = useState<string | null>(null);
+  const [generationCharacterId, setGenerationCharacterId] = useState<string | null>(null);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<'idle' | 'submitting' | 'queued' | 'processing' | 'failed'>('idle');
-  const progress = deriveCreationProgress({brief: interviewBrief, characterSheet, hasStoryboard: Boolean(storyboard), workspace});
+  const progress = deriveCreationProgress({brief: interviewBrief, characterSheets: allCharacterSheets, hasStoryboard: Boolean(storyboard), workspace});
+
+  const connectCharacterReference = useCallback((characterId: string, assetId: string, previewUrl: string) => {
+    const nextSheets = allCharacterSheets.map((sheet) =>
+      (sheet.id ?? sheet.name) === characterId ? {...sheet, referenceImageId: assetId} : sheet,
+    );
+    dispatch(setWorkflow(invalidateForCreativeChange({
+      ...workflow,
+      characterSheet: nextSheets[0],
+      characterSheets: nextSheets,
+    })));
+    setCharacterPreviewUrls((current) => ({...current, [characterId]: previewUrl}));
+  }, [allCharacterSheets, dispatch, workflow]);
 
   useEffect(() => {
-    const assetId = characterSheet?.referenceImageId;
-    if (!assetId || characterPreviewUrl) return;
+    const pending = allCharacterSheets.filter((sheet) => sheet.referenceImageId && !characterPreviewUrls[sheet.id ?? sheet.name]);
+    if (pending.length === 0) return;
     let cancelled = false;
-    void fetch(`/api/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/ui-capability`, {method: 'POST'})
-      .then(async (response) => response.ok ? response.json() as Promise<{url?: string}> : undefined)
-      .then((payload) => { if (!cancelled && payload?.url) setCharacterPreviewUrl(payload.url); })
-      .catch(() => undefined);
+    void Promise.all(pending.map(async (sheet) => {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(sheet.referenceImageId!)}/ui-capability`, {method: 'POST'});
+      const payload = response.ok ? await response.json() as {url?: string} : undefined;
+      return [sheet.id ?? sheet.name, payload?.url] as const;
+    })).then((entries) => {
+      if (!cancelled) setCharacterPreviewUrls((current) => ({...current, ...Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1])))}));
+    }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [characterPreviewUrl, characterSheet?.referenceImageId, projectId]);
+  }, [allCharacterSheets, characterPreviewUrls, projectId]);
 
   const compose = async (event: FormEvent) => {
     event.preventDefault();
@@ -93,10 +116,14 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       });
       const payload = await response.json() as Record<string, unknown>;
       if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'AI 기획을 완료하지 못했습니다.');
+      const parsedSheets = Array.isArray(payload.characterSheets)
+        ? payload.characterSheets.map((sheet) => characterSheetSchema.parse(sheet))
+        : [characterSheetSchema.parse(payload.characterSheet)];
       dispatch(setWorkflow({
         ...workflow,
         interviewBrief: interviewBriefSchema.parse(payload.interviewBrief),
-        characterSheet: characterSheetSchema.parse(payload.characterSheet),
+        characterSheet: parsedSheets[0],
+        characterSheets: parsedSheets,
         storyboard: storyboardSchema.parse(payload.storyboard),
         seedanceMaster: seedanceMasterSettingsSchema.parse(payload.seedanceMaster),
       }));
@@ -109,15 +136,15 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   const startCharacterImageGeneration = async () => {
-    if (!characterSheet || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
+    if (!activeCharacter || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
     setCharacterUploadError(null);
     setImageGenerationStatus('submitting');
     const prompt = [
       'Create a polished cinematic character reference sheet for a video production.',
-      `Character name: ${characterSheet.name}.`,
-      characterSheet.breed ? `Character type or breed: ${characterSheet.breed}.` : '',
-      `Visual traits: ${characterSheet.visualTags.join(', ')}.`,
-      `Color palette: ${Object.entries(characterSheet.palette).map(([label, color]) => `${label} ${color}`).join(', ')}.`,
+      `Character name: ${activeCharacter.name}.`,
+      activeCharacter.breed ? `Character type or breed: ${activeCharacter.breed}.` : '',
+      `Visual traits: ${activeCharacter.visualTags.join(', ')}.`,
+      `Color palette: ${Object.entries(activeCharacter.palette).map(([label, color]) => `${label} ${color}`).join(', ')}.`,
       interviewBrief ? `Project mood: ${interviewBrief.tone}.` : '',
       'Show one consistent character with a clear full-body hero view and supporting front and side views on a clean neutral studio background.',
       'No text, letters, numbers, captions, logos, watermarks, UI, signage, or brand marks anywhere in the image.',
@@ -129,6 +156,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       });
       const payload = await response.json() as {jobId?: string; error?: string};
       if (!response.ok || !payload.jobId) throw new Error(payload.error ?? '이미지 생성 요청 실패');
+      setGenerationCharacterId(activeCharacter.id ?? activeCharacter.name);
       setImageGenerationJobId(payload.jobId);
       setImageGenerationStatus('queued');
     } catch (error) {
@@ -147,12 +175,10 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
         if (!response.ok) throw new Error(payload.error ?? '이미지 상태 조회 실패');
         if (payload.status === 'completed' && payload.assetId && payload.previewUrl) {
           if (cancelled) return;
-          setCharacterPreviewUrl(payload.previewUrl);
-          dispatch(setWorkflow(invalidateForCreativeChange({
-            ...workflow,
-            characterSheet: {...characterSheet!, referenceImageId: payload.assetId},
-          })));
+          if (!generationCharacterId) throw new Error('생성 대상 캐릭터를 확인하지 못했습니다.');
+          connectCharacterReference(generationCharacterId, payload.assetId, payload.previewUrl);
           setImageGenerationJobId(null);
+          setGenerationCharacterId(null);
           setImageGenerationStatus('idle');
           setConfirmImageCredit(false);
           return;
@@ -169,10 +195,10 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     void poll();
     const timer = window.setInterval(() => void poll(), 4000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [characterSheet, dispatch, imageGenerationJobId, imageGenerationStatus, projectId, workflow]);
+  }, [connectCharacterReference, generationCharacterId, imageGenerationJobId, imageGenerationStatus, projectId]);
 
   const uploadCharacterReference = async (file: File) => {
-    if (!characterSheet || isUploadingCharacter) return;
+    if (!activeCharacter || isUploadingCharacter) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setCharacterUploadError('PNG, JPEG, WebP 이미지만 등록할 수 있습니다.');
       return;
@@ -191,9 +217,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       });
       const payload = await response.json() as {assetId?: string; previewUrl?: string; error?: string};
       if (!response.ok || !payload.assetId || !payload.previewUrl) throw new Error(payload.error || '기준 이미지를 등록하지 못했습니다.');
-      const nextWorkflow = invalidateForCreativeChange({...workflow, characterSheet: {...characterSheet, referenceImageId: payload.assetId}});
-      dispatch(setWorkflow(nextWorkflow));
-      setCharacterPreviewUrl(payload.previewUrl);
+      connectCharacterReference(activeCharacter.id ?? activeCharacter.name, payload.assetId, payload.previewUrl);
     } catch (error) {
       setCharacterUploadError(error instanceof Error ? error.message : '기준 이미지를 등록하지 못했습니다.');
     } finally {
@@ -256,26 +280,41 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }
 
   if (workspace === 'reference') {
-    const displayed = characterSheet ?? (sampleMode ? SAMPLE_CHARACTER : undefined);
+    const displayed = activeCharacter ?? (sampleMode ? SAMPLE_CHARACTER : undefined);
+    const activeKey = displayed ? displayed.id ?? displayed.name : '';
+    const activePreviewUrl = characterPreviewUrls[activeKey];
+    const readyCount = allCharacterSheets.filter((sheet) => sheet.referenceImageId).length;
+    const totalCount = allCharacterSheets.length;
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
         <div className="mx-auto max-w-6xl">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">2 · 기준 시트</p>
-          <h1 className="mt-2 text-3xl font-black text-white">캐릭터 기준을 고정합니다</h1>
-          <p className="mt-2 text-sm text-gray-400">프로젝트에 등록된 기준 자산만 승인과 생성 입력에 포함됩니다.</p>
-          {!displayed ? <div className="mt-8"><EmptyState title="기준 시트가 없습니다" description="인터뷰에서 AI 기획을 완료하거나 기준 자산을 업로드하세요. 관련 없는 예시 이미지는 자동으로 표시하지 않습니다."/></div> : (
-            <div className="mt-8 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-              <article className="overflow-hidden rounded-3xl border border-white/10 bg-[#15131a]">
-                {sampleMode ? <><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">샘플 전용 · 현재 프로젝트의 승인 대상이 아닙니다</div><div className="relative aspect-[16/10] bg-black"><Image src="/mock-assets/reference-shiba.webp" alt="샘플 시바견 마스터 시트" fill className="object-contain" sizes="70vw" priority/></div></> : characterPreviewUrl ? <><div className="border-b border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-bold text-emerald-200">✓ 캐릭터 기준 이미지 등록 완료</div><div className="relative aspect-[16/10] bg-black"><Image src={characterPreviewUrl} alt={`${displayed.name} 기준 이미지`} fill unoptimized className="object-contain" sizes="70vw"/></div></> : <div className="flex aspect-[16/10] flex-col items-center justify-center border-b border-dashed border-white/10 bg-black/40 px-8 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-fuchsia-500/15 text-2xl">✦</div><p className="mt-4 text-lg font-black text-white">캐릭터 기준 이미지를 만드세요</p><p className="mt-2 max-w-md text-sm leading-6 text-gray-500">캐릭터 설정은 완성됐습니다. 생성하거나 보유 이미지를 등록해야 다음 장면의 얼굴과 의상이 일관됩니다.</p><div className="mt-5 w-full max-w-xl rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/[0.07] p-4 text-left"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-white">Higgsfield AI 캐릭터 이미지</p><p className="mt-1 text-xs leading-5 text-gray-400">Nano Banana 2 Lite · 1K · 16:9 · 1장</p></div><span className="shrink-0 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-black text-amber-200">1 credit</span></div><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><input type="checkbox" className="mt-0.5 accent-fuchsia-500" checked={confirmImageCredit} disabled={imageGenerationStatus === 'submitting' || imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing'} onChange={(event) => { setConfirmImageCredit(event.target.checked); if (imageGenerationStatus === 'failed') setImageGenerationStatus('idle'); }}/><span className="text-xs leading-5 text-gray-300">실제 Higgsfield 크레딧 <strong className="text-white">1개</strong>가 사용되는 것을 확인했습니다.</span></label><button type="button" disabled={!confirmImageCredit || imageGenerationStatus === 'submitting' || imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing'} onClick={() => void startCharacterImageGeneration()} className="mt-3 w-full rounded-xl bg-fuchsia-500 px-5 py-3 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40">{imageGenerationStatus === 'submitting' ? '생성 요청 제출 중…' : imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing' ? '캐릭터 이미지 생성 중…' : imageGenerationStatus === 'failed' ? '1크레딧으로 다시 생성' : '1크레딧으로 캐릭터 이미지 생성'}</button></div><div className="mt-3 flex flex-wrap justify-center gap-3"><label className="cursor-pointer rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-black text-white hover:bg-white/10">{isUploadingCharacter ? '이미지 등록 중…' : '내 이미지 등록'}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={isUploadingCharacter} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadCharacterReference(file); event.currentTarget.value = ''; }}/></label></div>{characterUploadError ? <p className="mt-3 text-xs font-bold text-red-300" role="alert">{characterUploadError}</p> : <p className="mt-3 text-xs text-gray-600">생성 완료 후 기준 이미지에 자동 등록됩니다. 직접 PNG·JPEG·WebP를 등록할 수도 있습니다.</p>}</div>}
-              </article>
-              <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-6">
-                <h2 className="text-xl font-black text-white">{displayed.name}</h2>
-                <p className="mt-1 text-sm text-gray-400">{displayed.breed ?? '캐릭터 기준'}</p>
-                <div className="mt-5 flex flex-wrap gap-2">{displayed.visualTags.map((tag) => <span key={tag} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300">{tag}</span>)}</div>
-                <div className="mt-8 space-y-3">{Object.entries(displayed.palette).map(([label, color]) => <div key={label} className="flex items-center gap-3"><span className="h-9 w-9 rounded-xl border border-white/10" style={{backgroundColor: color}}/><span className="text-sm text-gray-300">{label}</span><code className="ml-auto text-xs text-gray-500">{color}</code></div>)}</div>
-                {progress.state === 'character-ready' ? <button type="button" onClick={() => onNavigate('storyboard')} className="mt-8 w-full rounded-xl bg-fuchsia-500 px-5 py-3 text-sm font-black text-white hover:bg-fuchsia-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300">다음: 스토리보드 검수 →</button> : <p className="mt-8 rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-gray-500">기준 이미지를 등록하면 스토리보드 검수로 넘어갈 수 있습니다.</p>}
-              </aside>
-            </div>
+          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+            <div><h1 className="text-3xl font-black text-white">출연 캐릭터별 기준을 고정합니다</h1><p className="mt-2 text-sm text-gray-400">메인 캐릭터마다 별도 기준 이미지가 필요합니다. 강아지와 다람쥐라면 각각 한 장씩 준비합니다.</p></div>
+            {totalCount ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-right"><p className="text-xs text-gray-500">기준 이미지 준비</p><p className="mt-1 text-xl font-black text-white">{readyCount} / {totalCount}</p></div> : null}
+          </div>
+          {!displayed ? <div className="mt-8"><EmptyState title="기준 시트가 없습니다" description="인터뷰에서 AI 기획을 완료하세요. AI가 주요 출연 캐릭터를 분리해 각각의 기준 시트를 만듭니다."/></div> : (
+            <>
+              {!sampleMode && allCharacterSheets.length > 0 ? <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{allCharacterSheets.map((sheet, index) => {
+                const key = sheet.id ?? sheet.name;
+                const selected = key === activeKey;
+                const preview = characterPreviewUrls[key];
+                return <button key={key} type="button" onClick={() => { setActiveCharacterId(key); setCharacterUploadError(null); setConfirmImageCredit(false); }} className={`overflow-hidden rounded-2xl border text-left transition ${selected ? 'border-fuchsia-400 bg-fuchsia-500/[0.10] shadow-[0_0_35px_rgba(217,70,239,0.12)]' : 'border-white/10 bg-[#15131a] hover:border-white/25'}`}>
+                  <div className="flex items-center gap-4 p-4">{preview ? <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-black"><Image src={preview} alt={`${sheet.name} 미리보기`} fill unoptimized className="object-cover" sizes="96px"/></div> : <div className="grid h-16 w-24 shrink-0 place-items-center rounded-xl border border-dashed border-white/15 bg-black/30 text-xl text-fuchsia-300">✦</div>}<div className="min-w-0"><p className="text-[11px] font-black text-fuchsia-300">캐릭터 {index + 1}</p><p className="mt-1 truncate text-lg font-black text-white">{sheet.name}</p><p className={`mt-1 text-xs font-bold ${sheet.referenceImageId ? 'text-emerald-300' : 'text-amber-300'}`}>{sheet.referenceImageId ? '✓ 기준 이미지 준비됨' : '기준 이미지 필요'}</p></div></div>
+                </button>;
+              })}</div> : null}
+
+              <div className="mt-5 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+                <article className="overflow-hidden rounded-3xl border border-white/10 bg-[#15131a]">
+                  {sampleMode ? <><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">샘플 전용 · 현재 프로젝트의 승인 대상이 아닙니다</div><div className="relative aspect-[16/10] bg-black"><Image src="/mock-assets/reference-shiba.webp" alt="샘플 시바견 마스터 시트" fill className="object-contain" sizes="70vw" priority/></div></> : activePreviewUrl ? <><div className="border-b border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-bold text-emerald-200">✓ {displayed.name} 기준 이미지 등록 완료</div><div className="relative aspect-[16/10] bg-black"><Image src={activePreviewUrl} alt={`${displayed.name} 기준 이미지`} fill unoptimized className="object-contain" sizes="70vw"/></div></> : <div className="flex aspect-[16/10] flex-col items-center justify-center border-b border-dashed border-white/10 bg-black/40 px-8 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-fuchsia-500/15 text-2xl">✦</div><p className="mt-4 text-lg font-black text-white">{displayed.name} 기준 이미지를 만드세요</p><p className="mt-2 max-w-md text-sm leading-6 text-gray-500">현재 선택한 캐릭터만 생성합니다. 다른 캐릭터는 위 카드에서 따로 선택해 준비합니다.</p><div className="mt-5 w-full max-w-xl rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/[0.07] p-4 text-left"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-white">Higgsfield AI 캐릭터 이미지</p><p className="mt-1 text-xs leading-5 text-gray-400">Nano Banana 2 Lite · 1K · 16:9 · 1장</p></div><span className="shrink-0 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-black text-amber-200">1 credit</span></div><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><input type="checkbox" className="mt-0.5 accent-fuchsia-500" checked={confirmImageCredit} disabled={['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onChange={(event) => { setConfirmImageCredit(event.target.checked); if (imageGenerationStatus === 'failed') setImageGenerationStatus('idle'); }}/><span className="text-xs leading-5 text-gray-300">{displayed.name} 이미지 1장 생성에 1 credit 사용을 확인합니다.</span></label><button type="button" disabled={!confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onClick={() => void startCharacterImageGeneration()} className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40">{imageGenerationStatus === 'submitting' ? '제출 중…' : imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing' ? '이미지 생성 처리 중…' : imageGenerationStatus === 'failed' ? '1 credit으로 다시 생성' : `${displayed.name} 이미지 생성`}</button></div></div>}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 p-4"><div><p className="text-sm font-black text-white">보유 이미지로 등록</p><p className="mt-1 text-xs text-gray-500">PNG · JPEG · WebP · 최대 20MB</p></div><label className={`cursor-pointer rounded-xl border border-white/15 px-4 py-2 text-sm font-bold text-gray-200 hover:border-fuchsia-400/60 hover:text-white ${isUploadingCharacter ? 'pointer-events-none opacity-50' : ''}`}>{isUploadingCharacter ? '등록 중…' : `${displayed.name} 이미지 등록`}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadCharacterReference(file); event.currentTarget.value = ''; }}/></label></div>
+                  {characterUploadError ? <p className="border-t border-red-400/20 bg-red-400/[0.06] px-4 py-3 text-xs text-red-200">{characterUploadError}</p> : null}
+                </article>
+                <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-6"><p className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">선택한 캐릭터</p><h2 className="mt-2 text-xl font-black text-white">{displayed.name}</h2><p className="mt-1 text-sm text-gray-400">{displayed.breed ?? '캐릭터 기준'}</p><div className="mt-5 flex flex-wrap gap-2">{displayed.visualTags.map((tag) => <span key={tag} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300">{tag}</span>)}</div><div className="mt-8 space-y-3">{Object.entries(displayed.palette).map(([label, color]) => <div key={label} className="flex items-center gap-3"><span className="h-9 w-9 rounded-xl border border-white/10" style={{backgroundColor: color}}/><span className="text-sm text-gray-300">{label}</span><code className="ml-auto text-xs text-gray-500">{color}</code></div>)}</div></aside>
+              </div>
+
+              {!sampleMode ? <><div className="mt-6 rounded-3xl border border-fuchsia-400/25 bg-gradient-to-r from-fuchsia-500/[0.10] to-violet-500/[0.08] p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-fuchsia-200">✓ 스토리보드 생성 완료</p><h2 className="mt-2 text-2xl font-black text-white">{storyboard?.cuts.length ?? 0}컷이 이미 준비됐습니다</h2><p className="mt-1 text-sm text-gray-400">기준 이미지 준비 전에도 장면과 등장 캐릭터를 확인할 수 있습니다.</p></div><button type="button" onClick={() => onNavigate('storyboard')} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white hover:bg-fuchsia-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300">스토리보드 {storyboard?.cuts.length ?? 0}컷 보기 →</button></div></div>{progress.state !== 'character-ready' ? <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4 text-sm text-amber-100"><strong>아직 {totalCount - readyCount}명의 기준 이미지가 필요합니다.</strong> 영상 생성과 제작 승인은 모든 캐릭터가 준비된 뒤 열립니다. 스토리보드 검수는 지금 가능합니다.</div> : <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-sm font-bold text-emerald-200">✓ 주요 캐릭터 {totalCount}명의 기준 이미지가 모두 준비됐습니다.</div>}</> : null}
+            </>
           )}
         </div>
       </section>
@@ -290,7 +329,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">3 · 스토리보드</p>
           <h1 className="mt-2 text-3xl font-black text-white">장면의 흐름을 검수합니다</h1>
           <p className="mt-2 text-sm text-gray-400">이미지가 없는 실제 컷에는 빈 상태를 표시합니다. 샘플 이미지는 승인 해시에 포함되지 않습니다.</p>
-          {!cuts.length ? <div className="mt-8"><EmptyState title="스토리보드가 없습니다" description="인터뷰에서 AI 기획을 완료하면 컷 구조가 생성됩니다. 이미지 콘티는 이후 각 컷에 정식 자산으로 연결합니다."/></div> : storyboard ? <StoryboardStudio storyboard={storyboard}/> : (
+          {!cuts.length ? <div className="mt-8"><EmptyState title="스토리보드가 없습니다" description="인터뷰에서 AI 기획을 완료하면 컷 구조가 생성됩니다. 이미지 콘티는 이후 각 컷에 정식 자산으로 연결합니다."/></div> : storyboard ? <StoryboardStudio storyboard={storyboard} characterSheets={allCharacterSheets}/> : (
             <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               {cuts.map((cut, index) => {
                 const action = 'action' in cut ? cut.action : cut.shots.map((shot) => shot.action).join(' · ');

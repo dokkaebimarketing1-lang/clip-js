@@ -7,9 +7,11 @@ const rulesProvider: PlanningProvider = {
   model: 'deterministic-rules-v1',
   compose: async (sentence) => {
     const interviewBrief = deriveInterviewBrief(sentence);
+    const characterSheet = deriveCharacterSheet(interviewBrief);
     return {
       interviewBrief,
-      characterSheet: deriveCharacterSheet(interviewBrief),
+      characterSheet,
+      characterSheets: [{...characterSheet, id: 'CHAR01'}],
       storyboard: buildStoryboardFromBrief(interviewBrief),
     };
   },

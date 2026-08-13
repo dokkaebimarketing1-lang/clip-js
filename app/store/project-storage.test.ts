@@ -89,6 +89,26 @@ describe('IndexedDB project revision CAS', () => {
     expect((await db.get('projects', id) as Record<string, unknown>).projectSchemaVersion).toBeUndefined();
   });
 
+  it('persists multi-character sheets and per-cut character assignments across reconnect', async () => {
+    const id = `multi-${crypto.randomUUID()}`;
+    const project = {...structuredClone(initialState), id, projectName: 'multi', revision: 0};
+    project.workflow.characterSheet = {id: 'CHAR01', name: '코코', breed: '강아지', palette: {dominant: '#d4a574', secondary: '#8b5a2b', accent: '#4a7c59'}, visualTags: []};
+    project.workflow.characterSheets = [
+      project.workflow.characterSheet,
+      {id: 'CHAR02', name: '토리', breed: '다람쥐', palette: {dominant: '#b87942', secondary: '#f0d2a2', accent: '#5f7c45'}, visualTags: []},
+    ];
+    project.workflow.storyboard = {
+      version: 'v1', title: '함께', noBgm: true,
+      cuts: [{id: 'CUT01', title: '함께 등장', characterIds: ['CHAR01', 'CHAR02'], absoluteStartSeconds: 0, absoluteEndSeconds: 5, shots: [{id: 'S1', startSeconds: 0, endSeconds: 5, startFrame: '시작', endFrame: '끝', camera: '고정', action: '함께 걷는다', dialogue: '—', sfx: '숲'}]}],
+    };
+    await storeProject(project);
+
+    const restored = await getProject(id);
+
+    expect(restored?.workflow.characterSheets?.map((sheet) => sheet.name)).toEqual(['코코', '토리']);
+    expect(restored?.workflow.storyboard?.cuts[0].characterIds).toEqual(['CHAR01', 'CHAR02']);
+  });
+
   it('persists cut frame asset links and selected take timeline media across reconnect', async () => {
     const id = `p1-${crypto.randomUUID()}`;
     const project = {...structuredClone(initialState), id, projectName: 'P1', revision: 0};

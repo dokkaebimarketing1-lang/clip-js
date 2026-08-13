@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {approveGeneration, assertVideoGenerationAllowed, ApprovalRequiredError, invalidateApproval} from './approval';
-import {createDefaultWorkflow, type Storyboard} from './schema';
+import {approveCreative, approveGeneration, assertVideoGenerationAllowed, ApprovalRequiredError, invalidateApproval} from './approval';
+import {createDefaultWorkflow, workflowStateSchema, type Storyboard} from './schema';
 import {approveAgentChange, previewAgentCommand} from '../agent/commands';
 import {assertSafeRemoteUrl, isHostnameAllowed} from '../security/remote-url';
 import projectReducer, {initialState, rehydrate, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
@@ -26,6 +26,30 @@ describe('storyboard approval gate', () => {
     await expect(assertVideoGenerationAllowed({...workflow, storyboard: {...storyboard, title: 'changed'}, generationApproval})).rejects.toThrow('changed after approval');
     await expect(assertVideoGenerationAllowed({...workflow, storyboard, seedanceMaster: {...workflow.seedanceMaster, duration: 20, axes: {...workflow.seedanceMaster.axes, durationStructure: '20s-4stage'}}, generationApproval})).rejects.toThrow('Generation blueprint changed after approval');
     expect(invalidateApproval(generationApproval).status).toBe('invalidated');
+  });
+});
+
+describe('multi-character workflow compatibility', () => {
+  const dog = {name: '코코', breed: '강아지', palette: {dominant: '#d4a574', secondary: '#8b5a2b', accent: '#4a7c59'}, visualTags: ['부드러운 털']};
+  const squirrel = {name: '토리', breed: '다람쥐', palette: {dominant: '#b87942', secondary: '#f0d2a2', accent: '#5f7c45'}, visualTags: ['풍성한 꼬리']};
+
+  it('migrates a legacy single character sheet into the character collection', () => {
+    const migrated = workflowStateSchema.parse({...createDefaultWorkflow(), characterSheet: dog});
+    expect(migrated.characterSheet?.name).toBe('코코');
+    expect(migrated.characterSheets?.map((item) => item.name)).toEqual(['코코']);
+  });
+
+  it('keeps all main characters while preserving the first as the legacy primary character', () => {
+    const parsed = workflowStateSchema.parse({...createDefaultWorkflow(), characterSheet: undefined, characterSheets: [dog, squirrel]});
+    expect(parsed.characterSheet?.name).toBe('코코');
+    expect(parsed.characterSheets?.map((item) => item.name)).toEqual(['코코', '토리']);
+  });
+
+  it('includes every main character in the creative approval hash', async () => {
+    const first = await approveCreative(storyboard, 'owner', new Date('2026-08-13T00:00:00Z'), [dog, squirrel]);
+    const changed = await approveCreative(storyboard, 'owner', new Date('2026-08-13T00:00:00Z'), [dog, {...squirrel, visualTags: ['짧은 꼬리']}]);
+    expect(first.characterSheetHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.characterSheetHash).not.toBe(changed.characterSheetHash);
   });
 });
 

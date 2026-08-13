@@ -1,7 +1,7 @@
 import {NextRequest, NextResponse} from 'next/server';
 import {z} from 'zod';
 import {approveCreative} from '@/app/lib/workflow/approval';
-import {storyboardSchema} from '@/app/lib/workflow/schema';
+import {characterSheetSchema, storyboardSchema} from '@/app/lib/workflow/schema';
 import {authorizeApprovalRequest} from '@/app/lib/security/api-auth';
 import {signCreativeApproval} from '@/app/lib/security/approval-signature';
 import {readLimitedJson} from '@/app/lib/security/request-body';
@@ -9,15 +9,16 @@ import {readLimitedJson} from '@/app/lib/security/request-body';
 const requestSchema = z.object({
   projectId: z.string().min(1).max(128),
   storyboard: storyboardSchema,
+  characterSheets: z.array(characterSheetSchema).min(1).max(10).optional(),
 
 }).strict();
 
 export async function POST(request: NextRequest) {
   try {
     authorizeApprovalRequest(request);
-    const {projectId, storyboard} = requestSchema.parse(await readLimitedJson(request));
+    const {projectId, storyboard, characterSheets} = requestSchema.parse(await readLimitedJson(request));
     const now = new Date();
-    const creativeApproval = signCreativeApproval(projectId, await approveCreative(storyboard, 'project-owner', now));
+    const creativeApproval = signCreativeApproval(projectId, await approveCreative(storyboard, 'project-owner', now, characterSheets));
     return NextResponse.json({creativeApproval});
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Approval failed.';

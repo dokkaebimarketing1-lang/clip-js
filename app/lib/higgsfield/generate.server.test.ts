@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {resolveHiggsfieldLaunchSpec} from './generate.server';
+import {parseHiggsfieldSubmittedJobId, resolveHiggsfieldLaunchSpec} from './generate.server';
 
 describe('Higgsfield CLI launcher', () => {
   it('runs the JavaScript entry with Node instead of spawning a Windows cmd shim', () => {
@@ -32,5 +32,21 @@ describe('Higgsfield CLI launcher', () => {
 
   it('keeps the normal executable path on non-Windows hosts', () => {
     expect(resolveHiggsfieldLaunchSpec({platform: 'linux'})).toEqual({executable: 'higgsfield', prefixArgs: []});
+  });
+});
+
+describe('Higgsfield submitted job response parser', () => {
+  const jobId = '24dd39cf-cc93-45eb-a4a7-038c7149d4b3';
+
+  it('accepts the CLI non-wait JSON job ID array', () => {
+    expect(parseHiggsfieldSubmittedJobId([jobId])).toBe(jobId);
+  });
+
+  it('accepts nested and named job ID responses', () => {
+    expect(parseHiggsfieldSubmittedJobId({data: {jobs: [{job_id: jobId}]}})).toBe(jobId);
+  });
+
+  it('rejects malformed or non-UUID responses', () => {
+    expect(parseHiggsfieldSubmittedJobId({id: 'not-a-job'})).toBeUndefined();
   });
 });

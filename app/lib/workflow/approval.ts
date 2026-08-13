@@ -34,11 +34,15 @@ export const approveCreative = async (
   storyboard: Storyboard | undefined,
   approvedBy: string,
   now = new Date(),
-  characterSheet?: CharacterSheet,
+  characterSheet?: CharacterSheet | CharacterSheet[],
 ): Promise<CreativeApproval> => creativeApprovalSchema.parse({
   status: 'approved',
   storyboardHash: storyboard ? await computeStoryboardHash(storyboard) : undefined,
-  characterSheetHash: characterSheet ? await sha256(characterSheetSchema.parse(characterSheet)) : undefined,
+  characterSheetHash: characterSheet ? await sha256(
+    Array.isArray(characterSheet)
+      ? characterSheet.map((sheet) => characterSheetSchema.parse(sheet))
+      : characterSheetSchema.parse(characterSheet),
+  ) : undefined,
   approvedAt: now.toISOString(),
   approvedBy,
 });

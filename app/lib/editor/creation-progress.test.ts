@@ -18,7 +18,7 @@ const character = {
 
 describe('creation progress guidance', () => {
   it('shows a strong planning completion reveal and character CTA', () => {
-    expect(deriveCreationProgress({brief, characterSheet: character, hasStoryboard: true})).toEqual({
+    expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: true})).toEqual({
       state: 'plan-complete',
       completedCount: 3,
       nextWorkspace: 'reference',
@@ -27,18 +27,30 @@ describe('creation progress guidance', () => {
   });
 
   it('guides the user to register a character image when only text criteria exist', () => {
-    expect(deriveCreationProgress({brief, characterSheet: character, hasStoryboard: true, workspace: 'reference'})).toMatchObject({
+    expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: true, workspace: 'reference'})).toMatchObject({
       state: 'character-image-needed',
       nextLabel: '캐릭터 기준 이미지 등록',
     });
   });
 
   it('guides the user to storyboard after a managed character image is registered', () => {
-    expect(deriveCreationProgress({brief, characterSheet: {...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef'}, hasStoryboard: true, workspace: 'reference'})).toEqual({
+    expect(deriveCreationProgress({brief, characterSheets: [{...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef'}], hasStoryboard: true, workspace: 'reference'})).toEqual({
       state: 'character-ready',
       completedCount: 4,
       nextWorkspace: 'storyboard',
       nextLabel: '스토리보드 검수하기',
     });
+  });
+
+  it('keeps storyboard locked until every main character has a reference image', () => {
+    expect(deriveCreationProgress({
+      brief,
+      characterSheets: [
+        {...character, id: 'CHAR01', referenceImageId: 'ga_0123456789abcdef0123456789abcdef'},
+        {...character, id: 'CHAR02', name: '토리', breed: '다람쥐'},
+      ],
+      hasStoryboard: true,
+      workspace: 'reference',
+    })).toMatchObject({state: 'character-image-needed'});
   });
 });
