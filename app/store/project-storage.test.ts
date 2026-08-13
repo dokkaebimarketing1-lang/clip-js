@@ -80,7 +80,9 @@ describe('IndexedDB project revision CAS', () => {
     await db.put('projects', legacy);
 
     const migrated = await getProject(id);
+    const migratedAgain = await getProject(id);
     expect(migrated?.projectSchemaVersion).toBe(3);
+    expect(migratedAgain?.projectSchemaVersion).toBe(3);
     expect(migrated?.revision).toBe(0);
     expect(migrated?.workflow.generationApproval.status).toBe('invalidated');
     const backups = await listProjectMigrationBackups(id);

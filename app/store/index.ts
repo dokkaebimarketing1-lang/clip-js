@@ -29,14 +29,17 @@ export class ProjectRevisionConflictError extends Error {
 // Create IndexedDB database for files and projects
 export const setupDB = async () => {
     if (typeof window === 'undefined') return null;
-    const db = await openDB('clipjs-files', CLIPJS_DB_VERSION, {
+    const activeDb = await openDB('clipjs-files', CLIPJS_DB_VERSION, {
         upgrade(db) {
             if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
             if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
             if (!db.objectStoreNames.contains('projectBackups')) db.createObjectStore('projectBackups', { keyPath: 'id' });
         },
+        blocking() {
+            activeDb?.close();
+        },
     });
-    return db;
+    return activeDb;
 };
 
 const projectVersion = (value: unknown): number => {
@@ -55,10 +58,12 @@ const backupLegacyProject = async (db: NonNullable<Awaited<ReturnType<typeof set
     if (projectVersion(snapshot) === 3) return;
     const projectId = projectIdOf(snapshot);
     const serialized = JSON.stringify(snapshot);
-    const existing = (await db.getAll('projectBackups')) as ProjectMigrationBackup[];
-    if (existing.some((backup) => backup.projectId === projectId && JSON.stringify(backup.snapshot) === serialized)) return;
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${projectId}\0${serialized}`));
+    const snapshotHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const backupId = `${projectId}:${snapshotHash}`;
+    if (await db.get('projectBackups', backupId)) return;
     const backup: ProjectMigrationBackup = {
-        id: `${projectId}:${Date.now()}:${crypto.randomUUID()}`,
+        id: backupId,
         projectId,
         sourceSchemaVersion: projectVersion(snapshot),
         createdAt: new Date().toISOString(),
