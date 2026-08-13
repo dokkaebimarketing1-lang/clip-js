@@ -6,10 +6,12 @@ vi.mock('server-only', () => ({}));
 const submit = vi.fn();
 const guardedSubmit = vi.fn();
 const getAccountStatus = vi.fn();
+const getGenerationJob = vi.fn();
 
 vi.mock('@/app/lib/higgsfield/generate.server', () => ({
   submitHiggsfieldSeedanceJob: submit,
   getHiggsfieldAccountStatus: getAccountStatus,
+  getHiggsfieldGenerationJob: getGenerationJob,
 }));
 vi.mock('@/app/lib/higgsfield/submission-guard.server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/app/lib/higgsfield/submission-guard.server')>();
@@ -50,8 +52,9 @@ describe('temporary Higgsfield CLI generation route', () => {
     vi.stubEnv('CLIPJS_AGENT_TOKEN', 'test-agent');
     vi.stubEnv('CLIPJS_APPROVAL_TOKEN', 'test-owner');
     vi.stubEnv('CLIPJS_HIGGSFIELD_TEMP_SUBMIT_ENABLED', 'false');
-    guardedSubmit.mockResolvedValue({job: {id: 'higgsfield-job-1'}, reused: false});
+    guardedSubmit.mockResolvedValue({job: {id: '4e97908e-4b6d-413a-96e8-d64c560267bc'}, reused: false});
     getAccountStatus.mockResolvedValue({credits: 46.19, subscription_plan_type: 'ultra'});
+    getGenerationJob.mockResolvedValue({id: '4e97908e-4b6d-413a-96e8-d64c560267bc', status: 'completed', job_type: 'seedance_2_5', display_name: 'Seedance 2.5', result_url: 'https://result.example/video.mp4'});
   });
 
   afterEach(() => vi.unstubAllEnvs());
@@ -66,6 +69,21 @@ describe('temporary Higgsfield CLI generation route', () => {
     expect(await response.json()).toEqual({enabled: true, credits: 46.19, plan: 'ultra'});
     expect(getAccountStatus).toHaveBeenCalledOnce();
     expect(guardedSubmit).not.toHaveBeenCalled();
+  });
+
+  it('returns one sanitized generation job for browser polling', async () => {
+    const {GET} = await import('./route');
+    const response = await GET(new NextRequest('http://localhost/api/higgsfield/generate?jobId=4e97908e-4b6d-413a-96e8-d64c560267bc', {
+      headers: {authorization: 'Bearer test-agent'},
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      id: '4e97908e-4b6d-413a-96e8-d64c560267bc',
+      status: 'completed',
+      model: 'seedance_2_5',
+      displayName: 'Seedance 2.5',
+      resultUrl: 'https://result.example/video.mp4',
+    });
   });
 
   it('fails closed unless temporary Higgsfield submission is explicitly enabled', async () => {
@@ -89,7 +107,7 @@ describe('temporary Higgsfield CLI generation route', () => {
     const {POST} = await import('./route');
     const response = await POST(makeRequest());
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({job: {id: 'higgsfield-job-1'}, reused: false});
+    expect(await response.json()).toEqual({job: {id: '4e97908e-4b6d-413a-96e8-d64c560267bc'}, reused: false});
     expect(guardedSubmit).toHaveBeenCalledOnce();
     expect(guardedSubmit.mock.calls[0]?.[0]).toMatch(/^[a-f0-9]{64}$/);
     expect(guardedSubmit.mock.calls[0]?.[1]).toEqual(requestBody.request);

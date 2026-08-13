@@ -23,6 +23,15 @@ export type HiggsfieldAccountStatus = {
   credits: number;
   subscription_plan_type: string;
 };
+export type HiggsfieldGenerationJob = {
+  id: string;
+  status: string;
+  job_type?: string;
+  display_name?: string;
+  result_url?: string | null;
+  min_result_url?: string | null;
+  error?: unknown;
+};
 type LaunchOptions = {
   cliPath?: string;
   pathValue?: string;
@@ -172,6 +181,46 @@ export const getHiggsfieldAccountStatus = (): Promise<HiggsfieldAccountStatus> =
         resolve({credits: parsed.credits, subscription_plan_type: parsed.subscription_plan_type});
       } catch {
         settleReject(new Error('Higgsfield CLI returned an invalid account status.'));
+      }
+    });
+  });
+};
+
+export const getHiggsfieldGenerationJob = (jobId: string): Promise<HiggsfieldGenerationJob> => {
+  if (!/^[a-f0-9-]{36}$/i.test(jobId)) return Promise.reject(new Error('Invalid Higgsfield job ID.'));
+  const launch = resolveHiggsfieldLaunchSpec({cliPath: process.env.HIGGSFIELD_CLI_PATH});
+  const args = [...launch.prefixArgs, 'generate', 'get', jobId, '--json'];
+  return new Promise((resolve, reject) => {
+    const child = spawn(/* turbopackIgnore: true */ launch.executable, args, {shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+    let stdout = '';
+    let stderr = '';
+    let size = 0;
+    let settled = false;
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      rejectOnce(new Error('Higgsfield generation status timed out.'));
+    }, 30_000);
+    child.stdout.on('data', (chunk: Buffer) => { size += chunk.length; if (size > MAX_OUTPUT_BYTES) child.kill(); else stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk: Buffer) => { size += chunk.length; if (size > MAX_OUTPUT_BYTES) child.kill(); else stderr += chunk.toString('utf8'); });
+    child.once('error', rejectOnce);
+    child.once('close', (code) => {
+      if (settled) return;
+      clearTimeout(timer);
+      if (size > MAX_OUTPUT_BYTES) return rejectOnce(new Error('Higgsfield CLI output exceeded the safety limit.'));
+      if (code !== 0) return rejectOnce(new Error(`Higgsfield generation status failed${stderr.trim() ? `: ${stderr.trim()}` : '.'}`));
+      try {
+        const parsed = JSON.parse(stdout) as HiggsfieldGenerationJob;
+        if (typeof parsed.id !== 'string' || typeof parsed.status !== 'string') throw new Error('invalid job');
+        settled = true;
+        resolve(parsed);
+      } catch {
+        rejectOnce(new Error('Higgsfield CLI returned an invalid generation status.'));
       }
     });
   });

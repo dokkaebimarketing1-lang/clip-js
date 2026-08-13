@@ -2,7 +2,7 @@ import {NextRequest, NextResponse} from 'next/server';
 import {z} from 'zod';
 import {authorizeAgentRequest, authorizeApprovalRequest} from '@/app/lib/security/api-auth';
 import {readLimitedJson} from '@/app/lib/security/request-body';
-import {getHiggsfieldAccountStatus, submitHiggsfieldSeedanceJob} from '@/app/lib/higgsfield/generate.server';
+import {getHiggsfieldAccountStatus, getHiggsfieldGenerationJob, submitHiggsfieldSeedanceJob} from '@/app/lib/higgsfield/generate.server';
 import {
   computeHiggsfieldIdempotencyKey,
   createHiggsfieldSubmissionGuard,
@@ -23,6 +23,17 @@ const isTemporarySubmitEnabled = () => process.env.CLIPJS_HIGGSFIELD_TEMP_SUBMIT
 export async function GET(request: NextRequest) {
   try {
     authorizeAgentRequest(request);
+    const jobId = request.nextUrl.searchParams.get('jobId');
+    if (jobId) {
+      const job = await getHiggsfieldGenerationJob(jobId);
+      return NextResponse.json({
+        id: job.id,
+        status: job.status,
+        model: job.job_type,
+        displayName: job.display_name,
+        resultUrl: job.result_url ?? job.min_result_url ?? null,
+      });
+    }
     const account = await getHiggsfieldAccountStatus();
     return NextResponse.json({
       enabled: isTemporarySubmitEnabled(),

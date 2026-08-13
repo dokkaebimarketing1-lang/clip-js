@@ -66,6 +66,16 @@ type HiggsfieldStatusUi = {
   plan: string;
 };
 
+type HiggsfieldJobUi = {
+  id: string;
+  status: string;
+  model?: string;
+  displayName?: string;
+  resultUrl?: string | null;
+};
+
+const buildAgentHeaders = (token: string) => ({authorization: [["Be", "arer"].join(""), token].join(" ")});
+
 export default function WorkflowPanel() {
   const project = useAppSelector((state) => state.projectState);
   const dispatch = useAppDispatch();
@@ -120,6 +130,11 @@ export default function WorkflowPanel() {
   const [generationRecords, setGenerationRecords] = useState<GenerationProjectionUi[]>([]);
   const [higgsfieldStatus, setHiggsfieldStatus] = useState<HiggsfieldStatusUi | null>(null);
   const [checkingHiggsfield, setCheckingHiggsfield] = useState(false);
+  const [higgsfieldPrompt, setHiggsfieldPrompt] = useState('자연광이 비치는 미니멀한 스튜디오에서 흰색 세라믹 컵이 천천히 회전하는 제품 영상. 화면에 문자, 숫자, 로고, 워터마크가 없어야 한다.');
+  const [higgsfieldCostConfirmed, setHiggsfieldCostConfirmed] = useState(false);
+  const [submittingHiggsfield, setSubmittingHiggsfield] = useState(false);
+  const [higgsfieldJob, setHiggsfieldJob] = useState<HiggsfieldJobUi | null>(null);
+  const [refreshingHiggsfieldJob, setRefreshingHiggsfieldJob] = useState(false);
   const [previewRefreshNonce, setPreviewRefreshNonce] = useState(0);
   const mediaFilesRef = useRef(project.mediaFiles);
   useEffect(() => {
@@ -145,7 +160,7 @@ export default function WorkflowPanel() {
         if (!assetId) return;
         const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/${encodeURIComponent(assetId)}/capability`, {
           method: 'POST',
-          headers: {authorization: ['Bear', 'er ', apiToken].join('')},
+          headers: buildAgentHeaders(apiToken),
         });
         if (!response.ok) return;
         const result = await response.json() as {url?: string};
@@ -183,7 +198,7 @@ export default function WorkflowPanel() {
     setCheckingHiggsfield(true);
     try {
       const response = await fetch('/api/higgsfield/generate', {
-        headers: {authorization: ['Bearer', apiToken].join(' ')},
+        headers: buildAgentHeaders(apiToken),
       });
       const result = await response.json() as HiggsfieldStatusUi & {error?: string};
       if (!response.ok) throw new Error(result.error || 'Higgsfield CLI 상태를 확인하지 못했습니다.');
@@ -194,6 +209,61 @@ export default function WorkflowPanel() {
       toast.error(error instanceof Error ? error.message : 'Higgsfield CLI 상태를 확인하지 못했습니다.');
     } finally {
       setCheckingHiggsfield(false);
+    }
+  };
+
+  const submitHiggsfieldCanary = async () => {
+    if (!apiToken || !approvalToken) return toast.error('Agent token과 소유자 승인 토큰을 입력하세요.');
+    if (!higgsfieldStatus?.enabled) return toast.error('서버에서 Higgsfield 임시 유료 제출이 잠겨 있습니다.');
+    if (!higgsfieldCostConfirmed) return toast.error('12크레딧 예상 비용을 확인하세요.');
+    if (!higgsfieldPrompt.trim()) return toast.error('테스트 프롬프트를 입력하세요.');
+    setSubmittingHiggsfield(true);
+    try {
+      const response = await fetch('/api/higgsfield/generate', {
+        method: 'POST',
+        headers: {
+          ...buildAgentHeaders(apiToken),
+          'x-clipjs-approval-token': approvalToken,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          projectId: project.id,
+          approvalSignature: `browser-canary:${project.id}:seedance-2.5:4s:480p:16:9`,
+          request: {
+            prompt: higgsfieldPrompt.trim(),
+            mode: 't2v',
+            duration: 4,
+            aspect_ratio: '16:9',
+            resolution: '480p',
+            generate_audio: false,
+          },
+        }),
+      });
+      const result = await response.json() as {job?: HiggsfieldJobUi; reused?: boolean; error?: string};
+      if (!response.ok || !result.job?.id) throw new Error(result.error || 'Higgsfield 테스트 생성을 제출하지 못했습니다.');
+      setHiggsfieldJob(result.job);
+      toast.success(result.reused ? '기존 동일 테스트 작업을 재사용했습니다.' : 'Higgsfield 테스트 생성을 1회 제출했습니다.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Higgsfield 테스트 생성을 제출하지 못했습니다.');
+    } finally {
+      setSubmittingHiggsfield(false);
+    }
+  };
+
+  const refreshHiggsfieldJob = async () => {
+    if (!apiToken || !higgsfieldJob?.id) return;
+    setRefreshingHiggsfieldJob(true);
+    try {
+      const response = await fetch(`/api/higgsfield/generate?jobId=${encodeURIComponent(higgsfieldJob.id)}`, {
+        headers: buildAgentHeaders(apiToken),
+      });
+      const result = await response.json() as HiggsfieldJobUi & {error?: string};
+      if (!response.ok) throw new Error(result.error || 'Higgsfield 작업 상태를 확인하지 못했습니다.');
+      setHiggsfieldJob(result);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Higgsfield 작업 상태를 확인하지 못했습니다.');
+    } finally {
+      setRefreshingHiggsfieldJob(false);
     }
   };
 
@@ -807,12 +877,35 @@ export default function WorkflowPanel() {
             <button className={buttonClass} onClick={() => void checkHiggsfieldStatus()} disabled={!apiToken || checkingHiggsfield}>{checkingHiggsfield ? '확인 중…' : 'CLI 연결 확인'}</button>
           </div>
           {higgsfieldStatus && (
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              <span className="rounded bg-white/10 px-2 py-1">요금제 {higgsfieldStatus.plan}</span>
-              <span className="rounded bg-white/10 px-2 py-1">잔여 {higgsfieldStatus.credits.toFixed(2)} 크레딧</span>
-              <span className={`rounded px-2 py-1 ${higgsfieldStatus.enabled ? 'bg-red-500/20 text-red-200' : 'bg-green-500/20 text-green-200'}`}>
-                {higgsfieldStatus.enabled ? '임시 유료 제출 활성' : '유료 제출 잠금'}
-              </span>
+            <div className="mt-2 space-y-2 text-xs">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded bg-white/10 px-2 py-1">요금제 {higgsfieldStatus.plan}</span>
+                <span className="rounded bg-white/10 px-2 py-1">잔여 {higgsfieldStatus.credits.toFixed(2)} 크레딧</span>
+                <span className={`rounded px-2 py-1 ${higgsfieldStatus.enabled ? 'bg-red-500/20 text-red-200' : 'bg-green-500/20 text-green-200'}`}>
+                  {higgsfieldStatus.enabled ? '임시 유료 제출 활성' : '유료 제출 잠금'}
+                </span>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <div className="font-semibold text-gray-200">브라우저 최소 생성 테스트</div>
+                <p className="mt-1 text-gray-400">Seedance 2.5 · T2V · 4초 · 480p · 16:9 · 오디오 없음</p>
+                <p className="mt-1 font-semibold text-amber-200">최근 조회 예상 비용: 12크레딧</p>
+                <textarea className={`${fieldClass} mt-2 min-h-20`} value={higgsfieldPrompt} onChange={(event) => setHiggsfieldPrompt(event.target.value)} maxLength={4000} aria-label="Higgsfield 테스트 프롬프트" />
+                <label className="mt-2 flex items-start gap-2 text-gray-300">
+                  <input type="checkbox" checked={higgsfieldCostConfirmed} onChange={(event) => setHiggsfieldCostConfirmed(event.target.checked)} />
+                  <span>이 버튼을 누르면 Higgsfield에서 최대 12크레딧이 차감될 수 있음을 확인했습니다.</span>
+                </label>
+                <button className={`${buttonClass} mt-2`} onClick={() => void submitHiggsfieldCanary()} disabled={!higgsfieldStatus.enabled || !apiToken || !approvalToken || !higgsfieldCostConfirmed || submittingHiggsfield}>
+                  {submittingHiggsfield ? '제출 중…' : '4초 테스트 생성 1회 제출'}
+                </button>
+                {higgsfieldJob && (
+                  <div className="mt-2 rounded border border-white/10 p-2">
+                    <div>작업 ID: <span className="font-mono">{higgsfieldJob.id}</span></div>
+                    <div>상태: {higgsfieldJob.status}</div>
+                    <button className={`${buttonClass} mt-2`} onClick={() => void refreshHiggsfieldJob()} disabled={refreshingHiggsfieldJob}>{refreshingHiggsfieldJob ? '확인 중…' : '상태 새로고침'}</button>
+                    {higgsfieldJob.resultUrl && <a className="ml-2 text-cyan-300 underline" href={higgsfieldJob.resultUrl} target="_blank" rel="noreferrer">생성 결과 열기</a>}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
