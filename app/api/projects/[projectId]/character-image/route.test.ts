@@ -98,6 +98,16 @@ describe('project character image generation route', () => {
     expect(submit).toHaveBeenCalledOnce();
   });
 
+  it('rejects active-job reuse when the paid request prompt changed', async () => {
+    const {POST} = await import('./route');
+    const first = await POST(makePost({prompt: 'first approved character reference prompt', confirmCreditCost: 1}), context);
+    const second = await POST(makePost({prompt: 'second changed character reference prompt', confirmCreditCost: 1}), context);
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({code: 'ACTIVE_REQUEST_MISMATCH'});
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
   it('does not reuse one character job for another character', async () => {
     const {POST} = await import('./route');
     await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}), context);

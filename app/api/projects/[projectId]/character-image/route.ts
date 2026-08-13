@@ -5,13 +5,14 @@ import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
 import {getHiggsfieldGenerationJob, parseHiggsfieldSubmittedJobId, submitHiggsfieldCharacterImageJob} from '@/app/lib/higgsfield/generate.server';
 import {stageHiggsfieldImageReferences} from '@/app/lib/higgsfield/image-reference-staging.server';
 import {readLimitedJson} from '@/app/lib/security/request-body';
+import {sha256} from '@/app/lib/workflow/hash';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const UUID = /^[a-f0-9-]{36}$/i;
 type ImageLineage = {styleBibleHash: string; styleReferenceImageIds: string[]};
-const activeProjects = new Map<string, {jobId: string; characterId: string; lineage: ImageLineage}>();
+const activeProjects = new Map<string, {jobId: string; characterId: string; lineage: ImageLineage; requestHash: string}>();
 const ingestedJobs = new Map<string, {projectId: string; characterId: string; assetId: string; contentSha256: string; lineage: ImageLineage}>();
 
 const assertSameOrigin = (request: NextRequest) => {
@@ -61,12 +62,16 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
       throw new Error('A later character image must reference the approved project style anchor.');
     }
     const lineage = {styleBibleHash, styleReferenceImageIds};
+    const requestHash = await sha256({characterId, prompt, lineage, model: 'nano_banana_2_lite', aspectRatio: '16:9', resolution: '1k', thinking: 'HIGH'});
     const active = activeProjects.get(projectId);
     if (active) {
       if (active.characterId !== characterId) {
         return NextResponse.json({error: '다른 캐릭터 이미지 생성이 처리 중입니다.', code: 'ANOTHER_CHARACTER_ACTIVE'}, {status: 409});
       }
       if (active.lineage.styleBibleHash !== styleBibleHash || active.lineage.styleReferenceImageIds.join(',') !== styleReferenceImageIds.join(',')) throw new Error('Active image job lineage does not match.');
+      if (active.requestHash !== requestHash) {
+        return NextResponse.json({error: '진행 중인 이미지 생성 요청과 현재 요청이 다릅니다.', code: 'ACTIVE_REQUEST_MISMATCH'}, {status: 409});
+      }
       return NextResponse.json({jobId: active.jobId, characterId, lineage, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: true}, {status: 202});
     }
     const staged = stageHiggsfieldImageReferences(referenceAssets.map((asset) => ({
@@ -82,7 +87,7 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     }
     const jobId = parseHiggsfieldSubmittedJobId(result);
     if (!jobId) throw new Error('Higgsfield did not return a valid job ID.');
-    activeProjects.set(projectId, {jobId, characterId, lineage});
+    activeProjects.set(projectId, {jobId, characterId, lineage, requestHash});
     return NextResponse.json({jobId, characterId, lineage, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false}, {status: 202});
   } catch (error) {
     console.error('Higgsfield character image submission rejected.', {name: error instanceof Error ? error.name : 'UnknownError'});
