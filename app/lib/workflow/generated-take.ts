@@ -118,9 +118,14 @@ export const prepareApprovedTakeImport = (
       || (candidate.scope === 'shot' && take.scope === 'shot' && candidate.shotSpecId === take.shotSpecId)
       ? {...candidate, selected: false}
       : candidate);
+  const takeIdsInScope = new Set(takes.filter((candidate) => (candidate.scope === 'production' && take.scope === 'production')
+    || (candidate.scope === 'shot' && take.scope === 'shot' && candidate.shotSpecId === take.shotSpecId)).map((candidate) => candidate.id));
+  const timelineMedia = project.mediaFiles.map((candidate) => takeIdsInScope.has(candidate.takeId ?? '')
+    ? {...candidate, includeInMerge: candidate.takeId === take.id}
+    : candidate);
   if (existingMedia) {
     if (existingMedia.generatedAssetId !== approval.assetId || existingMedia.contentSha256 !== approval.contentSha256) throw new Error('Existing timeline placement conflicts with Take approval.');
-    return {...project, workflow: invalidateForReleaseChange({...project.workflow, production: productionManifestSchema.parse({...project.workflow.production, takes})})};
+    return {...project, mediaFiles: timelineMedia, workflow: invalidateForReleaseChange({...project.workflow, production: productionManifestSchema.parse({...project.workflow.production, takes})})};
   }
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 32) throw new Error('Approved Take duration is invalid.');
   const positionStart = takePosition(project, take);
@@ -155,7 +160,7 @@ export const prepareApprovedTakeImport = (
   if (cut) cut.generatedTakeIds = Array.from(new Set([...(cut.generatedTakeIds ?? []), take.id]));
   return {
     ...project,
-    mediaFiles: [...project.mediaFiles, media],
+    mediaFiles: [...timelineMedia, media],
     duration: Math.max(project.duration, media.positionEnd),
     workflow: invalidateForReleaseChange({...project.workflow, storyboard, production: productionManifestSchema.parse({...project.workflow.production, takes})}),
   };

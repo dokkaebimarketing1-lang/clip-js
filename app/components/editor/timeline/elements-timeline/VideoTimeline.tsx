@@ -89,7 +89,7 @@ export default function VideoTimeline() {
     return (
         <div >
             {mediaFiles
-                .filter((clip) => clip.type === 'video')
+                .filter((clip) => clip.type === 'video' && (!clip.takeId || clip.includeInMerge))
                 .map((clip) => (
                     <div key={clip.id}>
                         <div

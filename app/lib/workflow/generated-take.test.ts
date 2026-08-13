@@ -51,6 +51,28 @@ describe('generated Take recovery and durable import preparation', () => {
     expect(value.workflow.production.takes[0]).toMatchObject({qcStatus: 'approved', selected: true, verdict: 'accepted'});
   });
 
+  it('replaces the selected timeline version when a second approved take for the same shot is imported', () => {
+    let value = project();
+    value = upsertQcPendingTake(value, record);
+    const first = value.workflow.production.takes[0];
+    value = prepareApprovedTakeImport(value, first.id, {status: 'approved', takeId: first.id, assetId: first.outputAssetId!, contentSha256: first.contentSha256!, approvedAt: '2026-08-11T00:02:00.000Z', approvedBy: 'owner', signature: '5'.repeat(64)}, 29.5);
+
+    const secondRecord = structuredClone(record);
+    if (secondRecord.job.status !== 'ready') throw new Error('Ready fixture required.');
+    secondRecord.requestKey = '6'.repeat(64);
+    secondRecord.job.requestKey = secondRecord.requestKey;
+    secondRecord.job.takeId = `take_${'7'.repeat(32)}`;
+    secondRecord.job.assetId = `ga_${'8'.repeat(32)}`;
+    secondRecord.job.contentSha256 = '9'.repeat(64);
+    secondRecord.job.providerJobId = 'provider-2';
+    const secondTakeId = secondRecord.job.takeId;
+    value = upsertQcPendingTake(value, secondRecord);
+    const second = value.workflow.production.takes.find((take) => take.id === secondTakeId)!;
+    value = prepareApprovedTakeImport(value, second.id, {status: 'approved', takeId: second.id, assetId: second.outputAssetId!, contentSha256: second.contentSha256!, approvedAt: '2026-08-11T00:04:00.000Z', approvedBy: 'owner', signature: 'a'.repeat(64)}, 29.5);
+
+    expect(value.mediaFiles.filter((media) => media.includeInMerge).map((media) => media.takeId)).toEqual([second.id]);
+  });
+
   it('rejects a ready record from a different authorization lineage', () => {
     const stale = structuredClone(record);
     stale.claim.attemptId = 'old-attempt';

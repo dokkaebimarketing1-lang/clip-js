@@ -6,7 +6,7 @@ import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {attachCutFrameAsset, reorderStoryboardCuts, selectTakeForTimeline} from '@/app/lib/workflow/project-production';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
-import {storyboardCutSchema, type Storyboard} from '@/app/lib/workflow/schema';
+import {storyboardCutSchema, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
 
 const sha256 = async (file: File) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
@@ -74,6 +74,7 @@ export function StoryboardStudio({storyboard}: {storyboard: Storyboard}) {
   const [instruction, setInstruction] = useState('');
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(false);
+  const [previewCut, setPreviewCut] = useState<StoryboardCut>();
   const selected = storyboard.cuts.find((cut) => cut.id === selectedCutId) ?? storyboard.cuts[0];
 
   const reorder = (targetId: string) => {
@@ -95,11 +96,17 @@ export function StoryboardStudio({storyboard}: {storyboard: Storyboard}) {
       const payload = await response.json() as {cut?: unknown; error?: string};
       if (!response.ok || !payload.cut) throw new Error(payload.error ?? 'AI 컷 수정을 완료하지 못했습니다.');
       const edited = storyboardCutSchema.parse(payload.cut);
-      const nextStoryboard = {...project.workflow.storyboard!, cuts: project.workflow.storyboard!.cuts.map((cut) => cut.id === selected.id ? {...edited, startFrameAssetId: cut.startFrameAssetId, endFrameAssetId: cut.endFrameAssetId, previewAssetId: cut.previewAssetId, generatedTakeIds: cut.generatedTakeIds} : cut)};
-      dispatch(setWorkflow(invalidateForCreativeChange({...project.workflow, storyboard: nextStoryboard})));
-      setInstruction(''); setMessage('DeepSeek 수정 결과를 저장했고 기존 승인을 무효화했습니다.');
+      setPreviewCut({...edited, startFrameAssetId: selected.startFrameAssetId, endFrameAssetId: selected.endFrameAssetId, previewAssetId: selected.previewAssetId, generatedTakeIds: selected.generatedTakeIds});
+      setMessage('수정 미리보기를 확인한 뒤 적용하세요. 프로젝트는 아직 변경되지 않았습니다.');
     } catch (error) { setMessage(error instanceof Error ? error.message : '수정 요청을 적용하지 못했습니다.'); }
     finally { setEditing(false); }
+  };
+
+  const commitPreview = () => {
+    if (!previewCut || !selected) return;
+    const nextStoryboard = {...project.workflow.storyboard!, cuts: project.workflow.storyboard!.cuts.map((cut) => cut.id === selected.id ? previewCut : cut)};
+    dispatch(setWorkflow(invalidateForCreativeChange({...project.workflow, storyboard: nextStoryboard})));
+    setPreviewCut(undefined); setInstruction(''); setMessage('수정 결과를 적용했고 기존 승인을 무효화했습니다.');
   };
 
   return <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -116,8 +123,9 @@ export function StoryboardStudio({storyboard}: {storyboard: Storyboard}) {
       <p className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-300">AI 컷 수정</p>
       <h3 className="mt-2 font-black text-white">{selected?.id} · {selected?.title}</h3>
       <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={5} placeholder="예: 제목을 따뜻한 첫인상으로 바꾸고, 루이가 카메라를 바라보게 해줘" className="mt-4 w-full resize-none rounded-2xl border border-white/10 bg-black/30 p-3 text-sm leading-6 text-white placeholder:text-gray-600 focus:border-fuchsia-400 focus:outline-none"/>
-      <button type="button" onClick={() => void applyEdit()} disabled={editing || !instruction.trim()} className="mt-3 w-full rounded-xl bg-fuchsia-600 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50">{editing ? 'DeepSeek 수정 중…' : 'AI 수정 적용'}</button>
-      <p aria-live="polite" className="mt-3 text-xs leading-5 text-gray-500">{message ?? '드래그로 순서를 바꾸거나 선택한 컷을 자연어로 수정합니다.'}</p>
+      <button type="button" onClick={() => void applyEdit()} disabled={editing || !instruction.trim()} className="mt-3 w-full rounded-xl bg-fuchsia-600 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50">{editing ? 'DeepSeek 수정 중…' : 'AI 수정 미리보기'}</button>
+      {previewCut ? <div className="mt-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-400/[0.07] p-4"><p className="text-[11px] font-black text-fuchsia-300">적용 전 미리보기</p><p className="mt-2 text-sm font-black text-white">{previewCut.title}</p><p className="mt-2 text-xs leading-5 text-gray-400">{previewCut.shots.map((shot) => shot.action).join(' · ')}</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPreviewCut(undefined)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-gray-400">취소</button><button type="button" onClick={commitPreview} className="rounded-lg bg-fuchsia-500 px-3 py-2 text-xs font-black text-white">이 수정 적용</button></div></div> : null}
+      <p aria-live="polite" className="mt-3 text-xs leading-5 text-gray-500">{message || '드래그로 순서를 바꾸거나 선택한 컷을 자연어로 수정합니다.'}</p>
     </aside>
   </div>;
 }
