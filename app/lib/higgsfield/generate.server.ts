@@ -19,6 +19,10 @@ export class HiggsfieldSubmissionTimeoutError extends Error {
 }
 
 type LaunchSpec = {executable: string; prefixArgs: string[]};
+export type HiggsfieldAccountStatus = {
+  credits: number;
+  subscription_plan_type: string;
+};
 type LaunchOptions = {
   cliPath?: string;
   pathValue?: string;
@@ -115,6 +119,59 @@ export const submitHiggsfieldSeedanceJob = (input: HiggsfieldSeedanceRequest): P
         resolve(parsed);
       } catch {
         settleReject(new Error('Higgsfield CLI returned an invalid JSON response.'));
+      }
+    });
+  });
+};
+
+export const getHiggsfieldAccountStatus = (): Promise<HiggsfieldAccountStatus> => {
+  const launch = resolveHiggsfieldLaunchSpec({cliPath: process.env.HIGGSFIELD_CLI_PATH});
+  const args = [...launch.prefixArgs, 'account', 'status', '--json'];
+  return new Promise((resolve, reject) => {
+    const child = spawn(/* turbopackIgnore: true */ launch.executable, args, {
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let size = 0;
+    let settled = false;
+    const settleReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      settleReject(new Error('Higgsfield account status timed out.'));
+    }, 30_000);
+    child.stdout.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_OUTPUT_BYTES) child.kill();
+      else stdout += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_OUTPUT_BYTES) child.kill();
+      else stderr += chunk.toString('utf8');
+    });
+    child.once('error', settleReject);
+    child.once('close', (code) => {
+      if (settled) return;
+      clearTimeout(timer);
+      if (size > MAX_OUTPUT_BYTES) return settleReject(new Error('Higgsfield CLI output exceeded the safety limit.'));
+      if (code !== 0) return settleReject(new Error(`Higgsfield account status failed${stderr.trim() ? `: ${stderr.trim()}` : '.'}`));
+      try {
+        const parsed = JSON.parse(stdout) as Record<string, unknown>;
+        if (typeof parsed.credits !== 'number' || !Number.isFinite(parsed.credits) || typeof parsed.subscription_plan_type !== 'string') {
+          throw new Error('invalid account status');
+        }
+        settled = true;
+        resolve({credits: parsed.credits, subscription_plan_type: parsed.subscription_plan_type});
+      } catch {
+        settleReject(new Error('Higgsfield CLI returned an invalid account status.'));
       }
     });
   });

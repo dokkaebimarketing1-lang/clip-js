@@ -60,6 +60,12 @@ type GenerationProjectionUi = {
   };
 };
 
+type HiggsfieldStatusUi = {
+  enabled: boolean;
+  credits: number;
+  plan: string;
+};
+
 export default function WorkflowPanel() {
   const project = useAppSelector((state) => state.projectState);
   const dispatch = useAppDispatch();
@@ -112,6 +118,8 @@ export default function WorkflowPanel() {
   const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
   const [authorizationPreview, setAuthorizationPreview] = useState<AuthorizationPreviewUi | null>(null);
   const [generationRecords, setGenerationRecords] = useState<GenerationProjectionUi[]>([]);
+  const [higgsfieldStatus, setHiggsfieldStatus] = useState<HiggsfieldStatusUi | null>(null);
+  const [checkingHiggsfield, setCheckingHiggsfield] = useState(false);
   const [previewRefreshNonce, setPreviewRefreshNonce] = useState(0);
   const mediaFilesRef = useRef(project.mediaFiles);
   useEffect(() => {
@@ -169,6 +177,25 @@ export default function WorkflowPanel() {
       return error instanceof Error ? `Not generation-ready: ${error.message}` : 'Not generation-ready.';
     }
   }, [project.workflow.production, selectedShotSpecId]);
+
+  const checkHiggsfieldStatus = async () => {
+    if (!apiToken) return toast.error('Agent token을 입력하세요.');
+    setCheckingHiggsfield(true);
+    try {
+      const response = await fetch('/api/higgsfield/generate', {
+        headers: {authorization: ['Bearer', apiToken].join(' ')},
+      });
+      const result = await response.json() as HiggsfieldStatusUi & {error?: string};
+      if (!response.ok) throw new Error(result.error || 'Higgsfield CLI 상태를 확인하지 못했습니다.');
+      setHiggsfieldStatus(result);
+      toast.success('Higgsfield CLI 연결을 확인했습니다.');
+    } catch (error) {
+      setHiggsfieldStatus(null);
+      toast.error(error instanceof Error ? error.message : 'Higgsfield CLI 상태를 확인하지 못했습니다.');
+    } finally {
+      setCheckingHiggsfield(false);
+    }
+  };
 
   const importStoryboard = () => {
     try {
@@ -771,6 +798,24 @@ export default function WorkflowPanel() {
           </details>
         )}
         <input className={fieldClass} type="password" autoComplete="off" value={approvalToken} onChange={(event) => setApprovalToken(event.target.value)} placeholder="소유자 승인 토큰(운영 환경)" />
+        <div className="rounded border border-cyan-400/20 bg-cyan-500/5 p-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-semibold text-cyan-200">임시 Higgsfield CLI 연결</div>
+              <p className="text-xs text-gray-400">연결 확인은 읽기 전용이며 생성 작업이나 크레딧 차감이 발생하지 않습니다.</p>
+            </div>
+            <button className={buttonClass} onClick={() => void checkHiggsfieldStatus()} disabled={!apiToken || checkingHiggsfield}>{checkingHiggsfield ? '확인 중…' : 'CLI 연결 확인'}</button>
+          </div>
+          {higgsfieldStatus && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <span className="rounded bg-white/10 px-2 py-1">요금제 {higgsfieldStatus.plan}</span>
+              <span className="rounded bg-white/10 px-2 py-1">잔여 {higgsfieldStatus.credits.toFixed(2)} 크레딧</span>
+              <span className={`rounded px-2 py-1 ${higgsfieldStatus.enabled ? 'bg-red-500/20 text-red-200' : 'bg-green-500/20 text-green-200'}`}>
+                {higgsfieldStatus.enabled ? '임시 유료 제출 활성' : '유료 제출 잠금'}
+              </span>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-gray-400">제작 승인, 유료 생성 승인, 테이크 승인, 최종 승인은 서로 별개입니다. 미리보기와 서명 과정에서는 BytePlus를 호출하지 않습니다.</p>
       </section>
 
