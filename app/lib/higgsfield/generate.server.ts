@@ -32,6 +32,12 @@ export type HiggsfieldGenerationJob = {
   min_result_url?: string | null;
   error?: unknown;
 };
+export type HiggsfieldCharacterImageRequest = {
+  prompt: string;
+  aspect_ratio: '16:9';
+  resolution: '1k';
+  thinking: 'HIGH';
+};
 type LaunchOptions = {
   cliPath?: string;
   pathValue?: string;
@@ -129,6 +135,38 @@ export const submitHiggsfieldSeedanceJob = (input: HiggsfieldSeedanceRequest): P
       } catch {
         settleReject(new Error('Higgsfield CLI returned an invalid JSON response.'));
       }
+    });
+  });
+};
+
+export const submitHiggsfieldCharacterImageJob = (input: HiggsfieldCharacterImageRequest): Promise<unknown> => {
+  const prompt = input.prompt.trim();
+  if (prompt.length < 10 || prompt.length > 4000 || input.aspect_ratio !== '16:9' || input.resolution !== '1k' || input.thinking !== 'HIGH') {
+    return Promise.reject(new Error('Invalid Higgsfield character image request.'));
+  }
+  const launch = resolveHiggsfieldLaunchSpec({cliPath: process.env.HIGGSFIELD_CLI_PATH});
+  const args = [...launch.prefixArgs, 'generate', 'create', 'nano_banana_2_lite', '--prompt', prompt, '--aspect_ratio', '16:9', '--resolution', '1k', '--thinking', 'HIGH', '--json'];
+  return new Promise((resolve, reject) => {
+    const child = spawn(/* turbopackIgnore: true */ launch.executable, args, {shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
+    let stdout = '';
+    let stderr = '';
+    let size = 0;
+    let settled = false;
+    const finish = (error?: Error, value?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error); else resolve(value);
+    };
+    const timer = setTimeout(() => { child.kill(); finish(new HiggsfieldSubmissionTimeoutError()); }, START_TIMEOUT_MS);
+    child.stdout.on('data', (chunk: Buffer) => { size += chunk.length; if (size > MAX_OUTPUT_BYTES) child.kill(); else stdout += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk: Buffer) => { size += chunk.length; if (size > MAX_OUTPUT_BYTES) child.kill(); else stderr += chunk.toString('utf8'); });
+    child.once('error', (error) => finish(error));
+    child.once('close', (code) => {
+      if (settled) return;
+      if (size > MAX_OUTPUT_BYTES) return finish(new Error('Higgsfield CLI output exceeded the safety limit.'));
+      if (code !== 0) return finish(new Error(`Higgsfield character image submission failed${stderr.trim() ? `: ${stderr.trim()}` : '.'}`));
+      try { finish(undefined, JSON.parse(stdout)); } catch { finish(new Error('Higgsfield CLI returned invalid image submission JSON.')); }
     });
   });
 };
