@@ -8,9 +8,12 @@ export const maxDuration = 60;
 const assertSameOriginUiRequest = (request: NextRequest) => {
   const origin = request.headers.get('origin');
   const fetchSite = request.headers.get('sec-fetch-site');
-  if (origin !== request.nextUrl.origin || (fetchSite && fetchSite !== 'same-origin')) {
-    throw new Error('Cross-origin UI upload is not allowed.');
-  }
+  if (fetchSite && fetchSite !== 'same-origin') throw new Error('Cross-site UI upload is not allowed.');
+  if (!origin || fetchSite === 'same-origin') return;
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+  const protocol = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.replace(':', '');
+  const forwardedOrigin = host ? `${protocol}://${host}` : request.nextUrl.origin;
+  if (origin !== forwardedOrigin && origin !== request.nextUrl.origin) throw new Error('Cross-origin UI upload is not allowed.');
 };
 
 export async function POST(request: NextRequest, context: {params: Promise<{projectId: string}>}) {
