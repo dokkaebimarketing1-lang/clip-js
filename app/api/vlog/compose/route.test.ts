@@ -21,19 +21,18 @@ describe('VLOG compose 라우트 (8단계 통합)', () => {
     expect(res.status).toBe(400);
   });
 
-  it('한 문장으로 8단계를 거쳐 brief/시트/스토리보드/28축을 반환한다', async () => {
+  it('한 문장으로 brief와 캐릭터 시트까지만 반환하고 스토리보드는 기준 이미지 뒤로 미룬다', async () => {
     const res = await post('고양이와 인사하는 30초 VLOG 만들어줘');
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.stage).toBe('compose-preview');
+    expect(data.stage).toBe('character-plan');
     expect(data.planningProvider).toBe('rules');
     expect(data.planningModel).toBe('deterministic-rules-v1');
     expect(data.interviewBrief.subject).toBe('고양이');
     expect(data.characterSheet.name).toBe('루이');
-    expect(data.storyboard.cuts).toHaveLength(3);
+    expect(data.storyboard).toBeUndefined();
     expect(data.seedanceMaster.axes.camera).toBe('vlog');
-    expect(data.imageStoryboard.length).toBeGreaterThan(0);
-    expect(data.imageStoryboard[0].placeholder).toContain('[IMAGE CONTI FAKE]');
+    expect(data.imageStoryboard).toBeUndefined();
   });
 
   it('강아지 문장은 20초/4stage로 해석', async () => {

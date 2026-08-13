@@ -10,6 +10,7 @@ import {parseProjectState} from '@/app/lib/workflow/project-file';
 
 // IndexedDB schema version is intentionally independent from projectSchemaVersion.
 const CLIPJS_DB_VERSION = 3;
+const DB_OPEN_TIMEOUT_MS = 8000;
 
 export type ProjectMigrationBackup = {
     id: string;
@@ -29,17 +30,33 @@ export class ProjectRevisionConflictError extends Error {
 // Create IndexedDB database for files and projects
 export const setupDB = async () => {
     if (typeof window === 'undefined') return null;
-    const activeDb = await openDB('clipjs-files', CLIPJS_DB_VERSION, {
+    let timedOut = false;
+    const opening = openDB('clipjs-files', CLIPJS_DB_VERSION, {
         upgrade(db) {
             if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
             if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
             if (!db.objectStoreNames.contains('projectBackups')) db.createObjectStore('projectBackups', { keyPath: 'id' });
         },
+        blocked() {
+            console.error('ClipJS IndexedDB upgrade is blocked by another tab.');
+        },
         blocking() {
-            activeDb?.close();
+            void opening.then((db) => db.close());
         },
     });
-    return activeDb;
+    let timeoutId: number | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+            timedOut = true;
+            reject(new Error('Project database open timed out. Close other ClipJS tabs and retry.'));
+        }, DB_OPEN_TIMEOUT_MS);
+    });
+    try {
+        return await Promise.race([opening, timeout]);
+    } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+        if (timedOut) void opening.then((db) => db.close()).catch(() => undefined);
+    }
 };
 
 const projectVersion = (value: unknown): number => {

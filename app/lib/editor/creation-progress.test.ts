@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {deriveCreationProgress} from './creation-progress';
+import {deriveCreationProgress, isStoryboardBuiltFromCharacterReferences} from './creation-progress';
 
 const brief = {
   subject: '크림색 시바견 루이',
@@ -17,8 +17,15 @@ const character = {
 };
 
 describe('creation progress guidance', () => {
+  it('rejects a storyboard created before the current character reference images existed', () => {
+    const sheets = [{...character, referenceImageId: 'ga_a'}, {...character, name: '토리', referenceImageId: 'ga_b'}];
+    const oldStoryboard = {version: 'v1', title: 'old', noBgm: true as const, cuts: []};
+    const currentStoryboard = {...oldStoryboard, characterReferenceIds: ['ga_a', 'ga_b']};
+    expect(isStoryboardBuiltFromCharacterReferences(oldStoryboard, sheets)).toBe(false);
+    expect(isStoryboardBuiltFromCharacterReferences(currentStoryboard, sheets)).toBe(true);
+  });
   it('shows a strong planning completion reveal and character CTA', () => {
-    expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: true})).toEqual({
+    expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: false})).toEqual({
       state: 'plan-complete',
       completedCount: 3,
       nextWorkspace: 'reference',
@@ -27,18 +34,17 @@ describe('creation progress guidance', () => {
   });
 
   it('guides the user to register a character image when only text criteria exist', () => {
-    expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: true, workspace: 'reference'})).toMatchObject({
+    expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: false, workspace: 'reference'})).toMatchObject({
       state: 'character-image-needed',
       nextLabel: '캐릭터 기준 이미지 등록',
     });
   });
 
-  it('guides the user to storyboard after a managed character image is registered', () => {
-    expect(deriveCreationProgress({brief, characterSheets: [{...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef'}], hasStoryboard: true, workspace: 'reference'})).toEqual({
+  it('guides the user to generate a storyboard after every managed character image is registered', () => {
+    expect(deriveCreationProgress({brief, characterSheets: [{...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef'}], hasStoryboard: false, workspace: 'reference'})).toEqual({
       state: 'character-ready',
       completedCount: 4,
-      nextWorkspace: 'storyboard',
-      nextLabel: '스토리보드 검수하기',
+      nextLabel: '스토리보드 생성하기',
     });
   });
 

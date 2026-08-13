@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {getConfiguredPlanningProvider} from '@/app/lib/generation/planning-runtime.server';
 import {axesFromBrief, buildDefaultSeedanceMasterSettings, seedanceMasterSettingsSchema} from '@/app/lib/workflow/seedance-master';
-import {interviewBriefSchema, characterSheetSchema, storyboardSchema} from '@/app/lib/workflow/schema';
+import {interviewBriefSchema, characterSheetSchema} from '@/app/lib/workflow/schema';
 
 /**
  * VLOG 파이프라인 8단계 · 통합 컴포즈 엔드포인트
@@ -35,7 +35,6 @@ export const POST = async (request: Request) => {
   const brief = plan.interviewBrief;
   const sheet = plan.characterSheet;
   const sheets = plan.characterSheets ?? [sheet];
-  const storyboard = plan.storyboard;
   const axes = axesFromBrief(brief, sheet);
   const seedanceMaster = seedanceMasterSettingsSchema.parse({
     ...buildDefaultSeedanceMasterSettings(),
@@ -44,23 +43,13 @@ export const POST = async (request: Request) => {
     resolution: brief.durationSeconds === 20 ? '480p' : '720p',
   });
 
-  const imageStoryboard = storyboard.cuts.flatMap((cut) =>
-    cut.shots.map((shot) => ({
-      cutId: cut.id,
-      shotId: shot.id,
-      placeholder: `[IMAGE CONTI FAKE] ${cut.title} · ${shot.action}`,
-    })),
-  );
-
   return NextResponse.json({
-    stage: 'compose-preview',
+    stage: 'character-plan',
     planningProvider: planningProvider.provider,
     planningModel: planningProvider.model,
     interviewBrief: interviewBriefSchema.parse(brief),
     characterSheet: characterSheetSchema.parse(sheet),
     characterSheets: sheets.map((character) => characterSheetSchema.parse(character)),
-    storyboard: storyboardSchema.parse(storyboard),
-    imageStoryboard,
     seedanceMaster,
   });
 };

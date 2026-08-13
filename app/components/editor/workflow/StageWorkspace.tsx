@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react';
+import {FormEvent, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setWorkflow} from '@/app/store/slices/projectSlice';
 import {StoryboardStudio, TakeStudio} from './ProductionStudio';
@@ -15,7 +15,7 @@ import {
 } from '@/app/lib/workflow/schema';
 import {seedanceMasterSettingsSchema} from '@/app/lib/workflow/seedance-master';
 import type {ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
-import {deriveCreationProgress} from '@/app/lib/editor/creation-progress';
+import {deriveCreationProgress, isStoryboardBuiltFromCharacterReferences} from '@/app/lib/editor/creation-progress';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
 
 type StageWorkspaceProps = {
@@ -74,19 +74,33 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const [imageGenerationJobId, setImageGenerationJobId] = useState<string | null>(null);
   const [generationCharacterId, setGenerationCharacterId] = useState<string | null>(null);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<'idle' | 'submitting' | 'queued' | 'processing' | 'failed'>('idle');
-  const progress = deriveCreationProgress({brief: interviewBrief, characterSheets: allCharacterSheets, hasStoryboard: Boolean(storyboard), workspace});
+  const [isGeneratingStoryboard, setIsGeneratingStoryboard] = useState(false);
+  const [storyboardError, setStoryboardError] = useState<string | null>(null);
+  const workflowRef = useRef(workflow);
+  const characterSheetsRef = useRef(allCharacterSheets);
+  useEffect(() => { workflowRef.current = workflow; }, [workflow]);
+  useEffect(() => { characterSheetsRef.current = allCharacterSheets; }, [allCharacterSheets]);
+  const storyboardIsCurrent = isStoryboardBuiltFromCharacterReferences(storyboard, allCharacterSheets);
+  const progress = deriveCreationProgress({brief: interviewBrief, characterSheets: allCharacterSheets, hasStoryboard: storyboardIsCurrent, workspace});
+
+  useEffect(() => {
+    if (storyboard && allCharacterSheets.every((sheet) => sheet.referenceImageId) && !storyboardIsCurrent) {
+      dispatch(setWorkflow(invalidateForCreativeChange({...workflowRef.current, storyboard: undefined})));
+    }
+  }, [allCharacterSheets, dispatch, storyboard, storyboardIsCurrent]);
 
   const connectCharacterReference = useCallback((characterId: string, assetId: string, previewUrl: string) => {
-    const nextSheets = allCharacterSheets.map((sheet) =>
+    const nextSheets = characterSheetsRef.current.map((sheet) =>
       (sheet.id ?? sheet.name) === characterId ? {...sheet, referenceImageId: assetId} : sheet,
     );
     dispatch(setWorkflow(invalidateForCreativeChange({
-      ...workflow,
+      ...workflowRef.current,
       characterSheet: nextSheets[0],
       characterSheets: nextSheets,
+      storyboard: undefined,
     })));
     setCharacterPreviewUrls((current) => ({...current, [characterId]: previewUrl}));
-  }, [allCharacterSheets, dispatch, workflow]);
+  }, [dispatch]);
 
   useEffect(() => {
     const pending = allCharacterSheets.filter((sheet) => sheet.referenceImageId && !characterPreviewUrls[sheet.id ?? sheet.name]);
@@ -120,11 +134,11 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
         ? payload.characterSheets.map((sheet) => characterSheetSchema.parse(sheet))
         : [characterSheetSchema.parse(payload.characterSheet)];
       dispatch(setWorkflow({
-        ...workflow,
+        ...invalidateForCreativeChange(workflow),
         interviewBrief: interviewBriefSchema.parse(payload.interviewBrief),
         characterSheet: parsedSheets[0],
         characterSheets: parsedSheets,
-        storyboard: storyboardSchema.parse(payload.storyboard),
+        storyboard: undefined,
         seedanceMaster: seedanceMasterSettingsSchema.parse(payload.seedanceMaster),
       }));
       setShowRecompose(false);
@@ -132,6 +146,27 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       setComposeError(error instanceof Error ? error.message : 'AI 기획을 완료하지 못했습니다.');
     } finally {
       setIsComposing(false);
+    }
+  };
+
+  const generateStoryboard = async () => {
+    if (!interviewBrief || allCharacterSheets.length === 0 || allCharacterSheets.some((sheet) => !sheet.referenceImageId) || isGeneratingStoryboard) return;
+    setIsGeneratingStoryboard(true);
+    setStoryboardError(null);
+    try {
+      const response = await fetch('/api/vlog/storyboard', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({projectId, sentence: `${interviewBrief.subject}. ${interviewBrief.action}. ${interviewBrief.extraNotes ?? ''}`.trim(), interviewBrief, characterSheets: allCharacterSheets}),
+      });
+      const payload = await response.json() as {storyboard?: unknown; error?: string};
+      if (!response.ok || !payload.storyboard) throw new Error(payload.error ?? '스토리보드를 생성하지 못했습니다.');
+      dispatch(setWorkflow(invalidateForCreativeChange({...workflow, storyboard: storyboardSchema.parse(payload.storyboard)})));
+      onNavigate('storyboard');
+    } catch (error) {
+      setStoryboardError(error instanceof Error ? error.message : '스토리보드를 생성하지 못했습니다.');
+    } finally {
+      setIsGeneratingStoryboard(false);
     }
   };
 
@@ -233,7 +268,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">1 · AI 인터뷰</p>
               <h1 className="mt-2 text-3xl font-black text-white text-balance">어떤 영상을 만들고 싶으세요?</h1>
-              <p className="mt-2 text-sm leading-6 text-gray-400">한 문장으로 시작하면 AI가 브리프·기준 시트·스토리보드를 구성합니다.</p>
+              <p className="mt-2 text-sm leading-6 text-gray-400">한 문장으로 시작하면 AI가 브리프와 출연 캐릭터 시트를 구성합니다.</p>
             </div>
             {!sampleMode && !interviewBrief ? <button type="button" onClick={onEnableSample} className="shrink-0 rounded-xl border border-white/15 px-4 py-2 text-sm font-bold text-gray-200 hover:border-fuchsia-400/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">샘플 프로젝트 보기</button> : null}
           </div>
@@ -242,13 +277,13 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
             {isComposing ? (
               <div className="max-w-3xl overflow-hidden rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.08] p-7 shadow-[0_0_60px_rgba(217,70,239,0.10)]" aria-live="polite">
                 <div className="flex items-center gap-3"><span className="h-3 w-3 animate-pulse rounded-full bg-fuchsia-400"/><span className="text-sm font-black text-fuchsia-200">요청을 받았습니다 · AI 기획 작업 중</span></div>
-                <h2 className="mt-5 text-2xl font-black text-white">브리프와 캐릭터, 스토리보드를 구성하고 있어요</h2>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">{['영상 브리프 분석', '캐릭터 기준 설계', '컷 구성 작성'].map((label, index) => <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4"><div className="text-xs font-black text-fuchsia-300">0{index + 1}</div><div className="mt-2 text-sm font-bold text-gray-200">{label}</div></div>)}</div>
+                <h2 className="mt-5 text-2xl font-black text-white">브리프와 출연 캐릭터 시트를 구성하고 있어요</h2>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">{['영상 브리프 분석', '출연 캐릭터 분리', '캐릭터 시트 작성'].map((label, index) => <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4"><div className="text-xs font-black text-fuchsia-300">0{index + 1}</div><div className="mt-2 text-sm font-bold text-gray-200">{label}</div></div>)}</div>
                 <p className="mt-5 text-xs text-gray-400">제출한 문장: “{sentence.trim()}”</p>
               </div>
             ) : interviewBrief ? (
               <div className="max-w-4xl rounded-3xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/[0.10] via-[#17151d] to-fuchsia-500/[0.08] p-7 shadow-[0_0_70px_rgba(52,211,153,0.10)]">
-                <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-black text-emerald-200"><span className="grid h-7 w-7 place-items-center rounded-full bg-emerald-400 text-sm text-black">✓</span>AI 기획이 완성됐습니다</div><div className="flex gap-2 text-[11px] font-bold text-gray-300"><span className="rounded-full bg-white/10 px-3 py-1.5">브리프 완료</span><span className="rounded-full bg-white/10 px-3 py-1.5">캐릭터 완료</span><span className="rounded-full bg-white/10 px-3 py-1.5">스토리보드 완료</span></div></div>
+                <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-black text-emerald-200"><span className="grid h-7 w-7 place-items-center rounded-full bg-emerald-400 text-sm text-black">✓</span>캐릭터 기획이 완성됐습니다</div><div className="flex gap-2 text-[11px] font-bold text-gray-300"><span className="rounded-full bg-white/10 px-3 py-1.5">브리프 완료</span><span className="rounded-full bg-white/10 px-3 py-1.5">캐릭터 시트 완료</span><span className="rounded-full bg-amber-400/10 px-3 py-1.5 text-amber-200">스토리보드 대기</span></div></div>
                 <p className="mt-7 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">기획 요약</p>
                 <h2 className="mt-2 text-3xl font-black text-white">{interviewBrief.subject}</h2>
                 <p className="mt-3 text-base leading-7 text-gray-300">{interviewBrief.action}</p>
@@ -291,7 +326,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">2 · 기준 시트</p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div><h1 className="text-3xl font-black text-white">출연 캐릭터별 기준을 고정합니다</h1><p className="mt-2 text-sm text-gray-400">메인 캐릭터마다 별도 기준 이미지가 필요합니다. 강아지와 다람쥐라면 각각 한 장씩 준비합니다.</p></div>
-            {totalCount ? <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-right"><p className="text-xs text-gray-500">기준 이미지 준비</p><p className="mt-1 text-xl font-black text-white">{readyCount} / {totalCount}</p></div> : null}
+            {totalCount ? <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"><div className="text-right"><p className="text-xs text-gray-500">기준 이미지 준비</p><p className="mt-1 text-xl font-black text-white">{readyCount} / {totalCount}</p></div>{readyCount === totalCount ? <button type="button" disabled={isGeneratingStoryboard} onClick={() => storyboardIsCurrent ? onNavigate('storyboard') : void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-wait disabled:opacity-60">{storyboardIsCurrent ? '스토리보드 검수 →' : isGeneratingStoryboard ? '생성 중…' : '스토리보드 생성 →'}</button> : null}</div> : null}
           </div>
           {!displayed ? <div className="mt-8"><EmptyState title="기준 시트가 없습니다" description="인터뷰에서 AI 기획을 완료하세요. AI가 주요 출연 캐릭터를 분리해 각각의 기준 시트를 만듭니다."/></div> : (
             <>
@@ -313,7 +348,9 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
                 <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-6"><p className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">선택한 캐릭터</p><h2 className="mt-2 text-xl font-black text-white">{displayed.name}</h2><p className="mt-1 text-sm text-gray-400">{displayed.breed ?? '캐릭터 기준'}</p><div className="mt-5 flex flex-wrap gap-2">{displayed.visualTags.map((tag) => <span key={tag} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300">{tag}</span>)}</div><div className="mt-8 space-y-3">{Object.entries(displayed.palette).map(([label, color]) => <div key={label} className="flex items-center gap-3"><span className="h-9 w-9 rounded-xl border border-white/10" style={{backgroundColor: color}}/><span className="text-sm text-gray-300">{label}</span><code className="ml-auto text-xs text-gray-500">{color}</code></div>)}</div></aside>
               </div>
 
-              {!sampleMode ? <><div className="mt-6 rounded-3xl border border-fuchsia-400/25 bg-gradient-to-r from-fuchsia-500/[0.10] to-violet-500/[0.08] p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-fuchsia-200">✓ 스토리보드 생성 완료</p><h2 className="mt-2 text-2xl font-black text-white">{storyboard?.cuts.length ?? 0}컷이 이미 준비됐습니다</h2><p className="mt-1 text-sm text-gray-400">기준 이미지 준비 전에도 장면과 등장 캐릭터를 확인할 수 있습니다.</p></div><button type="button" onClick={() => onNavigate('storyboard')} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white hover:bg-fuchsia-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300">스토리보드 {storyboard?.cuts.length ?? 0}컷 보기 →</button></div></div>{progress.state !== 'character-ready' ? <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4 text-sm text-amber-100"><strong>아직 {totalCount - readyCount}명의 기준 이미지가 필요합니다.</strong> 영상 생성과 제작 승인은 모든 캐릭터가 준비된 뒤 열립니다. 스토리보드 검수는 지금 가능합니다.</div> : <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-sm font-bold text-emerald-200">✓ 주요 캐릭터 {totalCount}명의 기준 이미지가 모두 준비됐습니다.</div>}</> : null}
+              {!sampleMode ? <>
+                {progress.state !== 'character-ready' ? <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4 text-sm text-amber-100"><strong>아직 {totalCount - readyCount}명의 기준 이미지가 필요합니다.</strong> 모든 주요 캐릭터의 기준 이미지가 준비된 뒤 그 시트를 입력으로 스토리보드를 생성합니다.</div> : storyboard ? <div className="mt-6 rounded-3xl border border-fuchsia-400/25 bg-gradient-to-r from-fuchsia-500/[0.10] to-violet-500/[0.08] p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-fuchsia-200">✓ 스토리보드 생성 완료</p><h2 className="mt-2 text-2xl font-black text-white">{storyboard.cuts.length}컷을 검수하세요</h2><p className="mt-1 text-sm text-gray-400">준비된 캐릭터 시트와 기준 이미지를 바탕으로 생성됐습니다.</p></div><button type="button" onClick={() => onNavigate('storyboard')} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white hover:bg-fuchsia-400">스토리보드 검수 →</button></div></div> : <div className="mt-6 rounded-3xl border border-emerald-400/25 bg-gradient-to-r from-emerald-500/[0.10] to-fuchsia-500/[0.08] p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-emerald-200">✓ 주요 캐릭터 {totalCount}명의 기준 이미지 준비 완료</p><h2 className="mt-2 text-2xl font-black text-white">다음: 스토리보드 생성</h2><p className="mt-1 text-sm text-gray-400">확정된 캐릭터 시트와 기준 이미지를 입력으로 장면을 구성합니다.</p></div><button type="button" disabled={isGeneratingStoryboard} onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-wait disabled:opacity-60">{isGeneratingStoryboard ? '스토리보드 생성 중…' : '스토리보드 생성 →'}</button></div>{storyboardError ? <p className="mt-4 text-sm text-red-200">{storyboardError}</p> : null}</div>}
+              </> : null}
             </>
           )}
         </div>

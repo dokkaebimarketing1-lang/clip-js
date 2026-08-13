@@ -34,6 +34,7 @@ export const storyboardSchema = z.object({
   version: z.string().min(1),
   title: z.string().min(1),
   noBgm: z.literal(true),
+  characterReferenceIds: z.array(z.string().min(1).max(256)).min(1).max(10).optional(),
   cuts: z.array(storyboardCutSchema).min(1),
 });
 

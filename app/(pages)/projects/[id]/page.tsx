@@ -86,8 +86,14 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         const loadProject = async () => {
             setIsLoading(true);
             setLoadError(null);
+            let loadTimeout: number | undefined;
             try {
-                const project = await getProject(id);
+                const project = await Promise.race([
+                    getProject(id),
+                    new Promise<never>((_, reject) => {
+                        loadTimeout = window.setTimeout(() => reject(new Error('PROJECT_LOAD_TIMEOUT')), 12_000);
+                    }),
+                ]);
                 if (!project) {
                     router.replace('/404');
                     return;
@@ -131,8 +137,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 dispatch(rehydrate(loadedProject));
             } catch (error) {
                 console.error('Failed to load project:', error);
-                if (!cancelled) setLoadError('프로젝트 저장소를 읽지 못했습니다. 데이터 보호를 위해 편집기를 열지 않았습니다.');
+                if (!cancelled) setLoadError(error instanceof Error && error.message === 'PROJECT_LOAD_TIMEOUT'
+                    ? '프로젝트 저장소 응답이 12초 안에 끝나지 않았습니다. 다른 ClipJS 탭을 닫고 다시 시도해 주세요.'
+                    : '프로젝트 저장소를 읽지 못했습니다. 데이터 보호를 위해 편집기를 열지 않았습니다.');
             } finally {
+                if (loadTimeout !== undefined) window.clearTimeout(loadTimeout);
                 if (!cancelled) setIsLoading(false);
             }
         };
