@@ -93,7 +93,17 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     return;
                 }
                 const mediaFiles = await Promise.all(project.mediaFiles.map(async (media: MediaFile) => {
-                    if (media.source?.kind === 'generated' || media.source?.kind === 'managed') return media;
+                    if (media.source?.kind === 'generated' || media.source?.kind === 'managed') {
+                        const assetId = media.source.kind === 'generated' ? media.source.generatedAssetId : media.source.assetId;
+                        try {
+                            const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/${encodeURIComponent(assetId)}/ui-capability`, {method: 'POST'});
+                            const payload = await response.json() as {url?: string};
+                            if (!response.ok || !payload.url) return media;
+                            return {...media, src: payload.url, remoteUrl: payload.url};
+                        } catch {
+                            return media;
+                        }
+                    }
                     const fileId = media.source?.kind === 'indexeddb' ? media.source.fileId : media.fileId;
                     if (!fileId) return media;
                     const file = await getFile(fileId);

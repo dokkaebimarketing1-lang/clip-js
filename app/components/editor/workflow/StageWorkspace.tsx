@@ -4,6 +4,7 @@ import Image from 'next/image';
 import {FormEvent, useState} from 'react';
 import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setWorkflow} from '@/app/store/slices/projectSlice';
+import {StoryboardStudio, TakeStudio} from './ProductionStudio';
 import {
   characterSheetSchema,
   interviewBriefSchema,
@@ -162,14 +163,14 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">3 · 스토리보드</p>
           <h1 className="mt-2 text-3xl font-black text-white">장면의 흐름을 검수합니다</h1>
           <p className="mt-2 text-sm text-gray-400">이미지가 없는 실제 컷에는 빈 상태를 표시합니다. 샘플 이미지는 승인 해시에 포함되지 않습니다.</p>
-          {!cuts.length ? <div className="mt-8"><EmptyState title="스토리보드가 없습니다" description="인터뷰에서 AI 기획을 완료하면 컷 구조가 생성됩니다. 이미지 콘티는 이후 각 컷에 정식 자산으로 연결합니다."/></div> : (
+          {!cuts.length ? <div className="mt-8"><EmptyState title="스토리보드가 없습니다" description="인터뷰에서 AI 기획을 완료하면 컷 구조가 생성됩니다. 이미지 콘티는 이후 각 컷에 정식 자산으로 연결합니다."/></div> : storyboard ? <StoryboardStudio storyboard={storyboard}/> : (
             <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               {cuts.map((cut, index) => {
                 const action = 'action' in cut ? cut.action : cut.shots.map((shot) => shot.action).join(' · ');
                 const start = 'start' in cut ? cut.start : cut.absoluteStartSeconds;
                 const end = 'end' in cut ? cut.end : cut.absoluteEndSeconds;
                 return <article key={cut.id} className="overflow-hidden rounded-3xl border border-white/10 bg-[#15131a]">
-                  {sampleMode && !storyboard ? <div className="relative aspect-video bg-black"><Image src={`/mock-assets/story-0${(index % 3) + 1}.webp`} alt={`샘플 장면 ${index + 1}`} fill className="object-cover" sizes="25vw"/><span className="absolute left-3 top-3 rounded-full bg-amber-400 px-2 py-1 text-[11px] font-black text-black">샘플 · 승인 제외</span></div> : <div className="flex aspect-video items-center justify-center border-b border-dashed border-white/10 bg-black/40 px-5 text-center text-sm text-gray-500">이미지 콘티 미생성</div>}
+                  <div className="relative aspect-video bg-black"><Image src={`/mock-assets/story-0${(index % 3) + 1}.webp`} alt={`샘플 장면 ${index + 1}`} fill className="object-cover" sizes="25vw"/><span className="absolute left-3 top-3 rounded-full bg-amber-400 px-2 py-1 text-[11px] font-black text-black">샘플 · 승인 제외</span></div>
                   <div className="p-5"><div className="flex items-center justify-between text-xs text-fuchsia-300"><span className="font-black">{cut.id}</span><span className="tabular-nums">{start}–{end}초</span></div><h2 className="mt-3 text-lg font-black text-white">{cut.title}</h2><p className="mt-2 line-clamp-3 text-sm leading-6 text-gray-400">{action}</p></div>
                 </article>;
               })}
@@ -190,7 +191,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           {sampleMode ? <div className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
             <article className="overflow-hidden rounded-3xl border border-white/10 bg-black"><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">샘플 결과 · 생성 결과 및 승인 대상 아님</div><div className="flex aspect-video items-center justify-center"><video className="h-full w-full object-contain" src="/mock-assets/sample-video-web.mp4" poster="/mock-assets/video-poster.webp" controls muted playsInline preload="metadata"/></div></article>
             <aside className="space-y-4"><div className="rounded-3xl border border-white/10 bg-[#15131a] p-6"><h2 className="font-black text-white">현재 상태</h2><p className="mt-3 text-sm leading-6 text-gray-400">샘플 자산은 프로젝트 자산 ID와 해시가 없어 승인할 수 없습니다.</p></div><div className="rounded-3xl border border-red-400/20 bg-red-400/[0.06] p-6"><p className="text-sm font-black text-red-200">유료 제출 잠김</p><p className="mt-2 text-sm leading-6 text-red-100/70">정식 자산 연결·Creative 승인·생성 승인이 완료돼야 합니다.</p></div></aside>
-          </div> : <div className="mt-8"><EmptyState title="승인 가능한 생성본이 없습니다" description="기준 시트와 스토리보드의 정식 자산 연결을 완료한 뒤 생성 승인을 진행하세요. 샘플 영상은 자동으로 표시하지 않습니다."/></div>}
+          </div> : <TakeStudio/>}
         </div>
       </section>
     );

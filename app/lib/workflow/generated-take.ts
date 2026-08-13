@@ -124,6 +124,7 @@ export const prepareApprovedTakeImport = (
   }
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 32) throw new Error('Approved Take duration is invalid.');
   const positionStart = takePosition(project, take);
+  const shotSpec = project.workflow.production.shotSpecs.find((shot) => shot.id === take.shotSpecId);
   const mediaId = `media_${take.id}`.slice(0, 128);
   const media: MediaFile = {
     id: mediaId,
@@ -132,6 +133,8 @@ export const prepareApprovedTakeImport = (
     generatedAssetId: approval.assetId,
     contentSha256: approval.contentSha256,
     takeId: take.id,
+    cutId: shotSpec?.cutId,
+    shotId: shotSpec?.shotId,
     type: 'video',
     startTime: 0,
     endTime: durationSeconds,
@@ -147,10 +150,13 @@ export const prepareApprovedTakeImport = (
     jobId: take.providerJobId,
     storyboardRole: 'clip',
   };
+  const storyboard = project.workflow.storyboard ? structuredClone(project.workflow.storyboard) : undefined;
+  const cut = storyboard?.cuts.find((candidate) => candidate.id === shotSpec?.cutId);
+  if (cut) cut.generatedTakeIds = Array.from(new Set([...(cut.generatedTakeIds ?? []), take.id]));
   return {
     ...project,
     mediaFiles: [...project.mediaFiles, media],
     duration: Math.max(project.duration, media.positionEnd),
-    workflow: invalidateForReleaseChange({...project.workflow, production: productionManifestSchema.parse({...project.workflow.production, takes})}),
+    workflow: invalidateForReleaseChange({...project.workflow, storyboard, production: productionManifestSchema.parse({...project.workflow.production, takes})}),
   };
 };

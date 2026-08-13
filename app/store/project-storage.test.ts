@@ -89,6 +89,20 @@ describe('IndexedDB project revision CAS', () => {
     expect((await db.get('projects', id) as Record<string, unknown>).projectSchemaVersion).toBeUndefined();
   });
 
+  it('persists cut frame asset links and selected take timeline media across reconnect', async () => {
+    const id = `p1-${crypto.randomUUID()}`;
+    const project = {...structuredClone(initialState), id, projectName: 'P1', revision: 0};
+    project.workflow.storyboard = {
+      version: 'v1', title: 'P1', noBgm: true,
+      cuts: [{id: 'CUT01', title: 'Opening', absoluteStartSeconds: 0, absoluteEndSeconds: 5, startFrameAssetId: `ga_${'a'.repeat(32)}`, endFrameAssetId: `ga_${'b'.repeat(32)}`, generatedTakeIds: ['take-1'], shots: [{id: 'S1', startSeconds: 0, endSeconds: 5, startFrame: 'start', endFrame: 'end', camera: 'static', action: 'act', dialogue: '—', sfx: 'room'}]}],
+    };
+    project.mediaFiles = [{id: 'take-media', fileName: 'take.mp4', type: 'video', source: {kind: 'generated', generatedAssetId: `ga_${'c'.repeat(32)}`}, generatedAssetId: `ga_${'c'.repeat(32)}`, takeId: 'take-1', cutId: 'CUT01', shotId: 'S1', storyboardRole: 'clip', contentSha256: 'd'.repeat(64), startTime: 0, endTime: 5, positionStart: 0, positionEnd: 5, includeInMerge: true, playbackSpeed: 1, volume: 100, opacity: 1, zIndex: 1}];
+    await storeProject(project);
+    const restored = await getProject(id);
+    expect(restored?.workflow.storyboard?.cuts[0]).toMatchObject({startFrameAssetId: `ga_${'a'.repeat(32)}`, endFrameAssetId: `ga_${'b'.repeat(32)}`, generatedTakeIds: ['take-1']});
+    expect(restored?.mediaFiles[0]).toMatchObject({takeId: 'take-1', cutId: 'CUT01', includeInMerge: true, src: undefined, remoteUrl: undefined});
+  });
+
   it('does not overwrite malformed legacy bytes when migration fails', async () => {
     const id = `malformed-${crypto.randomUUID()}`;
     const malformed = {id, projectName: 'broken', mediaFiles: 'not-an-array'};

@@ -29,7 +29,7 @@ const project = () => {
 const record = generationRecordSchema.parse({
   version: 1, revision: 5, requestKey: '1'.repeat(64),
   claim: {version: 1, status: 'submitted', projectId: 'project-1', attemptId: 'attempt-1', requestKey: '1'.repeat(64), requestHash: 'e'.repeat(64), providerJobId: 'provider-1', createdAt: '2026-08-11T00:00:00.000Z', updatedAt: '2026-08-11T00:01:00.000Z'},
-  job: {version: 1, status: 'ready', projectId: 'project-1', attemptId: 'attempt-1', requestKey: '1'.repeat(64), requestHash: 'e'.repeat(64), provider: 'byteplus', model: 'dreamina-seedance-2-5-260628', authorizedDuration: 30, actualDurationSeconds: 29.5, authorizedResolution: '720p', takeScope: 'production', authorizationRef: 'f'.repeat(64), providerJobId: 'provider-1', assetId: `ga_${'2'.repeat(32)}`, contentSha256: '3'.repeat(64), takeId: `take_${'4'.repeat(32)}`, qcStatus: 'qc_pending', createdAt: '2026-08-11T00:00:00.000Z', updatedAt: '2026-08-11T00:01:00.000Z'},
+  job: {version: 1, status: 'ready', projectId: 'project-1', attemptId: 'attempt-1', requestKey: '1'.repeat(64), requestHash: 'e'.repeat(64), provider: 'byteplus', model: 'dreamina-seedance-2-5-260628', authorizedDuration: 30, actualDurationSeconds: 29.5, authorizedResolution: '720p', takeScope: 'shot', targetShotSpecId: 'spec-1', authorizationRef: 'f'.repeat(64), providerJobId: 'provider-1', assetId: `ga_${'2'.repeat(32)}`, contentSha256: '3'.repeat(64), takeId: `take_${'4'.repeat(32)}`, qcStatus: 'qc_pending', createdAt: '2026-08-11T00:00:00.000Z', updatedAt: '2026-08-11T00:01:00.000Z'},
 });
 
 describe('generated Take recovery and durable import preparation', () => {
@@ -45,7 +45,8 @@ describe('generated Take recovery and durable import preparation', () => {
     };
     for (let index = 0; index < 10; index += 1) value = prepareApprovedTakeImport(value, take.id, approval, record.job.status === 'ready' ? record.job.actualDurationSeconds : 0);
     expect(value.mediaFiles).toHaveLength(1);
-    expect(value.mediaFiles[0]).toMatchObject({generatedAssetId: record.job.status === 'ready' ? record.job.assetId : '', takeId: take.id, source: {kind: 'generated'}});
+    expect(value.mediaFiles[0]).toMatchObject({generatedAssetId: record.job.status === 'ready' ? record.job.assetId : '', takeId: take.id, cutId: 'CUT01', shotId: 'S1', source: {kind: 'generated'}});
+    expect(value.workflow.storyboard?.cuts[0].generatedTakeIds).toContain(take.id);
     expect(value.mediaFiles[0].positionEnd).toBe(29.5);
     expect(value.workflow.production.takes[0]).toMatchObject({qcStatus: 'approved', selected: true, verdict: 'accepted'});
   });

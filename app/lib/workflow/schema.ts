@@ -23,6 +23,10 @@ export const storyboardCutSchema = z.object({
   absoluteEndSeconds: z.number().positive(),
   shots: z.array(storyboardShotSchema).min(1),
   sheetUrl: z.string().url().optional(),
+  startFrameAssetId: z.string().regex(/^ga_[a-f0-9]{32}$/).optional(),
+  endFrameAssetId: z.string().regex(/^ga_[a-f0-9]{32}$/).optional(),
+  previewAssetId: z.string().regex(/^ga_[a-f0-9]{32}$/).optional(),
+  generatedTakeIds: z.array(z.string().min(1).max(128)).max(100).optional(),
 }).refine((cut) => cut.absoluteEndSeconds > cut.absoluteStartSeconds, 'Cut end must be after start');
 
 export const storyboardSchema = z.object({
