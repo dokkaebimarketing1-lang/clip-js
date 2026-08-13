@@ -70,11 +70,20 @@ const unwrapJson = (content: string): unknown => {
 const normalizePlanningOutput = (value: unknown): unknown => {
   if (!value || typeof value !== 'object') return value;
   const root = value as {
+    styleBible?: Record<string, unknown>;
     interviewBrief?: Record<string, unknown>;
     characterSheet?: Record<string, unknown>;
     characterSheets?: Array<Record<string, unknown>>;
     storyboard?: {cuts?: Array<{shots?: Array<Record<string, unknown>>}>};
   };
+  const normalizeStringList = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input;
+    if (typeof input !== 'string') return input;
+    return input.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean);
+  };
+  if (root.styleBible) {
+    root.styleBible.negativeConstraints = normalizeStringList(root.styleBible.negativeConstraints);
+  }
   const sheets = Array.isArray(root.characterSheets)
     ? root.characterSheets
     : root.characterSheet
@@ -82,18 +91,19 @@ const normalizePlanningOutput = (value: unknown): unknown => {
       : [];
   root.characterSheets = sheets.map((sheet, index) => {
     const normalized: Record<string, unknown> = {...sheet, id: sheet.id || `CHAR${String(index + 1).padStart(2, '0')}`};
-    if (normalized.breed === '') delete normalized.breed;
-    if (normalized.referenceImageId === '') delete normalized.referenceImageId;
+    if (normalized.breed === '' || normalized.breed === null) delete normalized.breed;
+    if (normalized.referenceImageId === '' || normalized.referenceImageId === null) delete normalized.referenceImageId;
+    normalized.visualTags = normalizeStringList(normalized.visualTags);
     return normalized;
   });
-  if (!root.characterSheet && root.characterSheets[0]) root.characterSheet = root.characterSheets[0];
+  if (root.characterSheets[0]) root.characterSheet = root.characterSheets[0];
   for (const [object, key] of [
     [root.interviewBrief, 'characterName'],
     [root.interviewBrief, 'characterBreed'],
     [root.characterSheet, 'breed'],
     [root.characterSheet, 'referenceImageId'],
   ] as const) {
-    if (object?.[key] === '') delete object[key];
+    if (object?.[key] === '' || object?.[key] === null) delete object[key];
   }
   const cuts = root.storyboard?.cuts ?? [];
   for (let cutIndex = 0; cutIndex < cuts.length; cutIndex += 1) {

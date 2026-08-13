@@ -14,7 +14,14 @@ const storyboard: Storyboard = {
   cuts: [{id: 'CUT01', title: 'Opening', absoluteStartSeconds: 0, absoluteEndSeconds: 2, shots: [{id: 'S1', startSeconds: 0, endSeconds: 2, startFrame: 'dark room', endFrame: 'door opens', camera: 'wide push', action: 'open', dialogue: '—', sfx: 'door'}]}],
 };
 
-describe('storyboard approval gate', () => {
+describe('workflow approval gate', () => {
+  it('새 프로젝트 기획은 사용자 확정 전 초안이고 기존 저장 데이터는 확정으로 호환한다', () => {
+    expect(createDefaultWorkflow().planningStatus).toBe('draft');
+    const legacy = {...createDefaultWorkflow()};
+    delete (legacy as Partial<typeof legacy>).planningStatus;
+    expect(workflowStateSchema.parse(legacy).planningStatus).toBe('approved');
+  });
+
   it('fails closed before explicit approval', async () => {
     const workflow = {...createDefaultWorkflow(), storyboard};
     await expect(assertVideoGenerationAllowed(workflow)).rejects.toBeInstanceOf(ApprovalRequiredError);

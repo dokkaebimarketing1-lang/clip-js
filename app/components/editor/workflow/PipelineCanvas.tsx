@@ -45,21 +45,23 @@ export default function PipelineCanvas({
   interviewBrief,
   characterSheet,
   storyboard,
+  sampleMode = false,
 }: {
   interviewBrief?: InterviewBrief;
   characterSheet?: CharacterSheet;
   storyboard?: Storyboard;
+  sampleMode?: boolean;
 }) {
   const [selectedStage, setSelectedStage] = useState<StageId | null>(null);
   const [selectedShot, setSelectedShot] = useState<number | null>(null);
-  const isMock = !storyboard;
+  const isMock = sampleMode && !storyboard;
 
   const shots = storyboard?.cuts.flatMap((cut) =>
     cut.shots.map((shot) => ({cut: cut.title, ...shot})),
-  ) ?? MOCK_SHOTS;
+  ) ?? (sampleMode ? MOCK_SHOTS : []);
 
-  const ib = interviewBrief ?? MOCK_INTERVIEW;
-  const cs = characterSheet ?? MOCK_CHARACTER;
+  const ib = interviewBrief ?? (sampleMode ? MOCK_INTERVIEW : undefined);
+  const cs = characterSheet ?? (sampleMode ? MOCK_CHARACTER : undefined);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-neutral-950">
@@ -139,7 +141,7 @@ export default function PipelineCanvas({
           ) : selectedStage ? (
             <div className="space-y-2">
               <div className="text-xs font-semibold text-fuchsia-300">{STAGES.find((s) => s.id === selectedStage)?.num} {STAGES.find((s) => s.id === selectedStage)?.label} 단계</div>
-              {selectedStage === 'interview' && (
+              {selectedStage === 'interview' && ib && (
                 <>
                   <DetailRow label="주체" value={ib.subject} />
                   <DetailRow label="행동" value={ib.action} />
@@ -147,7 +149,7 @@ export default function PipelineCanvas({
                   <DetailRow label="톤" value={ib.tone} />
                 </>
               )}
-              {selectedStage === 'character' && (
+              {selectedStage === 'character' && cs && (
                 <>
                   <DetailRow label="이름" value={cs.name} />
                   <DetailRow label="품종" value={cs.breed ?? '—'} />
@@ -156,8 +158,8 @@ export default function PipelineCanvas({
               )}
               {selectedStage === 'storyboard' && (
                 <>
-                  <DetailRow label="제목" value={storyboard?.title ?? '고양이 VLOG (예시)'} />
-                  <DetailRow label="컷 수" value={`${storyboard?.cuts.length ?? MOCK_SHOTS.length}`} />
+                  <DetailRow label="제목" value={storyboard?.title ?? (sampleMode ? '고양이 VLOG (예시)' : '아직 생성되지 않음')} />
+                  <DetailRow label="컷 수" value={`${storyboard?.cuts.length ?? (sampleMode ? MOCK_SHOTS.length : 0)}`} />
                 </>
               )}
               {!interviewBrief && !characterSheet && !storyboard && (

@@ -101,6 +101,24 @@ describe('ModelArk DeepSeek planning provider', () => {
     expect(result.storyboard.cuts[0].shots[0].endFrame).toContain('종료 화면');
   });
 
+  it('배열 필드를 문자열로 주거나 선택 필드를 null로 준 모델 응답을 안전하게 정규화한다', async () => {
+    const variant = structuredClone(validPlan) as typeof validPlan & {characterSheets?: unknown[]};
+    variant.styleBible.negativeConstraints = 'no cartoon rendering, no style drift, no text or logo' as unknown as string[];
+    variant.characterSheet.breed = null as unknown as string;
+    variant.characterSheet.visualTags = '고양이, 회색 털' as unknown as string[];
+    variant.characterSheets = [variant.characterSheet];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{message: {content: JSON.stringify(variant)}}],
+    }), {status: 200}));
+    const provider = createDeepSeekPlanningProvider({apiKey: 'test-key', fetchImpl});
+
+    const result = await provider.compose('문장');
+
+    expect(result.styleBible.negativeConstraints).toEqual(['no cartoon rendering', 'no style drift', 'no text or logo']);
+    expect(result.characterSheets[0].breed).toBeUndefined();
+    expect(result.characterSheets[0].visualTags).toEqual(['고양이', '회색 털']);
+  });
+
   it('keeps two distinct main characters and their per-cut assignments', async () => {
     const multiPlan = structuredClone(validPlan) as typeof validPlan & {characterSheets?: unknown[]};
     multiPlan.characterSheets = [

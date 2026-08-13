@@ -327,18 +327,23 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <div className="mb-2 [&_a]:h-10 [&_a]:w-full [&_a]:flex-row [&_a]:gap-2 [&_a]:px-2 [&_img]:max-h-[16px] [&_img]:max-w-[16px] [&_span]:text-[10px]"><HomeButton /></div>
                     <div className="mb-2 border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">제작</div>
                     <div className="space-y-1">
-                        {PROJECT_WORKSPACES.map((item) => (
+                        {PROJECT_WORKSPACES.map((item) => {
+                            const planningLocked = item.id !== 'interview' && projectState.workflow.planningStatus !== 'approved';
+                            return (
                             <button
                                 key={item.id}
                                 type="button"
                                 aria-current={workspace === item.id ? 'page' : undefined}
+                                disabled={planningLocked}
+                                title={planningLocked ? 'AI 기획 초안을 먼저 검수하고 확정하세요.' : undefined}
                                 onClick={() => setWorkspace(item.id)}
-                                className={`group flex w-full items-center gap-2 rounded-lg border px-2 py-2.5 text-left transition ${workspace === item.id ? 'border-fuchsia-500/60 bg-fuchsia-500/15 text-white shadow-[inset_3px_0_0_#d946ef]' : 'border-transparent text-gray-400 hover:border-white/10 hover:bg-white/5 hover:text-gray-200'}`}
+                                className={`group flex w-full items-center gap-2 rounded-lg border px-2 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-35 ${workspace === item.id ? 'border-fuchsia-500/60 bg-fuchsia-500/15 text-white shadow-[inset_3px_0_0_#d946ef]' : 'border-transparent text-gray-400 hover:border-white/10 hover:bg-white/5 hover:text-gray-200'}`}
                             >
                                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-black ${workspace === item.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-500 group-hover:text-gray-300'}`}>{item.step}</span>
                                 <span className="whitespace-nowrap text-[11px] font-bold leading-tight">{item.label}</span>
                             </button>
-                        ))}
+                            );
+                        })}
                     </div>
                 </nav>
 
@@ -401,6 +406,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 interviewBrief={projectState.workflow.interviewBrief}
                                 characterSheet={projectState.workflow.characterSheet}
                                 storyboard={projectState.workflow.storyboard}
+                                sampleMode={sampleMode}
                             />
                         )}
                     </div>

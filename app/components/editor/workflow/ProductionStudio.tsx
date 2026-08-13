@@ -6,8 +6,10 @@ import {useAppDispatch, useAppSelector} from '@/app/store';
 import {setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {attachCutFrameAsset, reorderStoryboardCuts, selectTakeForTimeline} from '@/app/lib/workflow/project-production';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
-import {storyboardCutSchema, type CharacterSheet, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
+import {creativeApprovalSchema, storyboardCutSchema, type CharacterSheet, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
+import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
 import {deriveGenerationPreflight} from '@/app/lib/workflow/generation-preflight';
+import {takeApprovalSchema} from '@/app/lib/workflow/production-schema';
 
 const sha256 = async (file: File) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
@@ -76,6 +78,8 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(false);
   const [previewCut, setPreviewCut] = useState<StoryboardCut>();
+  const [isApproving, setIsApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const selected = storyboard.cuts.find((cut) => cut.id === selectedCutId) ?? storyboard.cuts[0];
 
   const reorder = (targetId: string) => {
@@ -110,6 +114,37 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
     setPreviewCut(undefined); setInstruction(''); setMessage('수정 결과를 적용했고 기존 승인을 무효화했습니다.');
   };
 
+  const approveCurrentStoryboard = async () => {
+    if (isApproving) return;
+    setIsApproving(true);
+    setApprovalError(null);
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/creative-approval/ui`, {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({storyboard, characterSheets}),
+      });
+      const payload = await response.json() as {creativeApproval?: unknown; error?: string};
+      if (!response.ok || !payload.creativeApproval) throw new Error(payload.error ?? '스토리보드를 확정하지 못했습니다.');
+      const creativeApproval = creativeApprovalSchema.parse(payload.creativeApproval);
+      dispatch(setWorkflow({
+        ...project.workflow,
+        creativeApproval,
+        generationApproval: {status: 'invalidated'},
+        releaseApproval: {status: 'invalidated'},
+        production: deriveProductionFromStoryboard(storyboard, project.workflow.production),
+      }));
+      setMessage('현재 스토리보드를 Creative 기준으로 확정했습니다. 이후 컷이나 기준 이미지를 바꾸면 승인이 자동 취소됩니다.');
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : '스토리보드를 확정하지 못했습니다.');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const creativeApproved = project.workflow.creativeApproval.status === 'approved';
+  const missingFrameCount = storyboard.cuts.filter((cut) => !cut.startFrameAssetId || !cut.endFrameAssetId).length;
+
   return <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
     <div className="grid gap-5 md:grid-cols-2">
       {storyboard.cuts.map((cut) => <article key={cut.id} draggable onDragStart={() => setDraggedId(cut.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(cut.id)} onClick={() => setSelectedCutId(cut.id)} className={`cursor-grab rounded-3xl border bg-[#15131a] p-4 transition ${selected?.id === cut.id ? 'border-fuchsia-400/60 shadow-[0_0_0_1px_rgba(217,70,239,.2)]' : 'border-white/10 hover:border-white/25'}`}>
@@ -131,6 +166,7 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
       <button type="button" onClick={() => void applyEdit()} disabled={editing || !instruction.trim()} className="mt-3 w-full rounded-xl bg-fuchsia-600 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50">{editing ? 'DeepSeek 수정 중…' : 'AI 수정 미리보기'}</button>
       {previewCut ? <div className="mt-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-400/[0.07] p-4"><p className="text-[11px] font-black text-fuchsia-300">적용 전 미리보기</p><p className="mt-2 text-sm font-black text-white">{previewCut.title}</p><p className="mt-2 text-xs leading-5 text-gray-400">{previewCut.shots.map((shot) => shot.action).join(' · ')}</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPreviewCut(undefined)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-gray-400">취소</button><button type="button" onClick={commitPreview} className="rounded-lg bg-fuchsia-500 px-3 py-2 text-xs font-black text-white">이 수정 적용</button></div></div> : null}
       <p aria-live="polite" className="mt-3 text-xs leading-5 text-gray-500">{message || '드래그로 순서를 바꾸거나 선택한 컷을 자연어로 수정합니다.'}</p>
+      <div className={`mt-5 rounded-2xl border p-4 ${creativeApproved ? 'border-emerald-400/25 bg-emerald-400/[0.06]' : 'border-white/10 bg-black/20'}`}><p className={`text-sm font-black ${creativeApproved ? 'text-emerald-300' : 'text-white'}`}>{creativeApproved ? '✓ Creative 승인 완료' : '이 스토리보드를 확정할까요?'}</p><p className="mt-2 text-xs leading-5 text-gray-400">현재 {storyboard.cuts.length}개 컷 · START/END 프레임 미완료 {missingFrameCount}개. 확정 후 컷·캐릭터·기준 이미지를 바꾸면 승인이 자동 취소됩니다.</p>{creativeApproved ? null : <button type="button" disabled={isApproving || Boolean(previewCut)} onClick={() => void approveCurrentStoryboard()} className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-40">{isApproving ? '확정 중…' : '검수 완료 · 이 스토리보드 확정'}</button>}{previewCut ? <p className="mt-2 text-[11px] text-amber-200">먼저 수정 미리보기를 적용하거나 취소하세요.</p> : null}{approvalError ? <p role="alert" className="mt-2 text-xs text-red-300">{approvalError}</p> : null}</div>
     </aside>
   </div>;
 }
@@ -151,24 +187,59 @@ const GenerationPreflightPanel = ({preflight}: {preflight: ReturnType<typeof der
   </section>
 );
 
+const GenerationQuotePanel = ({duration, resolution, generateAudio, shotCount}: {duration: number; resolution: string; generateAudio: boolean; shotCount: number}) => (
+  <section className="rounded-3xl border border-amber-400/25 bg-amber-400/[0.05] p-6 text-left">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-amber-200">유료 생성 명세</p><h2 className="mt-2 text-xl font-black text-white">비용 견적 확인 전에는 승인할 수 없습니다</h2></div><span className="rounded-full bg-amber-300 px-3 py-1.5 text-xs font-black text-black">견적 대기</span></div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><div className="rounded-2xl bg-black/20 p-4"><p className="text-xs text-gray-500">모델</p><p className="mt-1 break-all text-sm font-black text-white">dreamina-seedance-2-5-260628</p></div><div className="rounded-2xl bg-black/20 p-4"><p className="text-xs text-gray-500">길이</p><p className="mt-1 text-sm font-black text-white">{duration}초</p></div><div className="rounded-2xl bg-black/20 p-4"><p className="text-xs text-gray-500">해상도</p><p className="mt-1 text-sm font-black uppercase text-white">{resolution}</p></div><div className="rounded-2xl bg-black/20 p-4"><p className="text-xs text-gray-500">오디오 생성</p><p className="mt-1 text-sm font-black text-white">{generateAudio ? '포함' : '미포함'}</p></div><div className="rounded-2xl bg-black/20 p-4"><p className="text-xs text-gray-500">승인 대상</p><p className="mt-1 text-sm font-black text-white">{shotCount}개 생성 명세</p></div></div>
+    <p className="mt-4 text-sm leading-6 text-amber-100/70">Seedance 2.5는 resource pack과 token 차감 방식이며 해상도·입력 모드에 따라 사용량이 달라집니다. 현재 계정의 예상 차감량을 확인할 수 없어 비용 확인 체크와 생성 승인을 잠갔습니다.</p>
+    <button type="button" disabled className="mt-4 w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-black text-gray-500">정확한 비용 견적이 필요합니다</button>
+  </section>
+);
+
 export function TakeStudio() {
   const dispatch = useAppDispatch();
   const project = useAppSelector((state) => state.projectState);
   const [selectedShotId, setSelectedShotId] = useState(project.workflow.production.shotSpecs[0]?.id ?? '');
   const [viewTakeId, setViewTakeId] = useState<string>();
+  const [qcBusy, setQcBusy] = useState(false);
+  const [qcError, setQcError] = useState<string>();
   const takes = useMemo(() => project.workflow.production.takes.filter((take) => take.scope === 'shot' ? take.shotSpecId === selectedShotId : true), [project.workflow.production.takes, selectedShotId]);
   const current = takes.find((take) => take.id === viewTakeId) ?? takes.find((take) => take.selected) ?? takes[0];
   const compare = takes.filter((take) => take.outputAssetId).slice(0, 2);
   const preflight = useMemo(() => deriveGenerationPreflight(project, false), [project]);
   const choose = (takeId: string) => { const next = selectTakeForTimeline(project, takeId); dispatch(setWorkflow(next.workflow)); dispatch(setMediaFiles(next.mediaFiles)); setViewTakeId(takeId); };
+  const decideTake = async (decision: 'approved' | 'rejected') => {
+    if (!current || qcBusy) return;
+    setQcBusy(true); setQcError(undefined);
+    try {
+      let takeApproval = current.takeApproval;
+      if (decision === 'approved') {
+        if (!current.requestKey || !current.outputAssetId || !current.contentSha256) throw new Error('서버 검증에 필요한 생성본 ID와 해시가 없습니다.');
+        const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/takes/${encodeURIComponent(current.id)}/approve/ui`, {
+          method: 'POST', headers: {'content-type': 'application/json'},
+          body: JSON.stringify({requestKey: current.requestKey, assetId: current.outputAssetId, contentSha256: current.contentSha256}),
+        });
+        const payload = await response.json() as {takeApproval?: unknown; error?: string};
+        if (!response.ok || !payload.takeApproval) throw new Error(payload.error ?? '생성본을 승인하지 못했습니다.');
+        takeApproval = takeApprovalSchema.parse(payload.takeApproval);
+      } else {
+        takeApproval = takeApprovalSchema.parse({status: 'rejected', takeId: current.id, assetId: current.outputAssetId, contentSha256: current.contentSha256, approvedAt: new Date().toISOString(), approvedBy: 'project-owner'});
+      }
+      const takes = project.workflow.production.takes.map((take) => take.id === current.id ? {...take, qcStatus: decision, verdict: decision === 'approved' ? 'accepted' as const : 'rejected' as const, selected: decision === 'approved' ? take.selected : false, takeApproval} : take);
+      dispatch(setWorkflow({...project.workflow, production: {...project.workflow.production, takes}}));
+    } catch (error) { setQcError(error instanceof Error ? error.message : '생성본 검수 결과를 저장하지 못했습니다.'); }
+    finally { setQcBusy(false); }
+  };
 
-  if (!takes.length) return <div className="mt-8 space-y-5"><GenerationPreflightPanel preflight={preflight}/><div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center"><h2 className="font-black text-white">저장된 take가 없습니다</h2><p className="mt-2 text-sm leading-6 text-gray-500">Seedance 결과가 secure ingest와 QC 승인을 통과하면 이곳에 실제 take로 저장됩니다. 유료 제출은 현재 잠겨 있습니다.</p></div></div>;
+  const quotePanel = <GenerationQuotePanel duration={project.workflow.seedanceMaster.duration} resolution={project.workflow.seedanceMaster.resolution} generateAudio={project.workflow.seedanceMaster.generateAudio} shotCount={project.workflow.production.shotSpecs.length}/>;
+  if (!takes.length) return <div className="mt-8 space-y-5"><GenerationPreflightPanel preflight={preflight}/>{quotePanel}<div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center"><h2 className="font-black text-white">저장된 take가 없습니다</h2><p className="mt-2 text-sm leading-6 text-gray-500">Seedance 결과가 secure ingest와 QC 승인을 통과하면 이곳에 실제 take로 저장됩니다. 유료 제출은 현재 잠겨 있습니다.</p></div></div>;
   return <div className="mt-8 space-y-5">
     <GenerationPreflightPanel preflight={preflight}/>
+    {quotePanel}
     <div className="flex flex-wrap gap-2">{project.workflow.production.shotSpecs.map((spec) => <button key={spec.id} type="button" onClick={() => setSelectedShotId(spec.id)} className={`rounded-full px-4 py-2 text-xs font-bold ${selectedShotId === spec.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-400'}`}>{spec.cutId} · {spec.shotId}</button>)}</div>
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div><TakeVideo projectId={project.id} assetId={current?.outputAssetId} label={current?.id ?? 'take'}/><div className="mt-3 flex flex-wrap gap-2">{takes.map((take) => <button key={take.id} type="button" onClick={() => setViewTakeId(take.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold ${current?.id === take.id ? 'border-fuchsia-400 bg-fuchsia-400/10 text-fuchsia-200' : 'border-white/10 text-gray-400'}`}>{take.id}{take.selected ? ' · 타임라인' : ''}</button>)}</div></div>
-      <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-5"><p className="text-xs text-gray-500">현재 버전</p><h3 className="mt-2 break-all font-black text-white">{current?.id}</h3><p className="mt-3 text-xs text-gray-400">QC {current?.qcStatus} · {current?.resolution ?? '해상도 미상'}</p>{current ? <button type="button" onClick={() => choose(current.id)} disabled={current.qcStatus !== 'approved'} className="mt-5 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40">타임라인에 이 버전 배치</button> : null}</aside>
+      <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-5"><p className="text-xs text-gray-500">현재 버전</p><h3 className="mt-2 break-all font-black text-white">{current?.id}</h3><p className="mt-3 text-xs text-gray-400">QC {current?.qcStatus} · {current?.resolution ?? '해상도 미상'}</p>{current?.qcStatus === 'qc_pending' ? <div className="mt-5"><p className="text-xs leading-5 text-gray-400">영상을 직접 재생해 캐릭터·동작·화풍을 확인한 뒤 결정하세요. 반려해도 자동 재생성·추가 과금은 없습니다.</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" disabled={qcBusy} onClick={() => void decideTake('rejected')} className="rounded-xl border border-red-400/30 px-3 py-2.5 text-xs font-black text-red-200 disabled:opacity-40">이 버전 반려</button><button type="button" disabled={qcBusy} onClick={() => void decideTake('approved')} className="rounded-xl bg-emerald-400 px-3 py-2.5 text-xs font-black text-black disabled:opacity-40">이 버전 승인</button></div>{qcError ? <p role="alert" className="mt-2 text-xs text-red-300">{qcError}</p> : null}</div> : null}{current ? <button type="button" onClick={() => choose(current.id)} disabled={current.qcStatus !== 'approved'} className="mt-5 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40">{current.qcStatus === 'approved' ? '타임라인에 이 버전 배치' : current.qcStatus === 'rejected' ? '반려된 버전' : '승인 후 배치 가능'}</button> : null}</aside>
     </div>
     {compare.length === 2 ? <div><h3 className="mb-3 font-black text-white">A/B 나란히 비교</h3><div className="grid gap-4 md:grid-cols-2">{compare.map((take, index) => <div key={take.id}><TakeVideo projectId={project.id} assetId={take.outputAssetId} label={`버전 ${index ? 'B' : 'A'}`}/><p className="mt-2 text-xs text-gray-500">{index ? 'B' : 'A'} · {take.id}</p></div>)}</div></div> : null}
   </div>;

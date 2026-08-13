@@ -322,6 +322,7 @@ const migrateLegacyWorkflowApprovals = (input: unknown): unknown => {
 };
 
 const workflowStateV3Schema = z.object({
+  planningStatus: z.enum(['draft', 'approved']).default('approved'),
   interviewBrief: interviewBriefSchema.optional(),
   styleBible: styleBibleSchema.optional(),
   styleBibleHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -368,6 +369,7 @@ export type WorkflowState = z.infer<typeof workflowStateSchema>;
 
 export const createDefaultWorkflow = (): WorkflowState => ({
   ...draftApprovals(),
+  planningStatus: 'draft',
   interviewBrief: undefined,
   styleBible: undefined,
   styleBibleHash: undefined,
