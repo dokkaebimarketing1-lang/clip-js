@@ -13,6 +13,11 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
+const getAsset = vi.fn();
+vi.mock('@/app/lib/generation/runtime.server', () => ({
+  getGeneratedAssetStore: () => ({get: getAsset}),
+}));
+
 const temporaryDirectories: string[] = [];
 const repository = () => {
   const directory = mkdtempSync(join(tmpdir(), 'clipjs-submit-'));
@@ -26,7 +31,9 @@ beforeAll(() => {
   process.env.CLIPJS_APPROVAL_SIGNING_SECRET = 'unit-test-signing-secret';
 });
 
-const storyboard: Storyboard = {version: 'v1', title: 'Auth fixture', noBgm: true, cuts: [{id: 'CUT01', title: 'Cut', absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'wide room', endFrame: 'relieved person', camera: 'push', action: 'listen', dialogue: '—', sfx: 'room'}]}]};
+const referenceImageId = `ga_${'a'.repeat(32)}`;
+const characterSheet = {id: 'CHAR01', name: 'Person', palette: {dominant: '#111111', secondary: '#222222', accent: '#333333'}, visualTags: ['consistent'], referenceImageId};
+const storyboard: Storyboard = {version: 'v1', title: 'Auth fixture', noBgm: true, characterReferenceIds: [referenceImageId], cuts: [{id: 'CUT01', title: 'Cut', characterIds: ['CHAR01'], absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'wide room', endFrame: 'relieved person', camera: 'push', action: 'listen', dialogue: '—', sfx: 'room'}]}]};
 const production: ProductionManifest = {
   assets: [],
   continuityLocks: [{id: 'lock-1', sceneId: 'CUT01', status: 'locked', landmarks: [], cameraSide: 'south', axisRule: 'stay south', lightSource: 'window', shadowDirection: 'left', palette: {dominant: '#111111', secondary: '#222222', accent: '#333333'}}],
@@ -35,12 +42,15 @@ const production: ProductionManifest = {
 };
 
 const project = async () => {
+  getAsset.mockResolvedValue({id: referenceImageId, projectId: 'project-auth', state: 'ready', mimeType: 'image/png'});
   const value = structuredClone(initialState);
   value.id = 'project-auth';
   value.projectName = 'Authorization test';
   value.workflow.storyboard = storyboard;
+  value.workflow.characterSheet = characterSheet;
+  value.workflow.characterSheets = [characterSheet];
   value.workflow.production = production;
-  value.workflow.creativeApproval = signCreativeApproval(value.id, await approveCreative(storyboard, 'owner', new Date('2026-08-11T00:00:00Z')));
+  value.workflow.creativeApproval = signCreativeApproval(value.id, await approveCreative(storyboard, 'owner', new Date('2026-08-11T00:00:00Z'), [characterSheet]));
   return value;
 };
 
@@ -66,6 +76,17 @@ describe('GenerationAuthorization', () => {
     const issued = await issueGenerationAuthorization(value, 'attempt-1', preview.requestHash);
     expect(() => verifyGenerationApprovalSignature('another-project', issued.generationApproval)).toThrow(/project scope/i);
     expect(generationApprovalSchema.safeParse({status: 'approved'}).success).toBe(false);
+  });
+
+  it('rejects legacy storyboard provenance and reference assets owned by another project', async () => {
+    const legacy = await project();
+    legacy.workflow.storyboard = {...storyboard, characterReferenceIds: undefined};
+    legacy.workflow.creativeApproval = signCreativeApproval(legacy.id, await approveCreative(legacy.workflow.storyboard, 'owner', new Date('2026-08-11T00:00:00Z'), [characterSheet]));
+    await expect(createGenerationAuthorizationPreview(legacy, 'attempt-legacy')).rejects.toThrow(/reference lineage/i);
+
+    const wrongOwner = await project();
+    getAsset.mockResolvedValue({id: referenceImageId, projectId: 'another-project', state: 'ready', mimeType: 'image/png'});
+    await expect(createGenerationAuthorizationPreview(wrongOwner, 'attempt-wrong-owner')).rejects.toThrow(/reference asset/i);
   });
 
   it('submits one provider task per authorized request and locks unknown outcomes as uncertain', async () => {

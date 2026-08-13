@@ -11,7 +11,8 @@ beforeEach(() => {
   getAsset.mockImplementation(async (assetId: string) => ({
     id: assetId,
     projectId: 'project-a',
-    assetKind: 'character-reference',
+    state: 'ready',
+    assetKind: 'managed-media',
     mimeType: 'image/png',
   }));
 });
@@ -35,7 +36,7 @@ const characters = [
 
 const post = (characterSheets: unknown) => POST(new Request('http://localhost/api/vlog/storyboard', {
   method: 'POST',
-  headers: {'content-type': 'application/json'},
+  headers: {'content-type': 'application/json', origin: 'http://localhost', 'sec-fetch-site': 'same-origin'},
   body: JSON.stringify({projectId: 'project-a', sentence: '강아지 초코와 다람쥐 다람이가 함께 도토리를 찾는 20초 영상', interviewBrief: brief, characterSheets}),
 }));
 
@@ -53,6 +54,22 @@ describe('storyboard generation gate', () => {
     expect(data.storyboard.cuts.length).toBeGreaterThan(0);
     expect(data.storyboard.characterReferenceIds).toEqual([`ga_${'a'.repeat(32)}`, `ga_${'b'.repeat(32)}`]);
     expect(data.storyboard.cuts.every((cut: {characterIds?: string[]}) => Array.isArray(cut.characterIds))).toBe(true);
+  });
+
+  it('rejects duplicate character identities before calling the planning provider', async () => {
+    const response = await post([characters[0], {...characters[1], id: 'CHAR01'}]);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({code: 'DUPLICATE_CHARACTER_ID'});
+  });
+
+  it('rejects cross-site planning requests', async () => {
+    const response = await POST(new Request('http://localhost/api/vlog/storyboard', {
+      method: 'POST',
+      headers: {'content-type': 'application/json', origin: 'https://evil.example', 'sec-fetch-site': 'cross-site'},
+      body: JSON.stringify({projectId: 'project-a', sentence: 'test', interviewBrief: brief, characterSheets: characters}),
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({code: 'INVALID_REQUEST'});
   });
 
   it('rejects a reference asset owned by another project', async () => {

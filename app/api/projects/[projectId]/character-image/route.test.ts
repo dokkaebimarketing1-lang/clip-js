@@ -19,8 +19,9 @@ const context = {params: Promise.resolve({projectId: 'project-1'})};
 const makePost = (body: unknown, origin = 'http://localhost') => new NextRequest('http://localhost/api/projects/project-1/character-image', {
   method: 'POST',
   headers: {origin, 'sec-fetch-site': origin === 'http://localhost' ? 'same-origin' : 'cross-site', 'content-type': 'application/json'},
-  body: JSON.stringify(body),
+  body: JSON.stringify({characterId: 'CHAR01', ...(body as object)}),
 });
+const makeGet = (characterId = 'CHAR01') => new NextRequest(`http://localhost/api/projects/project-1/character-image?jobId=4e97908e-4b6d-413a-96e8-d64c560267bc&characterId=${characterId}`, {headers: {origin: 'http://localhost', 'sec-fetch-site': 'same-origin'}});
 
 beforeEach(() => {
   vi.resetModules();
@@ -43,7 +44,7 @@ describe('project character image generation route', () => {
     const {POST} = await import('./route');
     const response = await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}), context);
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({jobId: '4e97908e-4b6d-413a-96e8-d64c560267bc', status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false});
+    expect(await response.json()).toEqual({jobId: '4e97908e-4b6d-413a-96e8-d64c560267bc', characterId: 'CHAR01', status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false});
     expect(submit).toHaveBeenCalledWith({prompt: 'a valid character reference prompt', aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
   });
 
@@ -57,6 +58,14 @@ describe('project character image generation route', () => {
     expect(submit).toHaveBeenCalledOnce();
   });
 
+  it('does not reuse one character job for another character', async () => {
+    const {POST} = await import('./route');
+    await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}), context);
+    const response = await POST(makePost({characterId: 'CHAR02', prompt: 'a different valid character prompt', confirmCreditCost: 1}), context);
+    expect(response.status).toBe(409);
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
   it('rejects cross-site paid submissions', async () => {
     const {POST} = await import('./route');
     const response = await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}, 'https://evil.example'), context);
@@ -67,7 +76,7 @@ describe('project character image generation route', () => {
   it('ingests a completed expected-model result and returns a capability URL', async () => {
     const {GET, POST} = await import('./route');
     await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}), context);
-    const response = await GET(new NextRequest('http://localhost/api/projects/project-1/character-image?jobId=4e97908e-4b6d-413a-96e8-d64c560267bc', {headers: {origin: 'http://localhost', 'sec-fetch-site': 'same-origin'}}), context);
+    const response = await GET(makeGet(), context);
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload).toMatchObject({status: 'completed', assetId: 'ga_0123456789abcdef0123456789abcdef', contentSha256: 'a'.repeat(64)});
@@ -79,7 +88,7 @@ describe('project character image generation route', () => {
     getJob.mockResolvedValueOnce({id: '4e97908e-4b6d-413a-96e8-d64c560267bc', status: 'completed', job_type: 'seedance_2_5', result_url: 'https://d8j0ntlcm91z4.cloudfront.net/result.png'});
     const {GET, POST} = await import('./route');
     await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}), context);
-    const response = await GET(new NextRequest('http://localhost/api/projects/project-1/character-image?jobId=4e97908e-4b6d-413a-96e8-d64c560267bc', {headers: {'sec-fetch-site': 'same-origin'}}), context);
+    const response = await GET(makeGet(), context);
     expect(response.status).toBe(400);
     expect(ingest).not.toHaveBeenCalled();
   });

@@ -4,6 +4,26 @@ import {getConfiguredPlanningProvider} from '@/app/lib/generation/planning-runti
 import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
 import {characterSheetSchema, interviewBriefSchema, storyboardSchema} from '@/app/lib/workflow/schema';
 
+const MAX_BODY_BYTES = 64 * 1024;
+
+const assertSameOrigin = (request: Request) => {
+  const origin = request.headers.get('origin');
+  const fetchSite = request.headers.get('sec-fetch-site');
+  if (fetchSite !== 'same-origin' || origin !== new URL(request.url).origin) {
+    throw new Error('Browser same-origin context is required.');
+  }
+};
+
+const readBody = async (request: Request): Promise<unknown> => {
+  const type = request.headers.get('content-type')?.toLowerCase() ?? '';
+  if (!type.startsWith('application/json')) throw new Error('JSON required.');
+  const declared = Number(request.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw new Error('Request too large.');
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) throw new Error('Request too large.');
+  return JSON.parse(text);
+};
+
 const inputSchema = z.object({
   projectId: z.string().min(1).max(128),
   sentence: z.string().trim().min(1).max(2000),
@@ -17,7 +37,8 @@ const inputSchema = z.object({
 export const POST = async (request: Request) => {
   let raw: unknown;
   try {
-    raw = await request.json();
+    assertSameOrigin(request);
+    raw = await readBody(request);
   } catch {
     return NextResponse.json({error: '잘못된 요청입니다.', code: 'INVALID_REQUEST'}, {status: 400});
   }
@@ -30,11 +51,15 @@ export const POST = async (request: Request) => {
   }
 
   const input = parsed.data;
+  const characterIds = input.characterSheets.map((sheet) => sheet.id);
+  if (new Set(characterIds).size !== characterIds.length) {
+    return NextResponse.json({error: '캐릭터 식별자가 중복됐습니다.', code: 'DUPLICATE_CHARACTER_ID'}, {status: 409});
+  }
   const assets = await Promise.all(input.characterSheets.map((sheet) =>
     getGeneratedAssetStore().get(sheet.referenceImageId),
   ));
   const ownsEveryImage = assets.every((asset) =>
-    asset?.projectId === input.projectId && asset.mimeType.startsWith('image/'),
+    asset?.projectId === input.projectId && asset.state === 'ready' && asset.mimeType.startsWith('image/'),
   );
   if (!ownsEveryImage) {
     return NextResponse.json({

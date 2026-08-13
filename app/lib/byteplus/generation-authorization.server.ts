@@ -1,6 +1,9 @@
 import {z} from 'zod';
 import {computeGenerationRequestKey} from '@/app/lib/generation/generation-repository.server';
 import {approveGeneration, computeStoryboardHash} from '@/app/lib/workflow/approval';
+import {sha256} from '@/app/lib/workflow/hash';
+import {characterSheetSchema} from '@/app/lib/workflow/schema';
+import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
 import {parseProjectState} from '@/app/lib/workflow/project-file';
 import type {ProjectState} from '@/app/types';
 import {signGenerationApproval, verifyCreativeApprovalSignature} from '@/app/lib/security/approval-signature';
@@ -47,6 +50,28 @@ const assertCurrentCreativeApproval = async (project: ProjectState): Promise<voi
   verifyCreativeApprovalSignature(project.id, approval);
   const currentHash = await computeStoryboardHash(project.workflow.storyboard);
   if (currentHash !== approval.storyboardHash) throw new Error('Creative approval is stale for the current storyboard.');
+
+  const characterSheets = project.workflow.characterSheets?.length
+    ? project.workflow.characterSheets
+    : project.workflow.characterSheet ? [project.workflow.characterSheet] : [];
+  if (characterSheets.length === 0 || !approval.characterSheetHash) {
+    throw new Error('Current character sheets require owner creative approval.');
+  }
+  const characterIds = characterSheets.map((sheet) => sheet.id);
+  if (new Set(characterIds).size !== characterIds.length) throw new Error('Character identities must be unique.');
+  const referenceIds = characterSheets.map((sheet) => sheet.referenceImageId);
+  if (referenceIds.some((id) => !id)) throw new Error('Every character requires a reference asset.');
+  const readyReferenceIds = referenceIds as string[];
+  const lineage = project.workflow.storyboard.characterReferenceIds;
+  if (!lineage || lineage.length !== readyReferenceIds.length || lineage.some((id, index) => id !== readyReferenceIds[index])) {
+    throw new Error('Storyboard reference lineage is missing or stale.');
+  }
+  const currentCharacterHash = await sha256(characterSheets.map((sheet) => characterSheetSchema.parse(sheet)));
+  if (currentCharacterHash !== approval.characterSheetHash) throw new Error('Creative approval is stale for the current character sheets.');
+  const assets = await Promise.all(readyReferenceIds.map((id) => getGeneratedAssetStore().get(id)));
+  if (assets.some((asset) => !asset || asset.projectId !== project.id || asset.state !== 'ready' || !asset.mimeType.startsWith('image/'))) {
+    throw new Error('A current character reference asset is missing or belongs to another project.');
+  }
 };
 
 export const createGenerationAuthorizationPreview = async (

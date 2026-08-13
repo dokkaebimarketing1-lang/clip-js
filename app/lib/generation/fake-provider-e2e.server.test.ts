@@ -29,7 +29,17 @@ beforeAll(() => { process.env.CLIPJS_APPROVAL_SIGNING_SECRET = 'fake-e2e-signing
 const project = async (): Promise<ProjectState> => {
   const value = structuredClone(initialState);
   value.id = 'fake-e2e-project'; value.projectName = 'Fake E2E'; value.duration = 30;
-  value.workflow.storyboard = {version: 'v1', title: 'Fake E2E', noBgm: true, cuts: [{id: 'CUT01', title: 'Cut', absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'studio wide', endFrame: 'subject settles', camera: 'locked camera', action: 'subject moves naturally', dialogue: '—', sfx: 'quiet room tone'}]}]};
+  const referenceStore = createLocalGeneratedAssetStore({rootDirectory: root(), minFreeBytes: 0, getFreeBytes: () => 1_000_000});
+  (globalThis as typeof globalThis & {__clipjsGeneratedAssetStore?: typeof referenceStore}).__clipjsGeneratedAssetStore = referenceStore;
+  const referenceBytes = Buffer.from('fake-character-reference');
+  const referenceHash = createHash('sha256').update(referenceBytes).digest('hex');
+  const referenceTemp = referenceStore.createTempPath('fake-character');
+  writeFileSync(referenceTemp, referenceBytes);
+  const reference = await referenceStore.commitVerifiedTemp({tempPath: referenceTemp, projectId: value.id, requestKey: 'b'.repeat(64), contentSha256: referenceHash, byteLength: referenceBytes.length, mimeType: 'image/png', assetKind: 'managed-media', media: {format: 'png', width: 1280, height: 720}});
+  const characterSheet = {id: 'CHAR01', name: 'Subject', palette: {dominant: '#241818', secondary: '#6f3434', accent: '#f0b45c'}, visualTags: ['fictional subject'], referenceImageId: reference.asset.id};
+  value.workflow.characterSheet = characterSheet;
+  value.workflow.characterSheets = [characterSheet];
+  value.workflow.storyboard = {version: 'v1', title: 'Fake E2E', noBgm: true, characterReferenceIds: [reference.asset.id], cuts: [{id: 'CUT01', title: 'Cut', characterIds: ['CHAR01'], absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'studio wide', endFrame: 'subject settles', camera: 'locked camera', action: 'subject moves naturally', dialogue: '—', sfx: 'quiet room tone'}]}]};
   const stressTests = Array.from({length: 10}, (_, index) => ({id: `stress-${index + 1}`, pose: `pose-${index + 1}`, lighting: index % 2 ? 'night' : 'day', coAssetIds: [], resultAssetId: `result-${index + 1}`, verdict: 'pass' as const}));
   value.workflow.production = {
     assets: [{id: 'asset-1', tag: '@subject', type: 'character', state: 'base', descriptor: 'fictional subject', referenceUrl: 'https://assets.example.test/subject.png', referenceHash: 'a'.repeat(64), editMode: 'original', status: 'locked', stressTests}],
@@ -38,7 +48,7 @@ const project = async (): Promise<ProjectState> => {
     takes: [],
   };
   value.workflow.seedanceMaster.duration = 30;
-  const creative = await approveCreative(value.workflow.storyboard!, 'owner', new Date('2026-08-11T00:00:00Z'));
+  const creative = await approveCreative(value.workflow.storyboard!, 'owner', new Date('2026-08-11T00:00:00Z'), [characterSheet]);
   value.workflow.creativeApproval = signCreativeApproval(value.id, creative);
   const preview = await createGenerationAuthorizationPreview(value, 'attempt-fake-e2e');
   const issued = await issueGenerationAuthorization(value, 'attempt-fake-e2e', preview.requestHash, 'owner', new Date('2026-08-11T00:01:00Z'));

@@ -171,7 +171,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   const startCharacterImageGeneration = async () => {
-    if (!activeCharacter || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
+    if (!activeCharacter?.id || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
     setCharacterUploadError(null);
     setImageGenerationStatus('submitting');
     const prompt = [
@@ -187,7 +187,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image`, {
         method: 'POST', headers: {'content-type': 'application/json'},
-        body: JSON.stringify({prompt, confirmCreditCost: 1}),
+        body: JSON.stringify({characterId: activeCharacter.id, prompt, confirmCreditCost: 1}),
       });
       const payload = await response.json() as {jobId?: string; error?: string};
       if (!response.ok || !payload.jobId) throw new Error(payload.error ?? '이미지 생성 요청 실패');
@@ -205,7 +205,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     let cancelled = false;
     const poll = async () => {
       try {
-        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image?jobId=${encodeURIComponent(imageGenerationJobId)}`);
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image?jobId=${encodeURIComponent(imageGenerationJobId)}&characterId=${encodeURIComponent(generationCharacterId ?? '')}`);
         const payload = await response.json() as {status?: string; assetId?: string; previewUrl?: string; error?: string};
         if (!response.ok) throw new Error(payload.error ?? '이미지 상태 조회 실패');
         if (payload.status === 'completed' && payload.assetId && payload.previewUrl) {
