@@ -7,6 +7,7 @@ import {setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {attachCutFrameAsset, reorderStoryboardCuts, selectTakeForTimeline} from '@/app/lib/workflow/project-production';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
 import {storyboardCutSchema, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
+import {deriveGenerationPreflight} from '@/app/lib/workflow/generation-preflight';
 
 const sha256 = async (file: File) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
@@ -135,6 +136,17 @@ const TakeVideo = ({projectId, assetId, label}: {projectId: string; assetId?: st
   return <div className="flex aspect-video items-center justify-center overflow-hidden rounded-2xl bg-black">{url ? <video src={url} controls muted playsInline className="h-full w-full object-contain"/> : <span className="text-sm text-gray-600">{label} 미리보기 없음</span>}</div>;
 };
 
+const GenerationPreflightPanel = ({preflight}: {preflight: ReturnType<typeof deriveGenerationPreflight>}) => (
+  <section className="rounded-3xl border border-white/10 bg-[#15131a] p-6 text-left">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div><p className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-300">생성 전 사전점검</p><h2 className="mt-2 text-xl font-black text-white">{preflight.readyForAuthorization ? '승인 요청 준비 완료' : '생성 전에 보완이 필요합니다'}</h2></div>
+      <span className="flex flex-wrap items-center justify-end gap-2"><span className="rounded-full bg-red-400/10 px-3 py-1.5 text-xs font-black text-red-200">유료 제출 잠금</span><span className={`rounded-full px-3 py-1.5 text-xs font-black ${preflight.readyForAuthorization ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-200'}`}>{preflight.checks.filter((check) => check.passed).length}/{preflight.checks.length} 통과</span></span>
+    </div>
+    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">{preflight.checks.map((check) => <article key={check.id} className={`rounded-2xl border p-4 ${check.passed ? 'border-emerald-400/20 bg-emerald-400/[0.05]' : 'border-amber-400/20 bg-amber-400/[0.05]'}`}><p className={`text-xs font-black ${check.passed ? 'text-emerald-300' : 'text-amber-200'}`}>{check.passed ? '✓' : '!'} {check.label}</p><p className="mt-2 text-xs leading-5 text-gray-400">{check.detail}</p></article>)}</div>
+    <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl border border-red-400/20 bg-red-400/[0.05] px-4 py-3"><div><p className="text-xs font-black text-red-200">유료 제출 잠금 유지</p><p className="mt-1 text-xs text-red-100/60">사전점검은 과금하거나 Seedance 작업을 생성하지 않습니다.</p></div><code className="text-[11px] text-red-200/70">SUBMIT=false</code></div>
+  </section>
+);
+
 export function TakeStudio() {
   const dispatch = useAppDispatch();
   const project = useAppSelector((state) => state.projectState);
@@ -143,10 +155,12 @@ export function TakeStudio() {
   const takes = useMemo(() => project.workflow.production.takes.filter((take) => take.scope === 'shot' ? take.shotSpecId === selectedShotId : true), [project.workflow.production.takes, selectedShotId]);
   const current = takes.find((take) => take.id === viewTakeId) ?? takes.find((take) => take.selected) ?? takes[0];
   const compare = takes.filter((take) => take.outputAssetId).slice(0, 2);
+  const preflight = useMemo(() => deriveGenerationPreflight(project, false), [project]);
   const choose = (takeId: string) => { const next = selectTakeForTimeline(project, takeId); dispatch(setWorkflow(next.workflow)); dispatch(setMediaFiles(next.mediaFiles)); setViewTakeId(takeId); };
 
-  if (!takes.length) return <div className="mt-8 rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center"><h2 className="font-black text-white">저장된 take가 없습니다</h2><p className="mt-2 text-sm leading-6 text-gray-500">Seedance 결과가 secure ingest와 QC 승인을 통과하면 이곳에 실제 take로 저장됩니다. 유료 제출은 현재 잠겨 있습니다.</p></div>;
+  if (!takes.length) return <div className="mt-8 space-y-5"><GenerationPreflightPanel preflight={preflight}/><div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.025] p-10 text-center"><h2 className="font-black text-white">저장된 take가 없습니다</h2><p className="mt-2 text-sm leading-6 text-gray-500">Seedance 결과가 secure ingest와 QC 승인을 통과하면 이곳에 실제 take로 저장됩니다. 유료 제출은 현재 잠겨 있습니다.</p></div></div>;
   return <div className="mt-8 space-y-5">
+    <GenerationPreflightPanel preflight={preflight}/>
     <div className="flex flex-wrap gap-2">{project.workflow.production.shotSpecs.map((spec) => <button key={spec.id} type="button" onClick={() => setSelectedShotId(spec.id)} className={`rounded-full px-4 py-2 text-xs font-bold ${selectedShotId === spec.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-400'}`}>{spec.cutId} · {spec.shotId}</button>)}</div>
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div><TakeVideo projectId={project.id} assetId={current?.outputAssetId} label={current?.id ?? 'take'}/><div className="mt-3 flex flex-wrap gap-2">{takes.map((take) => <button key={take.id} type="button" onClick={() => setViewTakeId(take.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold ${current?.id === take.id ? 'border-fuchsia-400 bg-fuchsia-400/10 text-fuchsia-200' : 'border-white/10 text-gray-400'}`}>{take.id}{take.selected ? ' · 타임라인' : ''}</button>)}</div></div>
