@@ -1,11 +1,12 @@
 import {z} from 'zod';
-import {characterSheetSchema, interviewBriefSchema, storyboardSchema, type CharacterSheet, type InterviewBrief, type Storyboard} from '@/app/lib/workflow/schema';
+import {characterSheetSchema, interviewBriefSchema, storyboardSchema, styleBibleSchema, type CharacterSheet, type InterviewBrief, type Storyboard, type StyleBible} from '@/app/lib/workflow/schema';
 
 export const MODELARK_CHAT_COMPLETIONS_URL = 'https://ark.ap-southeast.bytepluses.com/api/v3/chat/completions';
 export const DEEPSEEK_PLANNING_MODEL = 'deepseek-v4-flash-ga-260731';
 
 const planningOutputSchema = z.object({
   interviewBrief: interviewBriefSchema,
+  styleBible: styleBibleSchema,
   characterSheet: characterSheetSchema,
   characterSheets: z.array(characterSheetSchema).min(1).max(10),
   storyboard: storyboardSchema,
@@ -34,6 +35,7 @@ const chatResponseSchema = z.object({
 
 export type PlanningOutput = {
   interviewBrief: InterviewBrief;
+  styleBible: StyleBible;
   characterSheet: CharacterSheet;
   characterSheets: CharacterSheet[];
   storyboard: Storyboard;
@@ -48,9 +50,10 @@ export type PlanningProvider = {
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 const systemPrompt = `You are the planning director for a Korean commercial AI-video production system.
-Convert one user sentence into strict JSON with exactly four top-level keys: interviewBrief, characterSheet, characterSheets, storyboard.
+Convert one user sentence into strict JSON with exactly five top-level keys: interviewBrief, styleBible, characterSheet, characterSheets, storyboard.
 Do not output commentary or markdown.
 interviewBrief fields: subject, action, durationSeconds (20 or 30 only), tone, optional characterName, optional characterBreed, greetingLine, extraNotes.
+styleBible is ONE project-wide immutable visual contract shared by every character and storyboard frame. Fields: visualMedium, realism, renderLanguage, proportionRules, lighting, lensAndDepth, background, textureAndColor, negativeConstraints. Never assign different media or realism to different characters. If the user does not specify a style, choose one coherent cinematic style appropriate to the whole project and state it explicitly.
 characterSheet is the first primary character for backward compatibility. characterSheets contains every visually distinct main character who appears on screen (for example, a dog and a squirrel must be two separate entries). Each character has id CHAR01, CHAR02..., name, optional breed, palette with dominant/secondary/accent as 6-digit hex colors, and visualTags. Omit incidental background extras. Never merge two distinct main characters into one sheet.
 storyboard fields: version="v1", title, noBgm=true, cuts. Each cut has id, title, characterIds listing the CHAR IDs visible in that cut, absoluteStartSeconds, absoluteEndSeconds, shots. Each shot has id, startSeconds, endSeconds, startFrame, endFrame, camera, action, dialogue, sfx.
 20-second plan: exactly 4 cuts. 30-second plan: exactly 6 cuts. Each cut must contain exactly 1 shot.

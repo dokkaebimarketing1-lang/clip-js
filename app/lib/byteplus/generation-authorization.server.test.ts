@@ -2,6 +2,7 @@ import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 vi.mock('server-only', () => ({}));
 import {initialState} from '@/app/store/slices/projectSlice';
 import {approveCreative} from '@/app/lib/workflow/approval';
+import {sha256} from '@/app/lib/workflow/hash';
 import {signCreativeApproval, verifyGenerationApprovalSignature} from '@/app/lib/security/approval-signature';
 import {generationApprovalSchema, type Storyboard} from '@/app/lib/workflow/schema';
 import type {ProductionManifest} from '@/app/lib/workflow/production-schema';
@@ -32,8 +33,9 @@ beforeAll(() => {
 });
 
 const referenceImageId = `ga_${'a'.repeat(32)}`;
-const characterSheet = {id: 'CHAR01', name: 'Person', palette: {dominant: '#111111', secondary: '#222222', accent: '#333333'}, visualTags: ['consistent'], referenceImageId};
-const storyboard: Storyboard = {version: 'v1', title: 'Auth fixture', noBgm: true, characterReferenceIds: [referenceImageId], cuts: [{id: 'CUT01', title: 'Cut', characterIds: ['CHAR01'], absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'wide room', endFrame: 'relieved person', camera: 'push', action: 'listen', dialogue: '—', sfx: 'room'}]}]};
+const styleBible = {visualMedium: 'photo', realism: 'natural', renderLanguage: 'cinematic', proportionRules: 'natural anatomy', lighting: 'soft', lensAndDepth: '50mm', background: 'neutral', textureAndColor: 'realistic', negativeConstraints: ['no cartoon']};
+const characterSheetBase = {id: 'CHAR01', name: 'Person', palette: {dominant: '#111111', secondary: '#222222', accent: '#333333'}, visualTags: ['consistent'], referenceImageId};
+const storyboardBase: Storyboard = {version: 'v1', title: 'Auth fixture', noBgm: true, characterReferenceIds: [referenceImageId], cuts: [{id: 'CUT01', title: 'Cut', characterIds: ['CHAR01'], absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'wide room', endFrame: 'relieved person', camera: 'push', action: 'listen', dialogue: '—', sfx: 'room'}]}]};
 const production: ProductionManifest = {
   assets: [],
   continuityLocks: [{id: 'lock-1', sceneId: 'CUT01', status: 'locked', landmarks: [], cameraSide: 'south', axisRule: 'stay south', lightSource: 'window', shadowDirection: 'left', palette: {dominant: '#111111', secondary: '#222222', accent: '#333333'}}],
@@ -42,10 +44,15 @@ const production: ProductionManifest = {
 };
 
 const project = async () => {
-  getAsset.mockResolvedValue({id: referenceImageId, projectId: 'project-auth', state: 'ready', mimeType: 'image/png'});
   const value = structuredClone(initialState);
+  const styleBibleHash = await sha256(styleBible);
+  getAsset.mockResolvedValue({id: referenceImageId, projectId: 'project-auth', state: 'ready', mimeType: 'image/png', styleLineage: {styleBibleHash, styleReferenceImageIds: []}});
+  const characterSheet = {...characterSheetBase, referenceStyleHash: styleBibleHash};
+  const storyboard = {...storyboardBase, styleBibleHash};
   value.id = 'project-auth';
   value.projectName = 'Authorization test';
+  value.workflow.styleBible = styleBible;
+  value.workflow.styleBibleHash = styleBibleHash;
   value.workflow.storyboard = storyboard;
   value.workflow.characterSheet = characterSheet;
   value.workflow.characterSheets = [characterSheet];
@@ -78,10 +85,17 @@ describe('GenerationAuthorization', () => {
     expect(generationApprovalSchema.safeParse({status: 'approved'}).success).toBe(false);
   });
 
+  it('rejects projects whose character references do not share the current style lineage', async () => {
+    const value = await project();
+    value.workflow.characterSheets![0].referenceStyleHash = undefined;
+    value.workflow.characterSheet = value.workflow.characterSheets![0];
+    await expect(createGenerationAuthorizationPreview(value, 'attempt-style-legacy')).rejects.toThrow(/style lineage/i);
+  });
+
   it('rejects legacy storyboard provenance and reference assets owned by another project', async () => {
     const legacy = await project();
-    legacy.workflow.storyboard = {...storyboard, characterReferenceIds: undefined};
-    legacy.workflow.creativeApproval = signCreativeApproval(legacy.id, await approveCreative(legacy.workflow.storyboard, 'owner', new Date('2026-08-11T00:00:00Z'), [characterSheet]));
+    legacy.workflow.storyboard = {...legacy.workflow.storyboard!, characterReferenceIds: undefined};
+    legacy.workflow.creativeApproval = signCreativeApproval(legacy.id, await approveCreative(legacy.workflow.storyboard, 'owner', new Date('2026-08-11T00:00:00Z'), legacy.workflow.characterSheets));
     await expect(createGenerationAuthorizationPreview(legacy, 'attempt-legacy')).rejects.toThrow(/reference lineage/i);
 
     const wrongOwner = await project();

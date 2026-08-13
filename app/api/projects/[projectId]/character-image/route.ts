@@ -9,8 +9,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const UUID = /^[a-f0-9-]{36}$/i;
-const activeProjects = new Map<string, {jobId: string; characterId: string}>();
-const ingestedJobs = new Map<string, {projectId: string; characterId: string; assetId: string; contentSha256: string}>();
+type ImageLineage = {styleBibleHash: string; styleReferenceImageIds: string[]};
+const activeProjects = new Map<string, {jobId: string; characterId: string; lineage: ImageLineage}>();
+const ingestedJobs = new Map<string, {projectId: string; characterId: string; assetId: string; contentSha256: string; lineage: ImageLineage}>();
 
 const assertSameOrigin = (request: NextRequest) => {
   const origin = request.headers.get('origin');
@@ -42,19 +43,37 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     const body = await readLimitedJson(request) as Record<string, unknown>;
     const characterId = typeof body.characterId === 'string' ? body.characterId : '';
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-    if (!/^CHAR\d{2}$/.test(characterId) || body.confirmCreditCost !== 1 || prompt.length < 10 || prompt.length > 4000) throw new Error('Explicit 1-credit approval, character identity, and a valid prompt are required.');
+    const styleBibleHash = typeof body.styleBibleHash === 'string' ? body.styleBibleHash : '';
+    const styleReferenceImageIds = Array.isArray(body.styleReferenceImageIds) ? body.styleReferenceImageIds.filter((id): id is string => typeof id === 'string') : [];
+    if (!/^CHAR\d{2}$/.test(characterId) || !/^[a-f0-9]{64}$/.test(styleBibleHash) || styleReferenceImageIds.length > 14
+      || body.confirmCreditCost !== 1 || prompt.length < 10 || prompt.length > 4000) throw new Error('Explicit 1-credit approval, character identity, style lineage, and a valid prompt are required.');
+    const assetStore = getGeneratedAssetStore();
+    const referenceAssets = await Promise.all(styleReferenceImageIds.map((id) => assetStore.get(id)));
+    if (referenceAssets.some((asset) => !asset || asset.projectId !== projectId || asset.state !== 'ready' || !asset.mimeType.startsWith('image/')
+      || asset.styleLineage?.styleBibleHash !== styleBibleHash)) {
+      throw new Error('Style reference image is unavailable, has different lineage, or belongs to another project.');
+    }
+    const projectAssets = await assetStore.listProject(projectId);
+    const anchors = projectAssets.filter((asset) => asset.state === 'ready' && asset.mimeType.startsWith('image/')
+      && asset.styleLineage?.styleBibleHash === styleBibleHash && asset.styleLineage.styleReferenceImageIds.length === 0);
+    if (anchors.length > 0 && !anchors.some((anchor) => styleReferenceImageIds.includes(anchor.id))) {
+      throw new Error('A later character image must reference the approved project style anchor.');
+    }
+    const imageReferencePaths = styleReferenceImageIds.map((id) => assetStore.resolveLocalPath(id));
+    const lineage = {styleBibleHash, styleReferenceImageIds};
     const active = activeProjects.get(projectId);
     if (active) {
       if (active.characterId !== characterId) {
         return NextResponse.json({error: '다른 캐릭터 이미지 생성이 처리 중입니다.', code: 'ANOTHER_CHARACTER_ACTIVE'}, {status: 409});
       }
-      return NextResponse.json({jobId: active.jobId, characterId, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: true}, {status: 202});
+      if (active.lineage.styleBibleHash !== styleBibleHash || active.lineage.styleReferenceImageIds.join(',') !== styleReferenceImageIds.join(',')) throw new Error('Active image job lineage does not match.');
+      return NextResponse.json({jobId: active.jobId, characterId, lineage, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: true}, {status: 202});
     }
-    const result = await submitHiggsfieldCharacterImageJob({prompt, aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
+    const result = await submitHiggsfieldCharacterImageJob({prompt, imageReferencePaths, aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
     const jobId = parseHiggsfieldSubmittedJobId(result);
     if (!jobId) throw new Error('Higgsfield did not return a valid job ID.');
-    activeProjects.set(projectId, {jobId, characterId});
-    return NextResponse.json({jobId, characterId, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false}, {status: 202});
+    activeProjects.set(projectId, {jobId, characterId, lineage});
+    return NextResponse.json({jobId, characterId, lineage, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false}, {status: 202});
   } catch (error) {
     console.error('Higgsfield character image submission rejected.', {name: error instanceof Error ? error.name : 'UnknownError'});
     return NextResponse.json({error: '캐릭터 이미지 생성 요청을 시작하지 못했습니다.', code: 'IMAGE_SUBMISSION_REJECTED'}, {status: 400});
@@ -71,7 +90,7 @@ export async function GET(request: NextRequest, context: {params: Promise<{proje
     const cached = ingestedJobs.get(jobId);
     if (cached) {
       if (cached.projectId !== projectId || cached.characterId !== characterId) throw new Error('This image result belongs to another project or character.');
-      return NextResponse.json({jobId, characterId, status: 'completed', ...previewPayload(projectId, cached)});
+      return NextResponse.json({jobId, characterId, lineage: cached.lineage, status: 'completed', ...previewPayload(projectId, cached)});
     }
     const active = activeProjects.get(projectId);
     if (active?.jobId !== jobId || active.characterId !== characterId) throw new Error('This image job is not active for the project character.');
@@ -83,10 +102,16 @@ export async function GET(request: NextRequest, context: {params: Promise<{proje
     }
     const resultUrl = job.result_url ?? job.min_result_url;
     if (!resultUrl) throw new Error('Completed Higgsfield image has no result URL.');
-    const asset = await ingestHiggsfieldCharacterImage({projectId, jobId, resultUrl, assetStore: getGeneratedAssetStore()});
-    ingestedJobs.set(jobId, {projectId, characterId, ...asset});
+    const ingested = await ingestHiggsfieldCharacterImage({
+      projectId,
+      jobId: active.jobId,
+      resultUrl,
+      assetStore: getGeneratedAssetStore(),
+      styleLineage: active.lineage,
+    });
+    ingestedJobs.set(jobId, {projectId, characterId, lineage: active.lineage, ...ingested});
     activeProjects.delete(projectId);
-    return NextResponse.json({jobId, characterId, status: 'completed', ...previewPayload(projectId, asset)});
+    return NextResponse.json({jobId, characterId, lineage: active.lineage, status: 'completed', ...previewPayload(projectId, ingested)});
   } catch (error) {
     console.error('Higgsfield character image lookup failed.', {name: error instanceof Error ? error.name : 'UnknownError'});
     return NextResponse.json({error: '캐릭터 이미지 결과를 확인하지 못했습니다.', code: 'IMAGE_STATUS_FAILED'}, {status: 400});

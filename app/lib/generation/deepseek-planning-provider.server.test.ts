@@ -2,6 +2,17 @@ import {describe, expect, it, vi} from 'vitest';
 import {createDeepSeekPlanningProvider, DEEPSEEK_PLANNING_MODEL, MODELARK_CHAT_COMPLETIONS_URL} from './deepseek-planning-provider.server';
 
 const validPlan = {
+  styleBible: {
+    visualMedium: 'cinematic photography',
+    realism: 'natural photorealism',
+    renderLanguage: 'live-action DSLR image',
+    proportionRules: 'natural species anatomy and stable scale',
+    lighting: 'soft daylight with stable direction',
+    lensAndDepth: '50mm eye-level framing with natural depth of field',
+    background: 'coherent travel environment with restrained detail',
+    textureAndColor: 'natural fur texture and warm balanced color science',
+    negativeConstraints: ['no cartoon rendering', 'no style drift', 'no text or logo'],
+  },
   interviewBrief: {
     subject: '고양이',
     action: '카메라를 향해 인사한다',

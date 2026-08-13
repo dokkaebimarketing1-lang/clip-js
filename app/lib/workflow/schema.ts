@@ -35,6 +35,7 @@ export const storyboardSchema = z.object({
   title: z.string().min(1),
   noBgm: z.literal(true),
   characterReferenceIds: z.array(z.string().min(1).max(256)).min(1).max(10).optional(),
+  styleBibleHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   cuts: z.array(storyboardCutSchema).min(1),
 });
 
@@ -63,7 +64,23 @@ export const characterSheetSchema = z.object({
   }).default({dominant: '#cccccc', secondary: '#888888', accent: '#ffd43b'}),
   visualTags: z.array(z.string().max(40)).max(20).default([]),
   referenceImageId: z.string().min(1).max(256).optional(),
+  referenceStyleHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  styleReferenceImageIds: z.array(z.string().regex(/^ga_[a-f0-9]{32}$/)).max(14).optional(),
 });
+
+export const styleBibleSchema = z.object({
+  anchorReferenceImageId: z.string().regex(/^ga_[a-f0-9]{32}$/).optional(),
+  anchorContentSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  visualMedium: z.string().min(1).max(120),
+  realism: z.string().min(1).max(120),
+  renderLanguage: z.string().min(1).max(240),
+  proportionRules: z.string().min(1).max(240),
+  lighting: z.string().min(1).max(240),
+  lensAndDepth: z.string().min(1).max(240),
+  background: z.string().min(1).max(240),
+  textureAndColor: z.string().min(1).max(240),
+  negativeConstraints: z.array(z.string().min(1).max(120)).min(1).max(20),
+}).strict();
 
 export const approvalStatusSchema = z.enum(['draft', 'approved', 'invalidated']);
 
@@ -306,6 +323,8 @@ const migrateLegacyWorkflowApprovals = (input: unknown): unknown => {
 
 const workflowStateV3Schema = z.object({
   interviewBrief: interviewBriefSchema.optional(),
+  styleBible: styleBibleSchema.optional(),
+  styleBibleHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   characterSheet: characterSheetSchema.optional(),
   characterSheets: z.array(characterSheetSchema).min(1).max(10).optional(),
   storyboard: storyboardSchema.optional(),
@@ -335,6 +354,7 @@ export type ReleaseApproval = z.infer<typeof releaseApprovalSchema>;
 export type HiggsfieldAsset = z.infer<typeof higgsfieldAssetSchema>;
 export type InterviewBrief = z.infer<typeof interviewBriefSchema>;
 export type CharacterSheet = z.infer<typeof characterSheetSchema>;
+export type StyleBible = z.infer<typeof styleBibleSchema>;
 export type TransitionSpec = z.infer<typeof transitionSchema>;
 export type EffectType = z.infer<typeof effectTypeSchema>;
 export type EffectSpec = z.infer<typeof effectSpecSchema>;
@@ -349,6 +369,8 @@ export type WorkflowState = z.infer<typeof workflowStateSchema>;
 export const createDefaultWorkflow = (): WorkflowState => ({
   ...draftApprovals(),
   interviewBrief: undefined,
+  styleBible: undefined,
+  styleBibleHash: undefined,
   characterSheet: undefined,
   characterSheets: undefined,
   higgsfieldAssets: [],

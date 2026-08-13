@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {POST} from './route';
+import {sha256} from '@/app/lib/workflow/hash';
 
 const getAsset = vi.fn();
 vi.mock('@/app/lib/generation/runtime.server', () => ({
@@ -14,6 +15,8 @@ beforeEach(() => {
     state: 'ready',
     assetKind: 'managed-media',
     mimeType: 'image/png',
+    ...(assetId === `ga_${'a'.repeat(32)}` ? {styleLineage: {get styleBibleHash() { return styleBibleHash; }, styleReferenceImageIds: []}} : {}),
+    ...(assetId === `ga_${'b'.repeat(32)}` ? {styleLineage: {get styleBibleHash() { return styleBibleHash; }, styleReferenceImageIds: [`ga_${'a'.repeat(32)}`]}} : {}),
   }));
 });
 
@@ -28,17 +31,22 @@ const brief = {
   tone: '따뜻한 숲속 모험',
   greetingLine: '같이 찾자!',
 };
+const styleBible = {visualMedium: 'photo', realism: 'natural', renderLanguage: 'cinematic photo', proportionRules: 'natural anatomy', lighting: 'soft studio', lensAndDepth: '50mm', background: 'neutral seamless', textureAndColor: 'real fur and restrained color', negativeConstraints: ['no cartoon']};
+let styleBibleHash = '';
 
 const characters = [
-  {id: 'CHAR01', name: '초코', breed: '강아지', palette: {dominant: '#ccaa88', secondary: '#886644', accent: '#ffffff'}, visualTags: ['활발함'], referenceImageId: `ga_${'a'.repeat(32)}`},
-  {id: 'CHAR02', name: '다람이', breed: '다람쥐', palette: {dominant: '#bb7744', secondary: '#eebb88', accent: '#445522'}, visualTags: ['민첩함'], referenceImageId: `ga_${'b'.repeat(32)}`},
+  {id: 'CHAR01', name: '초코', breed: '강아지', palette: {dominant: '#ccaa88', secondary: '#886644', accent: '#ffffff'}, visualTags: ['활발함'], referenceImageId: `ga_${'a'.repeat(32)}`, styleReferenceImageIds: [], get referenceStyleHash() { return styleBibleHash; }},
+  {id: 'CHAR02', name: '다람이', breed: '다람쥐', palette: {dominant: '#bb7744', secondary: '#eebb88', accent: '#445522'}, visualTags: ['민첩함'], referenceImageId: `ga_${'b'.repeat(32)}`, styleReferenceImageIds: [`ga_${'a'.repeat(32)}`], get referenceStyleHash() { return styleBibleHash; }},
 ];
 
-const post = (characterSheets: unknown) => POST(new Request('http://localhost/api/vlog/storyboard', {
+const post = async (characterSheets: unknown) => {
+  styleBibleHash ||= await sha256(styleBible);
+  return POST(new Request('http://localhost/api/vlog/storyboard', {
   method: 'POST',
   headers: {'content-type': 'application/json', origin: 'http://localhost', 'sec-fetch-site': 'same-origin'},
-  body: JSON.stringify({projectId: 'project-a', sentence: '강아지 초코와 다람쥐 다람이가 함께 도토리를 찾는 20초 영상', interviewBrief: brief, characterSheets}),
-}));
+  body: JSON.stringify({projectId: 'project-a', sentence: '강아지 초코와 다람쥐 다람이가 함께 도토리를 찾는 20초 영상', interviewBrief: brief, styleBible, styleBibleHash, characterSheets}),
+  }));
+};
 
 describe('storyboard generation gate', () => {
   it('rejects generation until every character has a managed reference image', async () => {

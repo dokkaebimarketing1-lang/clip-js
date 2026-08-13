@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import {downloadPinnedRemoteMedia} from '@/app/lib/render/stage-remote-media';
 import {resolveSafeRemoteUrl} from '@/app/lib/security/remote-url.server';
 import type {createLocalGeneratedAssetStore} from './generated-asset-store.server';
+import type {GeneratedAsset} from './generated-asset-schema';
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export const HIGGSFIELD_IMAGE_RESULT_HOSTS = ['d8j0ntlcm91z4.cloudfront.net'] as const;
@@ -16,6 +17,7 @@ export const ingestHiggsfieldCharacterImage = async (input: {
   jobId: string;
   resultUrl: string;
   assetStore: AssetStore;
+  styleLineage: NonNullable<GeneratedAsset['styleLineage']>;
   allowedHosts?: readonly string[];
 }) => {
   const requestKey = createHash('sha256').update(`higgsfield-character:${input.projectId}:${input.jobId}`).digest('hex');
@@ -45,6 +47,7 @@ export const ingestHiggsfieldCharacterImage = async (input: {
       projectId: input.projectId,
       requestKey,
       providerJobId: input.jobId,
+      styleLineage: input.styleLineage,
       contentSha256,
       byteLength: bytes,
       assetKind: 'managed-media',

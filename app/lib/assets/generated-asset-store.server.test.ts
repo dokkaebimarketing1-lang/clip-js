@@ -48,6 +48,23 @@ describe('local generated asset store', () => {
     expect(await store.listProject('project-1')).toHaveLength(2);
   });
 
+  it('persists character style lineage in managed asset metadata', async () => {
+    const store = createLocalGeneratedAssetStore({rootDirectory: root(), minFreeBytes: 0, getFreeBytes: () => 1_000_000});
+    const styleLineage = {styleBibleHash: '1'.repeat(64), styleReferenceImageIds: [`ga_${'2'.repeat(32)}`]};
+    const committed = await store.commitVerifiedTemp({
+      tempPath: writeTemp(store, 'lineage'), projectId: 'project-1', requestKey: '9'.repeat(64),
+      contentSha256: sha, byteLength: bytes.length, mimeType: 'video/mp4', media, styleLineage,
+    });
+    await expect(store.get(committed.asset.id)).resolves.toMatchObject({styleLineage});
+    const anchorLineage = {styleBibleHash: '3'.repeat(64), styleReferenceImageIds: []};
+    const image = await store.commitVerifiedTemp({
+      tempPath: writeTemp(store, 'anchor'), projectId: 'project-1', requestKey: '8'.repeat(64),
+      contentSha256: sha, byteLength: bytes.length, mimeType: 'image/png', media: {format: 'png', width: 1280, height: 720},
+    });
+    await expect(store.setStyleLineage(image.asset.id, 'project-1', anchorLineage)).resolves.toMatchObject({styleLineage: anchorLineage});
+    await expect(store.setStyleLineage(image.asset.id, 'other-project', anchorLineage)).rejects.toThrow(/project-owned/i);
+  });
+
   it('rejects hash mismatch, traversal, quotas, and low disk without publishing metadata', async () => {
     const store = createLocalGeneratedAssetStore({
       rootDirectory: root(), maxProjectBytes: bytes.length, maxTotalBytes: bytes.length * 2,

@@ -46,6 +46,10 @@ export const generatedAssetSchema = z.object({
   projectId: z.string().min(1).max(256),
   requestKey: hex64,
   providerJobId: z.string().min(1).max(512).optional(),
+  styleLineage: z.object({
+    styleBibleHash: hex64,
+    styleReferenceImageIds: z.array(generatedAssetIdSchema).max(14),
+  }).strict().optional(),
   contentSha256: hex64,
   byteLength: z.number().int().positive(),
   mimeType: z.enum([

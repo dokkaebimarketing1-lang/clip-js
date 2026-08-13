@@ -6,6 +6,10 @@ const submit = vi.fn();
 const getJob = vi.fn();
 const ingest = vi.fn();
 const createCapability = vi.fn(() => 'preview-token');
+const getAsset = vi.fn();
+const listProject = vi.fn();
+const resolveLocalPath = vi.fn((id: string) => `C:\\clipjs\\${id}.bin`);
+const styleBibleHash = 'a'.repeat(64);
 vi.mock('@/app/lib/higgsfield/generate.server', () => ({
   submitHiggsfieldCharacterImageJob: submit,
   getHiggsfieldGenerationJob: getJob,
@@ -13,13 +17,13 @@ vi.mock('@/app/lib/higgsfield/generate.server', () => ({
 }));
 vi.mock('@/app/lib/assets/secure-higgsfield-image-ingest.server', () => ({ingestHiggsfieldCharacterImage: ingest}));
 vi.mock('@/app/lib/assets/asset-capability.server', () => ({createAssetCapability: createCapability}));
-vi.mock('@/app/lib/generation/runtime.server', () => ({getGeneratedAssetStore: () => ({kind: 'test-store'})}));
+vi.mock('@/app/lib/generation/runtime.server', () => ({getGeneratedAssetStore: () => ({kind: 'test-store', get: getAsset, listProject, resolveLocalPath})}));
 
 const context = {params: Promise.resolve({projectId: 'project-1'})};
 const makePost = (body: unknown, origin = 'http://localhost') => new NextRequest('http://localhost/api/projects/project-1/character-image', {
   method: 'POST',
   headers: {origin, 'sec-fetch-site': origin === 'http://localhost' ? 'same-origin' : 'cross-site', 'content-type': 'application/json'},
-  body: JSON.stringify({characterId: 'CHAR01', ...(body as object)}),
+  body: JSON.stringify({characterId: 'CHAR01', styleBibleHash, styleReferenceImageIds: [], ...(body as object)}),
 });
 const makeGet = (characterId = 'CHAR01') => new NextRequest(`http://localhost/api/projects/project-1/character-image?jobId=4e97908e-4b6d-413a-96e8-d64c560267bc&characterId=${characterId}`, {headers: {origin: 'http://localhost', 'sec-fetch-site': 'same-origin'}});
 
@@ -30,6 +34,8 @@ beforeEach(() => {
   submit.mockResolvedValue(['4e97908e-4b6d-413a-96e8-d64c560267bc']);
   getJob.mockResolvedValue({id: '4e97908e-4b6d-413a-96e8-d64c560267bc', status: 'completed', job_type: 'nano_banana_2_lite', result_url: 'https://d8j0ntlcm91z4.cloudfront.net/result.png'});
   ingest.mockResolvedValue({assetId: 'ga_0123456789abcdef0123456789abcdef', contentSha256: 'a'.repeat(64)});
+  getAsset.mockImplementation(async (id: string) => ({id, projectId: 'project-1', state: 'ready', mimeType: 'image/png'}));
+  listProject.mockResolvedValue([]);
 });
 
 describe('project character image generation route', () => {
@@ -44,8 +50,29 @@ describe('project character image generation route', () => {
     const {POST} = await import('./route');
     const response = await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 1}), context);
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({jobId: '4e97908e-4b6d-413a-96e8-d64c560267bc', characterId: 'CHAR01', status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false});
-    expect(submit).toHaveBeenCalledWith({prompt: 'a valid character reference prompt', aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
+    expect(await response.json()).toMatchObject({jobId: '4e97908e-4b6d-413a-96e8-d64c560267bc', characterId: 'CHAR01', lineage: {styleBibleHash, styleReferenceImageIds: []}, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false});
+    expect(submit).toHaveBeenCalledWith({prompt: 'a valid character reference prompt', imageReferencePaths: [], aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
+  });
+
+  it('resolves approved project asset IDs to server-only native reference paths', async () => {
+    const {POST} = await import('./route');
+    const referenceId = `ga_${'b'.repeat(32)}`;
+    const anchor = {id: referenceId, projectId: 'project-1', state: 'ready', mimeType: 'image/png', styleLineage: {styleBibleHash, styleReferenceImageIds: []}};
+    getAsset.mockResolvedValue(anchor);
+    listProject.mockResolvedValue([anchor]);
+    const response = await POST(makePost({prompt: 'a valid referenced character prompt', styleReferenceImageIds: [referenceId], confirmCreditCost: 1}), context);
+    expect(response.status).toBe(202);
+    expect(resolveLocalPath).toHaveBeenCalledWith(referenceId);
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({imageReferencePaths: [`C:\\clipjs\\${referenceId}.bin`]}));
+  });
+
+  it('rejects a later paid character request before submission when the approved anchor is omitted', async () => {
+    const {POST} = await import('./route');
+    const anchor = {id: `ga_${'c'.repeat(32)}`, projectId: 'project-1', state: 'ready', mimeType: 'image/png', styleLineage: {styleBibleHash, styleReferenceImageIds: []}};
+    listProject.mockResolvedValue([anchor]);
+    const response = await POST(makePost({characterId: 'CHAR02', prompt: 'a valid but unreferenced later character prompt', confirmCreditCost: 1}), context);
+    expect(response.status).toBe(400);
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it('reuses the active project job instead of double charging', async () => {

@@ -34,6 +34,7 @@ export type HiggsfieldGenerationJob = {
 };
 export type HiggsfieldCharacterImageRequest = {
   prompt: string;
+  imageReferencePaths?: string[];
   aspect_ratio: '16:9';
   resolution: '1k';
   thinking: 'HIGH';
@@ -160,13 +161,26 @@ export const submitHiggsfieldSeedanceJob = (input: HiggsfieldSeedanceRequest): P
   });
 };
 
-export const submitHiggsfieldCharacterImageJob = (input: HiggsfieldCharacterImageRequest): Promise<unknown> => {
+export const buildHiggsfieldCharacterImageArgs = (input: HiggsfieldCharacterImageRequest): string[] => {
   const prompt = input.prompt.trim();
-  if (prompt.length < 10 || prompt.length > 4000 || input.aspect_ratio !== '16:9' || input.resolution !== '1k' || input.thinking !== 'HIGH') {
-    return Promise.reject(new Error('Invalid Higgsfield character image request.'));
+  const references = input.imageReferencePaths ?? [];
+  if (prompt.length < 10 || prompt.length > 4000 || input.aspect_ratio !== '16:9' || input.resolution !== '1k' || input.thinking !== 'HIGH'
+    || references.length > 14 || references.some((path) => !path || !existsSync(path))) {
+    throw new Error('Invalid Higgsfield character image request.');
   }
+  return [
+    'generate', 'create', 'nano_banana_2_lite', '--prompt', prompt,
+    '--aspect_ratio', '16:9', '--resolution', '1k', '--thinking', 'HIGH',
+    ...references.flatMap((path) => ['--image-references', path]),
+    '--json',
+  ];
+};
+
+export const submitHiggsfieldCharacterImageJob = (input: HiggsfieldCharacterImageRequest): Promise<unknown> => {
   const launch = resolveHiggsfieldLaunchSpec({cliPath: process.env.HIGGSFIELD_CLI_PATH});
-  const args = [...launch.prefixArgs, 'generate', 'create', 'nano_banana_2_lite', '--prompt', prompt, '--aspect_ratio', '16:9', '--resolution', '1k', '--thinking', 'HIGH', '--json'];
+  let generatedArgs: string[];
+  try { generatedArgs = buildHiggsfieldCharacterImageArgs(input); } catch (error) { return Promise.reject(error); }
+  const args = [...launch.prefixArgs, ...generatedArgs];
   return new Promise((resolve, reject) => {
     const child = spawn(/* turbopackIgnore: true */ launch.executable, args, {shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']});
     let stdout = '';

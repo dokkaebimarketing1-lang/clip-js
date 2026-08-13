@@ -7,6 +7,7 @@ import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 vi.mock('server-only', () => ({}));
 import {initialState} from '@/app/store/slices/projectSlice';
 import {approveCreative} from '@/app/lib/workflow/approval';
+import {sha256} from '@/app/lib/workflow/hash';
 import {signCreativeApproval, signTakeApproval} from '@/app/lib/security/approval-signature';
 import {createGenerationAuthorizationPreview, issueGenerationAuthorization} from '@/app/lib/byteplus/generation-authorization.server';
 import {createFilesystemGenerationRepository} from './generation-repository.server';
@@ -36,10 +37,15 @@ const project = async (): Promise<ProjectState> => {
   const referenceTemp = referenceStore.createTempPath('fake-character');
   writeFileSync(referenceTemp, referenceBytes);
   const reference = await referenceStore.commitVerifiedTemp({tempPath: referenceTemp, projectId: value.id, requestKey: 'b'.repeat(64), contentSha256: referenceHash, byteLength: referenceBytes.length, mimeType: 'image/png', assetKind: 'managed-media', media: {format: 'png', width: 1280, height: 720}});
-  const characterSheet = {id: 'CHAR01', name: 'Subject', palette: {dominant: '#241818', secondary: '#6f3434', accent: '#f0b45c'}, visualTags: ['fictional subject'], referenceImageId: reference.asset.id};
+  const styleBible = {visualMedium: 'cinematic photography', realism: 'natural', renderLanguage: 'live action', proportionRules: 'natural anatomy', lighting: 'soft daylight', lensAndDepth: '50mm', background: 'coherent studio', textureAndColor: 'natural texture', negativeConstraints: ['no style drift']};
+  const styleBibleHash = await sha256(styleBible);
+  await referenceStore.setStyleLineage(reference.asset.id, value.id, {styleBibleHash, styleReferenceImageIds: []});
+  const characterSheet = {id: 'CHAR01', name: 'Subject', palette: {dominant: '#241818', secondary: '#6f3434', accent: '#f0b45c'}, visualTags: ['fictional subject'], referenceImageId: reference.asset.id, referenceStyleHash: styleBibleHash};
+  value.workflow.styleBible = styleBible;
+  value.workflow.styleBibleHash = styleBibleHash;
   value.workflow.characterSheet = characterSheet;
   value.workflow.characterSheets = [characterSheet];
-  value.workflow.storyboard = {version: 'v1', title: 'Fake E2E', noBgm: true, characterReferenceIds: [reference.asset.id], cuts: [{id: 'CUT01', title: 'Cut', characterIds: ['CHAR01'], absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'studio wide', endFrame: 'subject settles', camera: 'locked camera', action: 'subject moves naturally', dialogue: '—', sfx: 'quiet room tone'}]}]};
+  value.workflow.storyboard = {version: 'v1', title: 'Fake E2E', noBgm: true, characterReferenceIds: [reference.asset.id], styleBibleHash, cuts: [{id: 'CUT01', title: 'Cut', characterIds: ['CHAR01'], absoluteStartSeconds: 0, absoluteEndSeconds: 30, shots: [{id: 'S1', startSeconds: 0, endSeconds: 30, startFrame: 'studio wide', endFrame: 'subject settles', camera: 'locked camera', action: 'subject moves naturally', dialogue: '—', sfx: 'quiet room tone'}]}]};
   const stressTests = Array.from({length: 10}, (_, index) => ({id: `stress-${index + 1}`, pose: `pose-${index + 1}`, lighting: index % 2 ? 'night' : 'day', coAssetIds: [], resultAssetId: `result-${index + 1}`, verdict: 'pass' as const}));
   value.workflow.production = {
     assets: [{id: 'asset-1', tag: '@subject', type: 'character', state: 'base', descriptor: 'fictional subject', referenceUrl: 'https://assets.example.test/subject.png', referenceHash: 'a'.repeat(64), editMode: 'original', status: 'locked', stressTests}],

@@ -1,5 +1,20 @@
 import {describe, expect, it} from 'vitest';
-import {parseHiggsfieldSubmittedJobId, resolveHiggsfieldLaunchSpec} from './generate.server';
+import {mkdtempSync, writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {buildHiggsfieldCharacterImageArgs, parseHiggsfieldSubmittedJobId, resolveHiggsfieldLaunchSpec} from './generate.server';
+
+describe('Higgsfield character style references', () => {
+  it('passes every approved managed image as a repeated native image reference flag', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clipjs-higgs-ref-'));
+    const first = join(root, 'first.bin'); const second = join(root, 'second.bin');
+    writeFileSync(first, 'a'); writeFileSync(second, 'b');
+    const args = buildHiggsfieldCharacterImageArgs({prompt: 'Create a consistent character master sheet.', imageReferencePaths: [first, second], aspect_ratio: '16:9', resolution: '1k', thinking: 'HIGH'});
+    expect(args.filter((arg) => arg === '--image-references')).toHaveLength(2);
+    expect(args).toContain(first);
+    expect(args).toContain(second);
+  });
+});
 
 describe('Higgsfield CLI launcher', () => {
   it('runs the JavaScript entry with Node instead of spawning a Windows cmd shim', () => {

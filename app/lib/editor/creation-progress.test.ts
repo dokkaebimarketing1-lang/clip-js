@@ -1,6 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {deriveCreationProgress, isStoryboardBuiltFromCharacterReferences} from './creation-progress';
 
+const styleHash = 'a'.repeat(64);
+const styleBible = {visualMedium: 'photo', realism: 'natural', renderLanguage: 'cinematic', proportionRules: 'natural anatomy', lighting: 'soft studio', lensAndDepth: '50mm', background: 'neutral', textureAndColor: 'real fur', negativeConstraints: ['no cartoon']};
+
 const brief = {
   subject: '크림색 시바견 루이',
   action: '카메라를 바라보며 인사한다',
@@ -18,11 +21,11 @@ const character = {
 
 describe('creation progress guidance', () => {
   it('rejects a storyboard created before the current character reference images existed', () => {
-    const sheets = [{...character, referenceImageId: 'ga_a'}, {...character, name: '토리', referenceImageId: 'ga_b'}];
+    const sheets = [{...character, referenceImageId: 'ga_a', referenceStyleHash: styleHash, styleReferenceImageIds: []}, {...character, name: '토리', referenceImageId: 'ga_b', referenceStyleHash: styleHash, styleReferenceImageIds: ['ga_a']}];
     const oldStoryboard = {version: 'v1', title: 'old', noBgm: true as const, cuts: []};
-    const currentStoryboard = {...oldStoryboard, characterReferenceIds: ['ga_a', 'ga_b']};
+    const currentStoryboard = {...oldStoryboard, characterReferenceIds: ['ga_a', 'ga_b'], styleBibleHash: styleHash};
     expect(isStoryboardBuiltFromCharacterReferences(oldStoryboard, sheets)).toBe(false);
-    expect(isStoryboardBuiltFromCharacterReferences(currentStoryboard, sheets)).toBe(true);
+    expect(isStoryboardBuiltFromCharacterReferences(currentStoryboard, sheets, styleHash)).toBe(true);
   });
   it('shows a strong planning completion reveal and character CTA', () => {
     expect(deriveCreationProgress({brief, characterSheets: [character], hasStoryboard: false})).toEqual({
@@ -40,8 +43,12 @@ describe('creation progress guidance', () => {
     });
   });
 
-  it('guides the user to generate a storyboard after every managed character image is registered', () => {
-    expect(deriveCreationProgress({brief, characterSheets: [{...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef'}], hasStoryboard: false, workspace: 'reference'})).toEqual({
+  it('keeps legacy images locked for style review when provenance is absent', () => {
+    expect(deriveCreationProgress({brief, styleBible, styleBibleHash: styleHash, characterSheets: [{...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef'}], hasStoryboard: false, workspace: 'reference'})).toMatchObject({state: 'style-review-needed'});
+  });
+
+  it('guides the user to generate a storyboard only after every image shares the style lineage', () => {
+    expect(deriveCreationProgress({brief, styleBible, styleBibleHash: styleHash, characterSheets: [{...character, referenceImageId: 'ga_0123456789abcdef0123456789abcdef', referenceStyleHash: styleHash}], hasStoryboard: false, workspace: 'reference'})).toEqual({
       state: 'character-ready',
       completedCount: 4,
       nextLabel: '스토리보드 생성하기',

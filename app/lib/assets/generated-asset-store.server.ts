@@ -10,6 +10,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  renameSync,
 
   rmSync,
   statfsSync,
@@ -79,6 +80,7 @@ export type CommitVerifiedTempInput = {
   projectId: string;
   requestKey: string;
   providerJobId?: string;
+  styleLineage?: GeneratedAsset['styleLineage'];
   contentSha256: string;
   byteLength: number;
   assetKind?: 'generated-video' | 'managed-media';
@@ -154,6 +156,30 @@ export const createLocalGeneratedAssetStore = (options: {
 
     get: async (assetId: string): Promise<GeneratedAsset | undefined> => readMetadata(assetId),
 
+    setStyleLineage: async (assetId: string, projectId: string, styleLineage: NonNullable<GeneratedAsset['styleLineage']>): Promise<GeneratedAsset> => {
+      const existing = readMetadata(assetId);
+      if (!existing || existing.projectId !== projectId || existing.state !== 'ready' || !existing.mimeType.startsWith('image/')) {
+        throw new Error('A project-owned ready image is required to set style lineage.');
+      }
+      const updated = generatedAssetSchema.parse({...existing, styleLineage});
+      const destination = metadataPath(assetId);
+      const temporary = join(metadataDirectory, `.${assetId}.${randomUUID()}.tmp`);
+      let descriptor: number | undefined;
+      try {
+        descriptor = openSync(temporary, 'wx', 0o600);
+        writeFileSync(descriptor, `${JSON.stringify(updated)}\n`, {encoding: 'utf8'});
+        fsyncSync(descriptor);
+        closeSync(descriptor);
+        descriptor = undefined;
+        renameSync(temporary, destination);
+        fsyncDirectory(metadataDirectory);
+      } finally {
+        if (descriptor !== undefined) closeSync(descriptor);
+        rmSync(temporary, {force: true});
+      }
+      return updated;
+    },
+
     listProject: async (projectId: string): Promise<GeneratedAsset[]> => listAll()
       .filter((asset) => asset.projectId === projectId)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -195,6 +221,7 @@ export const createLocalGeneratedAssetStore = (options: {
           projectId: input.projectId,
           requestKey: input.requestKey,
           ...(input.providerJobId ? {providerJobId: input.providerJobId} : {}),
+          ...(input.styleLineage ? {styleLineage: input.styleLineage} : {}),
           contentSha256: input.contentSha256,
           byteLength: input.byteLength,
           mimeType: input.mimeType,
@@ -243,6 +270,7 @@ export const createLocalGeneratedAssetStore = (options: {
         projectId: input.projectId,
         requestKey: input.requestKey,
         ...(input.providerJobId ? {providerJobId: input.providerJobId} : {}),
+        ...(input.styleLineage ? {styleLineage: input.styleLineage} : {}),
         contentSha256: input.contentSha256,
         byteLength: input.byteLength,
         mimeType: input.mimeType,

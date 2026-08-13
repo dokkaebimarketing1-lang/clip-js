@@ -2,9 +2,10 @@ import {z} from 'zod';
 import {computeGenerationRequestKey} from '@/app/lib/generation/generation-repository.server';
 import {approveGeneration, computeStoryboardHash} from '@/app/lib/workflow/approval';
 import {sha256} from '@/app/lib/workflow/hash';
-import {characterSheetSchema} from '@/app/lib/workflow/schema';
+import {characterSheetSchema, styleBibleSchema} from '@/app/lib/workflow/schema';
 import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
 import {parseProjectState} from '@/app/lib/workflow/project-file';
+import {validateCharacterStyleLineage} from '@/app/lib/workflow/style-lineage';
 import type {ProjectState} from '@/app/types';
 import {signGenerationApproval, verifyCreativeApprovalSignature} from '@/app/lib/security/approval-signature';
 import {
@@ -54,8 +55,15 @@ const assertCurrentCreativeApproval = async (project: ProjectState): Promise<voi
   const characterSheets = project.workflow.characterSheets?.length
     ? project.workflow.characterSheets
     : project.workflow.characterSheet ? [project.workflow.characterSheet] : [];
-  if (characterSheets.length === 0 || !approval.characterSheetHash) {
-    throw new Error('Current character sheets require owner creative approval.');
+  const styleBible = project.workflow.styleBible;
+  const styleBibleHash = project.workflow.styleBibleHash;
+  if (characterSheets.length === 0 || !approval.characterSheetHash || !styleBible || !styleBibleHash) {
+    throw new Error('Current character sheets and project style require owner creative approval.');
+  }
+  if (await sha256(styleBibleSchema.parse(styleBible)) !== styleBibleHash
+    || project.workflow.storyboard.styleBibleHash !== styleBibleHash
+    || !validateCharacterStyleLineage(characterSheets, styleBibleHash).valid) {
+    throw new Error('Project style lineage is missing or stale.');
   }
   const characterIds = characterSheets.map((sheet) => sheet.id);
   if (new Set(characterIds).size !== characterIds.length) throw new Error('Character identities must be unique.');
@@ -69,7 +77,14 @@ const assertCurrentCreativeApproval = async (project: ProjectState): Promise<voi
   const currentCharacterHash = await sha256(characterSheets.map((sheet) => characterSheetSchema.parse(sheet)));
   if (currentCharacterHash !== approval.characterSheetHash) throw new Error('Creative approval is stale for the current character sheets.');
   const assets = await Promise.all(readyReferenceIds.map((id) => getGeneratedAssetStore().get(id)));
-  if (assets.some((asset) => !asset || asset.projectId !== project.id || asset.state !== 'ready' || !asset.mimeType.startsWith('image/'))) {
+  if (assets.some((asset, index) => {
+    const sheet = characterSheets[index];
+    const expectedReferences = sheet.styleReferenceImageIds ?? [];
+    const assetLineageMatches = asset?.styleLineage?.styleBibleHash === styleBibleHash
+      && asset.styleLineage.styleReferenceImageIds.length === expectedReferences.length
+      && asset.styleLineage.styleReferenceImageIds.every((id, referenceIndex) => id === expectedReferences[referenceIndex]);
+    return !asset || asset.projectId !== project.id || asset.state !== 'ready' || !asset.mimeType.startsWith('image/') || !assetLineageMatches;
+  })) {
     throw new Error('A current character reference asset is missing or belongs to another project.');
   }
 };

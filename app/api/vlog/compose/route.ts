@@ -1,7 +1,8 @@
 import {NextResponse} from 'next/server';
 import {getConfiguredPlanningProvider} from '@/app/lib/generation/planning-runtime.server';
 import {axesFromBrief, buildDefaultSeedanceMasterSettings, seedanceMasterSettingsSchema} from '@/app/lib/workflow/seedance-master';
-import {interviewBriefSchema, characterSheetSchema} from '@/app/lib/workflow/schema';
+import {interviewBriefSchema, characterSheetSchema, styleBibleSchema} from '@/app/lib/workflow/schema';
+import {sha256} from '@/app/lib/workflow/hash';
 
 /**
  * VLOG 파이프라인 8단계 · 통합 컴포즈 엔드포인트
@@ -33,6 +34,8 @@ export const POST = async (request: Request) => {
     return NextResponse.json({error: 'planning provider unavailable'}, {status: 503});
   }
   const brief = plan.interviewBrief;
+  const styleBible = styleBibleSchema.parse(plan.styleBible);
+  const styleBibleHash = await sha256(styleBible);
   const sheet = plan.characterSheet;
   const sheets = plan.characterSheets ?? [sheet];
   const axes = axesFromBrief(brief, sheet);
@@ -48,6 +51,8 @@ export const POST = async (request: Request) => {
     planningProvider: planningProvider.provider,
     planningModel: planningProvider.model,
     interviewBrief: interviewBriefSchema.parse(brief),
+    styleBible,
+    styleBibleHash,
     characterSheet: characterSheetSchema.parse(sheet),
     characterSheets: sheets.map((character) => characterSheetSchema.parse(character)),
     seedanceMaster,

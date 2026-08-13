@@ -9,6 +9,7 @@ import {
   characterSheetSchema,
   interviewBriefSchema,
   storyboardSchema,
+  styleBibleSchema,
   type CharacterSheet,
   type InterviewBrief,
   type Storyboard,
@@ -66,6 +67,9 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   );
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
   const activeCharacter = allCharacterSheets.find((sheet) => sheet.id === activeCharacterId) ?? allCharacterSheets[0];
+  const styleReferenceImageIds = useMemo(() => allCharacterSheets
+    .filter((sheet) => sheet.referenceImageId && workflow.styleBibleHash && sheet.referenceStyleHash === workflow.styleBibleHash && sheet.id !== activeCharacter?.id)
+    .map((sheet) => sheet.referenceImageId as string), [activeCharacter?.id, allCharacterSheets, workflow.styleBibleHash]);
   const [characterPreviewUrls, setCharacterPreviewUrls] = useState<Record<string, string>>({});
   const [isUploadingCharacter, setIsUploadingCharacter] = useState(false);
   const [characterUploadError, setCharacterUploadError] = useState<string | null>(null);
@@ -76,12 +80,15 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const [imageGenerationStatus, setImageGenerationStatus] = useState<'idle' | 'submitting' | 'queued' | 'processing' | 'failed'>('idle');
   const [isGeneratingStoryboard, setIsGeneratingStoryboard] = useState(false);
   const [storyboardError, setStoryboardError] = useState<string | null>(null);
+  const [isLockingStyle, setIsLockingStyle] = useState(false);
   const workflowRef = useRef(workflow);
   const characterSheetsRef = useRef(allCharacterSheets);
   useEffect(() => { workflowRef.current = workflow; }, [workflow]);
   useEffect(() => { characterSheetsRef.current = allCharacterSheets; }, [allCharacterSheets]);
-  const storyboardIsCurrent = isStoryboardBuiltFromCharacterReferences(storyboard, allCharacterSheets);
-  const progress = deriveCreationProgress({brief: interviewBrief, characterSheets: allCharacterSheets, hasStoryboard: storyboardIsCurrent, workspace});
+  const styleBible = workflow.styleBible;
+  const styleBibleHash = workflow.styleBibleHash;
+  const storyboardIsCurrent = isStoryboardBuiltFromCharacterReferences(storyboard, allCharacterSheets, styleBibleHash);
+  const progress = deriveCreationProgress({brief: interviewBrief, styleBible, styleBibleHash, characterSheets: allCharacterSheets, hasStoryboard: storyboardIsCurrent, workspace});
 
   useEffect(() => {
     if (storyboard && allCharacterSheets.every((sheet) => sheet.referenceImageId) && !storyboardIsCurrent) {
@@ -89,9 +96,9 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     }
   }, [allCharacterSheets, dispatch, storyboard, storyboardIsCurrent]);
 
-  const connectCharacterReference = useCallback((characterId: string, assetId: string, previewUrl: string) => {
+  const connectCharacterReference = useCallback((characterId: string, assetId: string, previewUrl: string, lineage?: {styleBibleHash: string; styleReferenceImageIds: string[]}) => {
     const nextSheets = characterSheetsRef.current.map((sheet) =>
-      (sheet.id ?? sheet.name) === characterId ? {...sheet, referenceImageId: assetId} : sheet,
+      (sheet.id ?? sheet.name) === characterId ? {...sheet, referenceImageId: assetId, referenceStyleHash: lineage?.styleBibleHash, styleReferenceImageIds: lineage?.styleReferenceImageIds} : sheet,
     );
     dispatch(setWorkflow(invalidateForCreativeChange({
       ...workflowRef.current,
@@ -136,6 +143,8 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       dispatch(setWorkflow({
         ...invalidateForCreativeChange(workflow),
         interviewBrief: interviewBriefSchema.parse(payload.interviewBrief),
+        styleBible: styleBibleSchema.parse(payload.styleBible),
+        styleBibleHash: typeof payload.styleBibleHash === 'string' ? payload.styleBibleHash : undefined,
         characterSheet: parsedSheets[0],
         characterSheets: parsedSheets,
         storyboard: undefined,
@@ -150,14 +159,14 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   const generateStoryboard = async () => {
-    if (!interviewBrief || allCharacterSheets.length === 0 || allCharacterSheets.some((sheet) => !sheet.referenceImageId) || isGeneratingStoryboard) return;
+    if (!interviewBrief || !styleBible || !styleBibleHash || allCharacterSheets.length === 0 || allCharacterSheets.some((sheet) => !sheet.referenceImageId || sheet.referenceStyleHash !== styleBibleHash) || isGeneratingStoryboard) return;
     setIsGeneratingStoryboard(true);
     setStoryboardError(null);
     try {
       const response = await fetch('/api/vlog/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
-        body: JSON.stringify({projectId, sentence: `${interviewBrief.subject}. ${interviewBrief.action}. ${interviewBrief.extraNotes ?? ''}`.trim(), interviewBrief, characterSheets: allCharacterSheets}),
+        body: JSON.stringify({projectId, sentence: `${interviewBrief.subject}. ${interviewBrief.action}. ${interviewBrief.extraNotes ?? ''}`.trim(), interviewBrief, styleBible, styleBibleHash, characterSheets: allCharacterSheets}),
       });
       const payload = await response.json() as {storyboard?: unknown; error?: string};
       if (!response.ok || !payload.storyboard) throw new Error(payload.error ?? '스토리보드를 생성하지 못했습니다.');
@@ -171,23 +180,29 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   const startCharacterImageGeneration = async () => {
-    if (!activeCharacter?.id || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
+    if (!activeCharacter?.id || !styleBible || !styleBibleHash || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
     setCharacterUploadError(null);
     setImageGenerationStatus('submitting');
     const prompt = [
-      'Create a polished cinematic character reference sheet for a video production.',
+      'Create one polished cinematic CHARACTER MASTER SHEET for a video production.',
+      '[PROJECT STYLE — LOCKED, inherit identically across every character]',
+      `Visual medium: ${styleBible.visualMedium}. Realism: ${styleBible.realism}. Render language: ${styleBible.renderLanguage}.`,
+      `Proportion rules: ${styleBible.proportionRules}. Lighting: ${styleBible.lighting}. Lens and depth: ${styleBible.lensAndDepth}.`,
+      `Background: ${styleBible.background}. Texture and color science: ${styleBible.textureAndColor}.`,
+      `Never: ${styleBible.negativeConstraints.join(', ')}.`,
+      '[CHARACTER IDENTITY — ONLY VARIABLE]',
       `Character name: ${activeCharacter.name}.`,
       activeCharacter.breed ? `Character type or breed: ${activeCharacter.breed}.` : '',
       `Visual traits: ${activeCharacter.visualTags.join(', ')}.`,
       `Color palette: ${Object.entries(activeCharacter.palette).map(([label, color]) => `${label} ${color}`).join(', ')}.`,
       interviewBrief ? `Project mood: ${interviewBrief.tone}.` : '',
-      'Show one consistent character with a clear full-body hero view and supporting front and side views on a clean neutral studio background.',
+      'Show the same identity in a full-body hero view plus front, side, and three-quarter views. Keep anatomy, materials, lighting, lens, background, and rendering medium identical to the attached project master reference. Use attached images for STYLE only; do not copy another character identity.',
       'No text, letters, numbers, captions, logos, watermarks, UI, signage, or brand marks anywhere in the image.',
     ].filter(Boolean).join(' ');
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image`, {
         method: 'POST', headers: {'content-type': 'application/json'},
-        body: JSON.stringify({characterId: activeCharacter.id, prompt, confirmCreditCost: 1}),
+        body: JSON.stringify({characterId: activeCharacter.id, prompt, styleBibleHash, styleReferenceImageIds, confirmCreditCost: 1}),
       });
       const payload = await response.json() as {jobId?: string; error?: string};
       if (!response.ok || !payload.jobId) throw new Error(payload.error ?? '이미지 생성 요청 실패');
@@ -206,12 +221,12 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     const poll = async () => {
       try {
         const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image?jobId=${encodeURIComponent(imageGenerationJobId)}&characterId=${encodeURIComponent(generationCharacterId ?? '')}`);
-        const payload = await response.json() as {status?: string; assetId?: string; previewUrl?: string; error?: string};
+        const payload = await response.json() as {status?: string; assetId?: string; previewUrl?: string; lineage?: {styleBibleHash: string; styleReferenceImageIds: string[]}; error?: string};
         if (!response.ok) throw new Error(payload.error ?? '이미지 상태 조회 실패');
         if (payload.status === 'completed' && payload.assetId && payload.previewUrl) {
           if (cancelled) return;
           if (!generationCharacterId) throw new Error('생성 대상 캐릭터를 확인하지 못했습니다.');
-          connectCharacterReference(generationCharacterId, payload.assetId, payload.previewUrl);
+          connectCharacterReference(generationCharacterId, payload.assetId, payload.previewUrl, payload.lineage);
           setImageGenerationJobId(null);
           setGenerationCharacterId(null);
           setImageGenerationStatus('idle');
@@ -258,6 +273,24 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     } finally {
       setIsUploadingCharacter(false);
     }
+  };
+
+  const lockActiveReferenceAsProjectStyle = async () => {
+    if (!activeCharacter?.referenceImageId || !interviewBrief || isLockingStyle) return;
+    setIsLockingStyle(true);
+    setCharacterUploadError(null);
+    try {
+      const response = await fetch('/api/vlog/style-bible', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({projectId, anchorReferenceImageId: activeCharacter.referenceImageId, tone: interviewBrief.tone})});
+      const payload = await response.json() as {styleBible?: unknown; styleBibleHash?: string; error?: string};
+      if (!response.ok || !payload.styleBibleHash) throw new Error(payload.error ?? '스타일 기준을 확정하지 못했습니다.');
+      const lockedBible = styleBibleSchema.parse(payload.styleBible);
+      const nextSheets = characterSheetsRef.current.map((sheet) => sheet.id === activeCharacter.id
+        ? {...sheet, referenceStyleHash: payload.styleBibleHash, styleReferenceImageIds: []}
+        : {...sheet, referenceStyleHash: undefined, styleReferenceImageIds: undefined});
+      dispatch(setWorkflow(invalidateForCreativeChange({...workflowRef.current, styleBible: lockedBible, styleBibleHash: payload.styleBibleHash, characterSheet: nextSheets[0], characterSheets: nextSheets, storyboard: undefined})));
+    } catch (error) {
+      setCharacterUploadError(error instanceof Error ? error.message : '스타일 기준을 확정하지 못했습니다.');
+    } finally { setIsLockingStyle(false); }
   };
 
   if (workspace === 'interview') {
@@ -319,6 +352,11 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     const activeKey = displayed ? displayed.id ?? displayed.name : '';
     const activePreviewUrl = characterPreviewUrls[activeKey];
     const readyCount = allCharacterSheets.filter((sheet) => sheet.referenceImageId).length;
+    const anchorCandidates = allCharacterSheets.filter((sheet) => sheet.referenceImageId && sheet.referenceStyleHash === workflow.styleBibleHash && (sheet.styleReferenceImageIds ?? []).length === 0);
+    const anchorReferenceId = anchorCandidates.length === 1 ? anchorCandidates[0].referenceImageId : undefined;
+    const isSheetStyleLocked = (sheet: CharacterSheet) => Boolean(anchorReferenceId && sheet.referenceStyleHash === workflow.styleBibleHash && (sheet.referenceImageId === anchorReferenceId || (sheet.styleReferenceImageIds ?? []).includes(anchorReferenceId)));
+    const styleLockedCount = allCharacterSheets.filter(isSheetStyleLocked).length;
+    const activeStyleLocked = activeCharacter ? isSheetStyleLocked(activeCharacter) : false;
     const totalCount = allCharacterSheets.length;
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
@@ -326,7 +364,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">2 · 기준 시트</p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div><h1 className="text-3xl font-black text-white">출연 캐릭터별 기준을 고정합니다</h1><p className="mt-2 text-sm text-gray-400">메인 캐릭터마다 별도 기준 이미지가 필요합니다. 강아지와 다람쥐라면 각각 한 장씩 준비합니다.</p></div>
-            {totalCount ? <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"><div className="text-right"><p className="text-xs text-gray-500">기준 이미지 준비</p><p className="mt-1 text-xl font-black text-white">{readyCount} / {totalCount}</p></div>{readyCount === totalCount ? <button type="button" disabled={isGeneratingStoryboard} onClick={() => storyboardIsCurrent ? onNavigate('storyboard') : void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-wait disabled:opacity-60">{storyboardIsCurrent ? '스토리보드 검수 →' : isGeneratingStoryboard ? '생성 중…' : '스토리보드 생성 →'}</button> : null}</div> : null}
+            {totalCount ? <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"><div className="text-right"><p className="text-xs text-gray-500">이미지 · 스타일 잠금</p><p className="mt-1 text-xl font-black text-white">{readyCount}/{totalCount} · {styleLockedCount}/{totalCount}</p></div>{progress.state === 'character-ready' ? <button type="button" disabled={isGeneratingStoryboard} onClick={() => storyboardIsCurrent ? onNavigate('storyboard') : void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-wait disabled:opacity-60">{storyboardIsCurrent ? '스토리보드 검수 →' : isGeneratingStoryboard ? '생성 중…' : '스토리보드 생성 →'}</button> : null}</div> : null}
           </div>
           {!displayed ? <div className="mt-8"><EmptyState title="기준 시트가 없습니다" description="인터뷰에서 AI 기획을 완료하세요. AI가 주요 출연 캐릭터를 분리해 각각의 기준 시트를 만듭니다."/></div> : (
             <>
@@ -335,13 +373,13 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
                 const selected = key === activeKey;
                 const preview = characterPreviewUrls[key];
                 return <button key={key} type="button" onClick={() => { setActiveCharacterId(key); setCharacterUploadError(null); setConfirmImageCredit(false); }} className={`overflow-hidden rounded-2xl border text-left transition ${selected ? 'border-fuchsia-400 bg-fuchsia-500/[0.10] shadow-[0_0_35px_rgba(217,70,239,0.12)]' : 'border-white/10 bg-[#15131a] hover:border-white/25'}`}>
-                  <div className="flex items-center gap-4 p-4">{preview ? <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-black"><Image src={preview} alt={`${sheet.name} 미리보기`} fill unoptimized className="object-cover" sizes="96px"/></div> : <div className="grid h-16 w-24 shrink-0 place-items-center rounded-xl border border-dashed border-white/15 bg-black/30 text-xl text-fuchsia-300">✦</div>}<div className="min-w-0"><p className="text-[11px] font-black text-fuchsia-300">캐릭터 {index + 1}</p><p className="mt-1 truncate text-lg font-black text-white">{sheet.name}</p><p className={`mt-1 text-xs font-bold ${sheet.referenceImageId ? 'text-emerald-300' : 'text-amber-300'}`}>{sheet.referenceImageId ? '✓ 기준 이미지 준비됨' : '기준 이미지 필요'}</p></div></div>
+                  <div className="flex items-center gap-4 p-4">{preview ? <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-black"><Image src={preview} alt={`${sheet.name} 미리보기`} fill unoptimized className="object-cover" sizes="96px"/></div> : <div className="grid h-16 w-24 shrink-0 place-items-center rounded-xl border border-dashed border-white/15 bg-black/30 text-xl text-fuchsia-300">✦</div>}<div className="min-w-0"><p className="text-[11px] font-black text-fuchsia-300">캐릭터 {index + 1}</p><p className="mt-1 truncate text-lg font-black text-white">{sheet.name}</p><p className={`mt-1 text-xs font-bold ${isSheetStyleLocked(sheet) ? 'text-emerald-300' : sheet.referenceImageId ? 'text-amber-300' : 'text-red-300'}`}>{isSheetStyleLocked(sheet) ? sheet.referenceImageId === anchorReferenceId ? '✓ 프로젝트 스타일 기준' : '✓ 스타일 잠금 완료' : sheet.referenceImageId ? '스타일 검수 필요' : '기준 이미지 필요'}</p></div></div>
                 </button>;
               })}</div> : null}
 
               <div className="mt-5 grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
                 <article className="overflow-hidden rounded-3xl border border-white/10 bg-[#15131a]">
-                  {sampleMode ? <><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">샘플 전용 · 현재 프로젝트의 승인 대상이 아닙니다</div><div className="relative aspect-[16/10] bg-black"><Image src="/mock-assets/reference-shiba.webp" alt="샘플 시바견 마스터 시트" fill className="object-contain" sizes="70vw" priority/></div></> : activePreviewUrl ? <><div className="border-b border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-xs font-bold text-emerald-200">✓ {displayed.name} 기준 이미지 등록 완료</div><div className="relative aspect-[16/10] bg-black"><Image src={activePreviewUrl} alt={`${displayed.name} 기준 이미지`} fill unoptimized className="object-contain" sizes="70vw"/></div></> : <div className="flex aspect-[16/10] flex-col items-center justify-center border-b border-dashed border-white/10 bg-black/40 px-8 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-fuchsia-500/15 text-2xl">✦</div><p className="mt-4 text-lg font-black text-white">{displayed.name} 기준 이미지를 만드세요</p><p className="mt-2 max-w-md text-sm leading-6 text-gray-500">현재 선택한 캐릭터만 생성합니다. 다른 캐릭터는 위 카드에서 따로 선택해 준비합니다.</p><div className="mt-5 w-full max-w-xl rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/[0.07] p-4 text-left"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-white">Higgsfield AI 캐릭터 이미지</p><p className="mt-1 text-xs leading-5 text-gray-400">Nano Banana 2 Lite · 1K · 16:9 · 1장</p></div><span className="shrink-0 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-black text-amber-200">1 credit</span></div><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><input type="checkbox" className="mt-0.5 accent-fuchsia-500" checked={confirmImageCredit} disabled={['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onChange={(event) => { setConfirmImageCredit(event.target.checked); if (imageGenerationStatus === 'failed') setImageGenerationStatus('idle'); }}/><span className="text-xs leading-5 text-gray-300">{displayed.name} 이미지 1장 생성에 1 credit 사용을 확인합니다.</span></label><button type="button" disabled={!confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onClick={() => void startCharacterImageGeneration()} className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40">{imageGenerationStatus === 'submitting' ? '제출 중…' : imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing' ? '이미지 생성 처리 중…' : imageGenerationStatus === 'failed' ? '1 credit으로 다시 생성' : `${displayed.name} 이미지 생성`}</button></div></div>}
+                  {sampleMode ? <><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">샘플 전용 · 현재 프로젝트의 승인 대상이 아닙니다</div><div className="relative aspect-[16/10] bg-black"><Image src="/mock-assets/reference-shiba.webp" alt="샘플 시바견 마스터 시트" fill className="object-contain" sizes="70vw" priority/></div></> : activePreviewUrl ? <><div className={`border-b px-4 py-3 text-xs font-bold ${activeStyleLocked ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200' : 'border-amber-400/20 bg-amber-400/10 text-amber-100'}`}>{activeStyleLocked ? `✓ ${displayed.name} · 프로젝트 스타일 잠금 완료` : workflow.styleBibleHash ? `${displayed.name} · 현재 프로젝트 스타일과 일치 확인이 필요합니다` : <span className="flex flex-wrap items-center justify-between gap-3"><span>{displayed.name} · 기존 이미지는 아직 공통 스타일 기준이 아닙니다</span><button type="button" disabled={isLockingStyle} onClick={() => void lockActiveReferenceAsProjectStyle()} className="rounded-lg bg-amber-300 px-3 py-1.5 font-black text-black disabled:opacity-50">{isLockingStyle ? '확정 중…' : '이 이미지를 프로젝트 스타일 기준으로 확정'}</button></span>}</div><div className="relative aspect-[16/10] bg-black"><Image src={activePreviewUrl} alt={`${displayed.name} 기준 이미지`} fill unoptimized className="object-contain" sizes="70vw"/></div>{workflow.styleBibleHash && !activeStyleLocked ? <div className="border-t border-fuchsia-400/20 bg-fuchsia-500/[0.06] p-4"><div className="flex items-center justify-between gap-4"><div><p className="text-sm font-black text-white">프로젝트 스타일로 다시 생성</p><p className="mt-1 text-xs text-gray-400">잠긴 Master Sheet {styleReferenceImageIds.length}장을 실제 이미지 reference로 사용합니다.</p></div><span className="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-black text-amber-200">1 credit</span></div><label className="mt-3 flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><input type="checkbox" className="mt-0.5 accent-fuchsia-500" checked={confirmImageCredit} onChange={(event) => setConfirmImageCredit(event.target.checked)}/><span className="text-xs leading-5 text-gray-300">{displayed.name} 기존 이미지는 보존하고, 스타일 일치 이미지 1장을 새로 생성하는 데 1 credit 사용을 확인합니다.</span></label><button type="button" disabled={!confirmImageCredit || styleReferenceImageIds.length === 0 || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onClick={() => void startCharacterImageGeneration()} className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{imageGenerationStatus === 'submitting' ? '제출 중…' : imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing' ? '스타일 일치 이미지 생성 중…' : `${displayed.name} 다시 생성`}</button></div> : null}</> : <div className="flex aspect-[16/10] flex-col items-center justify-center border-b border-dashed border-white/10 bg-black/40 px-8 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-fuchsia-500/15 text-2xl">✦</div><p className="mt-4 text-lg font-black text-white">{displayed.name} 기준 이미지를 만드세요</p><p className="mt-2 max-w-md text-sm leading-6 text-gray-500">현재 선택한 캐릭터만 생성합니다. 다른 캐릭터는 위 카드에서 따로 선택해 준비합니다.</p><div className="mt-5 w-full max-w-xl rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/[0.07] p-4 text-left"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-white">Higgsfield AI 캐릭터 이미지</p><p className="mt-1 text-xs leading-5 text-gray-400">Nano Banana 2 Lite · 1K · 16:9 · 1장</p></div><span className="shrink-0 rounded-full bg-amber-400/15 px-3 py-1 text-xs font-black text-amber-200">1 credit</span></div><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><input type="checkbox" className="mt-0.5 accent-fuchsia-500" checked={confirmImageCredit} disabled={['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onChange={(event) => { setConfirmImageCredit(event.target.checked); if (imageGenerationStatus === 'failed') setImageGenerationStatus('idle'); }}/><span className="text-xs leading-5 text-gray-300">{displayed.name} 이미지 1장 생성에 1 credit 사용을 확인합니다.</span></label><button type="button" disabled={!confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)} onClick={() => void startCharacterImageGeneration()} className="mt-3 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40">{imageGenerationStatus === 'submitting' ? '제출 중…' : imageGenerationStatus === 'queued' || imageGenerationStatus === 'processing' ? '이미지 생성 처리 중…' : imageGenerationStatus === 'failed' ? '1 credit으로 다시 생성' : `${displayed.name} 이미지 생성`}</button></div></div>}
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 p-4"><div><p className="text-sm font-black text-white">보유 이미지로 등록</p><p className="mt-1 text-xs text-gray-500">PNG · JPEG · WebP · 최대 20MB</p></div><label className={`cursor-pointer rounded-xl border border-white/15 px-4 py-2 text-sm font-bold text-gray-200 hover:border-fuchsia-400/60 hover:text-white ${isUploadingCharacter ? 'pointer-events-none opacity-50' : ''}`}>{isUploadingCharacter ? '등록 중…' : `${displayed.name} 이미지 등록`}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadCharacterReference(file); event.currentTarget.value = ''; }}/></label></div>
                   {characterUploadError ? <p className="border-t border-red-400/20 bg-red-400/[0.06] px-4 py-3 text-xs text-red-200">{characterUploadError}</p> : null}
                 </article>

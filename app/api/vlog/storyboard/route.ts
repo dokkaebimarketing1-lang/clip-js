@@ -2,7 +2,9 @@ import {NextResponse} from 'next/server';
 import {z} from 'zod';
 import {getConfiguredPlanningProvider} from '@/app/lib/generation/planning-runtime.server';
 import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
-import {characterSheetSchema, interviewBriefSchema, storyboardSchema} from '@/app/lib/workflow/schema';
+import {characterSheetSchema, interviewBriefSchema, storyboardSchema, styleBibleSchema} from '@/app/lib/workflow/schema';
+import {sha256} from '@/app/lib/workflow/hash';
+import {validateCharacterStyleLineage} from '@/app/lib/workflow/style-lineage';
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -28,9 +30,12 @@ const inputSchema = z.object({
   projectId: z.string().min(1).max(128),
   sentence: z.string().trim().min(1).max(2000),
   interviewBrief: interviewBriefSchema,
+  styleBible: styleBibleSchema,
+  styleBibleHash: z.string().regex(/^[a-f0-9]{64}$/),
   characterSheets: z.array(characterSheetSchema.extend({
     id: z.string().regex(/^CHAR\d{2}$/),
     referenceImageId: z.string().regex(/^ga_[a-f0-9]{32}$/),
+    referenceStyleHash: z.string().regex(/^[a-f0-9]{64}$/),
   })).min(1).max(10),
 }).strict();
 
@@ -55,12 +60,21 @@ export const POST = async (request: Request) => {
   if (new Set(characterIds).size !== characterIds.length) {
     return NextResponse.json({error: '캐릭터 식별자가 중복됐습니다.', code: 'DUPLICATE_CHARACTER_ID'}, {status: 409});
   }
+  if (await sha256(input.styleBible) !== input.styleBibleHash
+    || !validateCharacterStyleLineage(input.characterSheets, input.styleBibleHash).valid) {
+    return NextResponse.json({error: '캐릭터 기준 이미지의 공통 스타일이 확정되지 않았습니다.', code: 'STYLE_LINEAGE_REQUIRED'}, {status: 409});
+  }
   const assets = await Promise.all(input.characterSheets.map((sheet) =>
     getGeneratedAssetStore().get(sheet.referenceImageId),
   ));
-  const ownsEveryImage = assets.every((asset) =>
-    asset?.projectId === input.projectId && asset.state === 'ready' && asset.mimeType.startsWith('image/'),
-  );
+  const ownsEveryImage = assets.every((asset, index) => {
+    const sheet = input.characterSheets[index];
+    const expectedReferences = sheet.styleReferenceImageIds ?? [];
+    const assetLineageMatches = asset?.styleLineage?.styleBibleHash === input.styleBibleHash
+      && asset.styleLineage.styleReferenceImageIds.length === expectedReferences.length
+      && asset.styleLineage.styleReferenceImageIds.every((id, referenceIndex) => id === expectedReferences[referenceIndex]);
+    return asset?.projectId === input.projectId && asset.state === 'ready' && asset.mimeType.startsWith('image/') && assetLineageMatches;
+  });
   if (!ownsEveryImage) {
     return NextResponse.json({
       error: '현재 프로젝트에 연결된 캐릭터 기준 이미지를 찾을 수 없습니다.',
@@ -70,7 +84,15 @@ export const POST = async (request: Request) => {
 
   try {
     const provider = getConfiguredPlanningProvider();
-    const plan = await provider.compose(input.sentence, request.signal);
+    const lockedPlanningInput = [
+      input.sentence,
+      '[PROJECT STYLE BIBLE — IMMUTABLE FOR EVERY CHARACTER AND SHOT]',
+      JSON.stringify(input.styleBible),
+      '[CHARACTER MASTER IDENTITIES — DO NOT CHANGE DESIGN]',
+      JSON.stringify(input.characterSheets.map(({id, name, breed, palette, visualTags, referenceImageId}) => ({id, name, breed, palette, visualTags, referenceImageId}))),
+      'Every cut must preserve this exact project style and use only the listed character IDs. Change camera/action only; never reinterpret medium, realism, anatomy, lighting, palette language, or character identity.',
+    ].join('\n');
+    const plan = await provider.compose(provider.provider === 'rules' ? input.sentence : lockedPlanningInput, request.signal);
     const storyboard = storyboardSchema.parse(plan.storyboard);
     const validIds = new Set(input.characterSheets.map((sheet) => sheet.id));
     if (storyboard.cuts.some((cut) => cut.characterIds?.some((id) => !validIds.has(id)))) {
@@ -80,6 +102,7 @@ export const POST = async (request: Request) => {
     const linkedStoryboard = storyboardSchema.parse({
       ...storyboard,
       characterReferenceIds: input.characterSheets.map((sheet) => sheet.referenceImageId),
+      styleBibleHash: input.styleBibleHash,
       cuts: storyboard.cuts.map((cut) => ({
         ...cut,
         characterIds: cut.characterIds?.length ? cut.characterIds : allCharacterIds,
