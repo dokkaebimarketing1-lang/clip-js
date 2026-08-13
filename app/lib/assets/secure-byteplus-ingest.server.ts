@@ -34,7 +34,11 @@ export const createSecureBytePlusResultIngestor = (options: {
   download?: typeof downloadPinnedRemoteMedia;
 }): IngestGenerationResult => async (input) => {
   const allowedHosts = options.allowedHosts ?? (process.env.BYTEPLUS_RESULT_HOSTS ?? '').split(',').map((host) => host.trim()).filter(Boolean);
-  if (!allowedHosts.length) throw new Error('BYTEPLUS_RESULT_HOSTS must be configured.');
+  if (!allowedHosts.length) {
+    let observedHostname = 'invalid';
+    try { observedHostname = new URL(input.resultTransportUrl).hostname || 'invalid'; } catch {}
+    throw new Error(`BYTEPLUS_RESULT_HOSTS is not configured; observed result hostname: ${observedHostname}`);
+  }
   const destinationBase = options.assetStore.createTempPath(`byteplus-${input.requestKey.slice(0, 16)}`);
   const resolveResultUrl = (url: string) => resolveSafeRemoteUrl(url, {
     allowedHosts,

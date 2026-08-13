@@ -18,7 +18,17 @@ describe('secure BytePlus result ingest', () => {
     directories.push(root);
     const assetStore = createLocalGeneratedAssetStore({rootDirectory: root, minFreeBytes: 0});
     const ingest = createSecureBytePlusResultIngestor({assetStore});
-    await expect(ingest({projectId: 'project-1', requestKey: 'a'.repeat(64), providerJobId: 'job-1', resultTransportUrl: 'https://results.example.test/video.mp4', authorizedDuration: 30, authorizedResolution: '720p', authorizedGenerateAudio: false})).rejects.toThrow(/BYTEPLUS_RESULT_HOSTS/i);
+    const result = ingest({
+      projectId: 'project-1',
+      requestKey: 'a'.repeat(64),
+      providerJobId: 'job-1',
+      resultTransportUrl: 'https://results.example.test/private/path?token=secret',
+      authorizedDuration: 30,
+      authorizedResolution: '720p',
+      authorizedGenerateAudio: false,
+    });
+    await expect(result).rejects.toThrow('BYTEPLUS_RESULT_HOSTS is not configured; observed result hostname: results.example.test');
+    await expect(result).rejects.not.toThrow(/private|token=secret/);
     expect(await assetStore.listProject('project-1')).toHaveLength(0);
   });
 });
