@@ -1,4 +1,5 @@
 import {NextRequest, NextResponse} from 'next/server';
+import {createHash} from 'node:crypto';
 import {POST as uploadManagedMedia} from '../upload/route';
 import {createAssetCapability} from '@/app/lib/assets/asset-capability.server';
 
@@ -29,6 +30,9 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     headers.set('authorization', `Bearer ${agentToken}`);
     headers.set('x-clipjs-approval-token', approvalToken);
     headers.set('x-clipjs-media-kind', 'image');
+    const contentSha256 = createHash('sha256').update(bytes).digest('hex');
+    headers.set('x-clipjs-media-id', `ui-image-${contentSha256.slice(0, 24)}`);
+    headers.set('x-clipjs-content-sha256', contentSha256);
     headers.set('content-length', String(bytes.length));
     headers.set('x-clipjs-byte-length', String(bytes.length));
 

@@ -30,8 +30,6 @@ const makeRequest = (bytes: Buffer, origin = 'http://localhost') => new NextRequ
     origin,
     'sec-fetch-site': origin === 'http://localhost' ? 'same-origin' : 'cross-site',
     'content-type': 'image/png',
-    'x-clipjs-media-id': 'cut01-start',
-    'x-clipjs-content-sha256': createHash('sha256').update(bytes).digest('hex'),
     'content-length': String(bytes.length),
   },
   body: bytes,

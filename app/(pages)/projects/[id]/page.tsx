@@ -380,6 +380,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 sampleMode={sampleMode}
                                 onEnableSample={enableSampleMode}
                                 onOpenEdit={() => setWorkspace('edit')}
+                                onNavigate={setWorkspace}
                             />
                         ) : centerTab === 'preview' ? (
                             <div className="flex h-full items-center justify-center overflow-hidden bg-black">
