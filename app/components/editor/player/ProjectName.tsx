@@ -57,7 +57,7 @@ export default function ProjectName() {
                 <button
                     type="button"
                     onClick={handleClick}
-                    aria-label={`Edit project name: ${projectName}`}
+                    aria-label={`프로젝트 이름 편집: ${projectName}`}
                     className="flex h-8 max-w-[420px] min-w-0 items-center rounded px-2 text-sm font-semibold tracking-tight text-gray-100 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
                 >
                     <span className="truncate">{projectName}</span>

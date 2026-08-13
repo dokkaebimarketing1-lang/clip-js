@@ -47,7 +47,7 @@ export default function AddMedia({ fileId }: { fileId: string }) {
             });
         }
         dispatch(setMediaFiles(updatedMedia));
-        toast.success('Media added successfully.');
+        toast.success('미디어를 추가했습니다.');
     };
 
     return (
@@ -57,7 +57,7 @@ export default function AddMedia({ fileId }: { fileId: string }) {
                 className="cursor-pointer rounded-full bg-white border border-solid border-transparent transition-colors flex flex-col items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] font-medium sm:text-base py-2 px-2"
             >
                 <Image
-                    alt="Add Project"
+                    alt="미디어 추가"
                     className="Black"
                     height={12}
                     width={12}

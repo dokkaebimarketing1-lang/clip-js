@@ -76,7 +76,7 @@ export default function StudioConceptPage() {
         <div className={styles.brand}>
           <div className={styles.brandMark}><Sparkles size={15} strokeWidth={2.4}/></div>
           <span>ClipJS</span>
-          <span className={styles.conceptPill}>STUDIO CONCEPT</span>
+          <span className={styles.conceptPill}>스튜디오 콘셉트</span>
         </div>
         <nav className={styles.stageNav} aria-label="목업 화면 전환">
           {stages.map((item, index) => (
@@ -162,7 +162,7 @@ function ChatStage({message, setMessage, onNext}: {message: string; setMessage: 
       <div className={styles.conversation}>
         <div className={styles.userMessage}>
           <div className={styles.messageAvatar}>나</div>
-          <div><div className={styles.messageMeta}>You <span>오후 2:32</span></div><p>고양이 루이가 카메라를 보며 인사하는 따뜻한 20초 브랜드 영상을 만들고 싶어.</p></div>
+          <div><div className={styles.messageMeta}>나 <span>오후 2:32</span></div><p>고양이 루이가 카메라를 보며 인사하는 따뜻한 20초 브랜드 영상을 만들고 싶어.</p></div>
         </div>
         <div className={styles.aiMessage}>
           <div className={styles.aiAvatar}><Sparkles size={15}/></div>
@@ -203,7 +203,7 @@ function TemplatePanel({onClose}: {onClose: () => void}) {
     <div className={styles.templateFilters}><button className={styles.filterActive}>추천</button><button>광고</button><button>브랜드</button><button>숏폼</button></div>
     <div className={styles.templateList}>
       {templates.map((template, index) => <button className={styles.templateCard} key={template.title}>
-        <div className={`${styles.templateVisual} ${template.className}`}><span className={styles.loopBadge}><Play size={10} fill="currentColor"/> LOOP</span><span className={styles.templateNumber}>0{index + 1}</span></div>
+        <div className={`${styles.templateVisual} ${template.className}`}><span className={styles.loopBadge}><Play size={10} fill="currentColor"/> 반복</span><span className={styles.templateNumber}>0{index + 1}</span></div>
         <div><strong>{template.title}</strong><span>{template.meta}</span></div>
       </button>)}
     </div>
@@ -336,7 +336,7 @@ function TimelineDock() {
 }
 
 function StageHeader({title, description, progress, action}: {title: string; description: string; progress: string; action?: string}) {
-  return <div className={styles.stageHeader}><div><span>PROJECT · 함께여서 좋은 하루</span><h1>{title}</h1><p>{description}</p></div><div><span className={styles.progressPill}>{progress}</span>{action && <button className={styles.headerAction}><Play size={13}/>{action}</button>}</div></div>;
+  return <div className={styles.stageHeader}><div><span>프로젝트 · 함께여서 좋은 하루</span><h1>{title}</h1><p>{description}</p></div><div><span className={styles.progressPill}>{progress}</span>{action && <button className={styles.headerAction}><Play size={13}/>{action}</button>}</div></div>;
 }
 
 function Property({label, value, editable}: {label: string; value: string; editable?: boolean}) {

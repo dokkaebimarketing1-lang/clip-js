@@ -33,7 +33,7 @@ export default function MediaList() {
                     setFiles(storedFilesArray);
                 }
             } catch (error) {
-                toast.error("Error fetching files");
+                toast.error("파일을 불러오지 못했습니다.");
                 console.error("Error fetching files:", error);
             }
         };

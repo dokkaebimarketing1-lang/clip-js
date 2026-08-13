@@ -174,9 +174,9 @@ export default function WorkflowPanel() {
     try {
       const storyboard = storyboardSchema.parse(JSON.parse(storyboardJson));
       dispatch(setWorkflow({...project.workflow, storyboard}));
-      toast.success('Storyboard imported. Previous approval was invalidated.');
+      toast.success('스토리보드를 가져왔습니다. 기존 승인은 무효화되었습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Invalid storyboard JSON.');
+      toast.error(error instanceof Error ? error.message : '스토리보드 JSON 형식이 올바르지 않습니다.');
     }
   };
 
@@ -194,7 +194,7 @@ export default function WorkflowPanel() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error((data as {error?: string}).error ?? 'compose failed');
+        toast.error((data as {error?: string}).error ?? '영상 구성에 실패했습니다.');
         return;
       }
       setVlogResult(data as typeof vlogResult);
@@ -208,9 +208,9 @@ export default function WorkflowPanel() {
         storyboard,
         seedanceMaster,
       }));
-      toast.success('8단계 컴포즈 완료: 인터뷰→캐릭터→스토리보드→28축. 검토 후 승인하세요.');
+      toast.success('제작 구성을 완료했습니다. 인터뷰·캐릭터·스토리보드·28축 설정을 검토한 뒤 승인하세요.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'compose failed');
+      toast.error(error instanceof Error ? error.message : '영상 구성에 실패했습니다.');
     }
   };
 
@@ -219,9 +219,9 @@ export default function WorkflowPanel() {
       const production = productionManifestSchema.parse(JSON.parse(productionJson));
       dispatch(setWorkflow({...project.workflow, production}));
       setSelectedShotSpecId(production.shotSpecs[0]?.id ?? '');
-      toast.success('Production manifest applied. Previous approval was invalidated.');
+      toast.success('제작 명세를 적용했습니다. 기존 승인은 무효화되었습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Invalid production manifest JSON.');
+      toast.error(error instanceof Error ? error.message : '제작 명세 JSON 형식이 올바르지 않습니다.');
     }
   };
 
@@ -229,14 +229,14 @@ export default function WorkflowPanel() {
     try {
       const postProduction = postProductionSchema.parse(JSON.parse(postProductionJson));
       dispatch(setWorkflow({...project.workflow, postProduction}));
-      toast.success('Post-production recipe applied; release approval was invalidated.');
+      toast.success('후반 작업 설정을 적용했습니다. 최종 승인은 무효화되었습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Invalid post-production JSON.');
+      toast.error(error instanceof Error ? error.message : '후반 작업 JSON 형식이 올바르지 않습니다.');
     }
   };
 
   const stagePostProductionMedia = async () => {
-    if (!apiToken || !approvalToken) return toast.error('Agent token과 owner approval token이 필요합니다.');
+    if (!apiToken || !approvalToken) return toast.error('에이전트 토큰과 소유자 승인 토큰이 필요합니다.');
     const post = project.workflow.postProduction;
     const referenced = new Set([
       ...post.dialogueCues.map((cue) => cue.mediaId),
@@ -246,15 +246,15 @@ export default function WorkflowPanel() {
       ...post.appUiOverlays.map((overlay) => overlay.mediaId),
     ]);
     const candidates = project.mediaFiles.filter((media) => referenced.has(media.id) && media.source?.kind === 'indexeddb');
-    if (!candidates.length) return toast.success('승격할 local post-production media가 없습니다.');
+    if (!candidates.length) return toast.success('서버 자산으로 전환할 로컬 후반 작업 미디어가 없습니다.');
     try {
       const replacements = new Map<string, {assetId: string; contentSha256: string}>();
       for (const media of candidates) {
-        if (!['video', 'audio', 'image'].includes(media.type)) throw new Error(`Media ${media.id} type is unsupported.`);
+        if (!['video', 'audio', 'image'].includes(media.type)) throw new Error(`미디어 ${media.id}의 형식을 지원하지 않습니다.`);
         const fileId = media.source?.kind === 'indexeddb' ? media.source.fileId : media.fileId;
-        if (!fileId) throw new Error(`Media ${media.id} has no IndexedDB file.`);
+        if (!fileId) throw new Error(`미디어 ${media.id}에 연결된 IndexedDB 파일이 없습니다.`);
         const file = await getFile(fileId);
-        if (!file) throw new Error(`Media ${media.id} file is missing.`);
+        if (!file) throw new Error(`미디어 ${media.id} 파일을 찾을 수 없습니다.`);
         const contentSha256 = await sha256Blob(file);
         const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/upload`, {
           method: 'POST',
@@ -271,7 +271,7 @@ export default function WorkflowPanel() {
         });
         const result = await response.json() as {asset?: {id?: string; projectId?: string; contentSha256?: string}; error?: string};
         if (!response.ok || !result.asset?.id || result.asset.projectId !== project.id || result.asset.contentSha256 !== contentSha256) {
-          throw new Error(result.error || `Media ${media.id} upload failed.`);
+          throw new Error(result.error || `미디어 ${media.id} 업로드에 실패했습니다.`);
         }
         replacements.set(media.id, {assetId: result.asset.id, contentSha256});
       }
@@ -284,21 +284,21 @@ export default function WorkflowPanel() {
         delete managed.remoteUrl;
         return managed;
       })));
-      toast.success(`${replacements.size}개 post-production media를 server asset으로 승격했습니다.`);
+      toast.success(`후반 작업 미디어 ${replacements.size}개를 서버 자산으로 전환했습니다.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Post-production media 승격에 실패했습니다.');
+      toast.error(error instanceof Error ? error.message : '후반 작업 미디어를 서버 자산으로 전환하지 못했습니다.');
     }
   };
 
   const generateFromStoryboard = () => {
-    if (!project.workflow.storyboard) { toast.error('Import a storyboard first.'); return; }
+    if (!project.workflow.storyboard) { toast.error('먼저 스토리보드를 가져오세요.'); return; }
     const derived = deriveProductionFromStoryboard(project.workflow.storyboard, project.workflow.production);
     setProductionJson(JSON.stringify(derived, null, 2));
-    toast.success(`Generated ${derived.shotSpecs.length} shot specs and ${derived.continuityLocks.length} continuity locks — review, then Apply.`);
+    toast.success(`샷 명세 ${derived.shotSpecs.length}개와 연속성 잠금 ${derived.continuityLocks.length}개를 만들었습니다. 검토한 뒤 적용하세요.`);
   };
 
   const approve = async () => {
-    if (!project.workflow.storyboard) return toast.error('Import a storyboard first.');
+    if (!project.workflow.storyboard) return toast.error('먼저 스토리보드를 가져오세요.');
     try {
       const response = await fetch('/api/approval/storyboard', {
         method: 'POST',
@@ -306,14 +306,14 @@ export default function WorkflowPanel() {
         body: JSON.stringify({projectId: project.id, storyboard: project.workflow.storyboard}),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Approval failed.');
+      if (!response.ok) throw new Error(result.error || '승인에 실패했습니다.');
       const creativeApproval = creativeApprovalSchema.parse(result.creativeApproval);
       dispatch(setWorkflow({...project.workflow, creativeApproval}));
       setAuthorizationPreview(null);
       setApprovalToken('');
-      toast.success('The exact storyboard is creative-approved and server-signed.');
+      toast.success('현재 스토리보드를 제작 승인하고 서버 서명을 완료했습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Approval failed.');
+      toast.error(error instanceof Error ? error.message : '승인에 실패했습니다.');
     }
   };
 
@@ -325,16 +325,16 @@ export default function WorkflowPanel() {
         body: JSON.stringify({attemptId, project}),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Generation authorization preview failed.');
+      if (!response.ok) throw new Error(result.error || '생성 승인 미리보기에 실패했습니다.');
       setAuthorizationPreview(result as AuthorizationPreviewUi);
-      toast.success('Canonical BytePlus request preview is ready. No provider call was made.');
+      toast.success('BytePlus 표준 요청 미리보기를 준비했습니다. 공급자 API는 호출하지 않았습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Generation authorization preview failed.');
+      toast.error(error instanceof Error ? error.message : '생성 승인 미리보기에 실패했습니다.');
     }
   };
 
   const authorizeGeneration = async () => {
-    if (!authorizationPreview || authorizationPreview.attemptId !== attemptId) return toast.error('Preview this attempt first.');
+    if (!authorizationPreview || authorizationPreview.attemptId !== attemptId) return toast.error('먼저 현재 생성 시도를 미리보기로 확인하세요.');
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/generation-authorization/sign`, {
         method: 'POST',
@@ -342,13 +342,13 @@ export default function WorkflowPanel() {
         body: JSON.stringify({attemptId, expectedRequestHash: authorizationPreview.requestHash, project}),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Generation authorization failed.');
+      if (!response.ok) throw new Error(result.error || '생성 승인에 실패했습니다.');
       const generationApproval = generationApprovalSchema.parse(result.generationApproval);
       dispatch(setWorkflow({...project.workflow, generationApproval}));
       setApprovalToken('');
-      toast.success('This exact attempt and BytePlus request are authorized. No provider call was made.');
+      toast.success('현재 생성 시도와 BytePlus 요청을 승인했습니다. 공급자 API는 호출하지 않았습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Generation authorization failed.');
+      toast.error(error instanceof Error ? error.message : '생성 승인에 실패했습니다.');
     }
   };
 
@@ -363,10 +363,10 @@ export default function WorkflowPanel() {
         headers: apiToken ? {authorization: ['Bear', 'er ', apiToken].join('')} : {},
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Generation status refresh failed.');
+      if (!response.ok) throw new Error(result.error || '생성 상태를 새로고침하지 못했습니다.');
       setGenerationRecords(Array.isArray(result.generations) ? result.generations as GenerationProjectionUi[] : []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Generation status refresh failed.');
+      toast.error(error instanceof Error ? error.message : '생성 상태를 새로고침하지 못했습니다.');
     }
   };
 
@@ -382,17 +382,17 @@ export default function WorkflowPanel() {
         body: JSON.stringify({project}),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Generation submission failed.');
+      if (!response.ok) throw new Error(result.error || '생성 요청 제출에 실패했습니다.');
       setGenerationRecords((records) => [result.generation as GenerationProjectionUi, ...records.filter((item) => item.requestKey !== result.generation.requestKey)]);
-      toast.success(result.reused ? 'Existing generation receipt reused; no provider resubmission.' : 'Generation claim submitted once.');
+      toast.success(result.reused ? '기존 생성 접수 내역을 재사용했습니다. 공급자에 다시 제출하지 않았습니다.' : '생성 요청을 한 번 제출했습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Generation submission failed.');
+      toast.error(error instanceof Error ? error.message : '생성 요청 제출에 실패했습니다.');
     }
   };
 
   const registerReadyCandidate = (generation: GenerationProjectionUi) => {
     const job = generation.job;
-    if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256 || !job.providerJobId) return toast.error('Generation is not ready for QC.');
+    if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256 || !job.providerJobId) return toast.error('아직 품질 검수를 시작할 수 있는 생성 결과가 없습니다.');
     const authorization = project.workflow.generationApproval;
     const candidate: ReadyGenerationCandidate = {
       requestKey: generation.requestKey,
@@ -406,12 +406,12 @@ export default function WorkflowPanel() {
     };
     const next = upsertQcPendingTake(project, candidate);
     dispatch(rehydrate(next));
-    toast.success('Candidate registered as qc_pending. No timeline media was added.');
+    toast.success('후보를 품질 검수 대기 상태로 등록했습니다. 타임라인에는 추가하지 않았습니다.');
   };
 
   const approveAndImportReadyTake = async (generation: GenerationProjectionUi) => {
     const job = generation.job;
-    if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256) return toast.error('Generation is not ready for Take approval.');
+    if (job.status !== 'ready' || !job.takeId || !job.assetId || !job.contentSha256) return toast.error('아직 테이크를 승인할 수 있는 생성 결과가 없습니다.');
     try {
       await flushProjectPersistence();
       const approveResponse = await fetch(`/api/projects/${encodeURIComponent(project.id)}/takes/${encodeURIComponent(job.takeId)}/approve`, {
@@ -424,11 +424,11 @@ export default function WorkflowPanel() {
         body: JSON.stringify({requestKey: generation.requestKey, assetId: job.assetId, contentSha256: job.contentSha256}),
       });
       const approveResult = await approveResponse.json();
-      if (!approveResponse.ok) throw new Error(approveResult.error || 'Take approval failed.');
+      if (!approveResponse.ok) throw new Error(approveResult.error || '테이크 승인에 실패했습니다.');
       const takeApproval = takeApprovalSchema.parse(approveResult.takeApproval);
       const persisted = await getProject(project.id);
-      if (!persisted?.workflow.production.takes.some((take) => take.id === job.takeId)) throw new Error('Save the qc_pending candidate before approving it.');
-      if (!job.actualDurationSeconds) throw new Error('Ready generation is missing verified duration metadata.');
+      if (!persisted?.workflow.production.takes.some((take) => take.id === job.takeId)) throw new Error('승인 전에 품질 검수 대기 후보를 저장하세요.');
+      if (!job.actualDurationSeconds) throw new Error('생성 결과에 검증된 길이 정보가 없습니다.');
       const committed = await commitProjectMutation(project.id, persisted.revision, (current) => prepareApprovedTakeImport(current, job.takeId!, takeApproval, job.actualDurationSeconds!));
       let previewUrl: string | undefined;
       const capabilityResponse = await fetch(`/api/projects/${encodeURIComponent(project.id)}/assets/${encodeURIComponent(job.assetId)}/capability`, {
@@ -437,9 +437,9 @@ export default function WorkflowPanel() {
       if (capabilityResponse.ok) previewUrl = (await capabilityResponse.json()).url;
       const runtime = previewUrl ? {...committed, mediaFiles: committed.mediaFiles.map((media) => media.takeId === job.takeId ? {...media, src: previewUrl} : media)} : committed;
       dispatch(rehydrate(runtime));
-      toast.success('Take approval committed durably; one timeline placement was added.');
+      toast.success('테이크 승인을 저장하고 타임라인에 한 번 배치했습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Take import failed.');
+      toast.error(error instanceof Error ? error.message : '테이크를 가져오지 못했습니다.');
     }
   };
 
@@ -449,7 +449,7 @@ export default function WorkflowPanel() {
       const cut = project.workflow.storyboard?.cuts.find((item) => item.id === cutId);
       const shot = cut?.shots.find((item) => item.id === shotId);
       if (!cut || !shot) {
-        throw new Error('Cut/shot must exist in the imported storyboard.');
+        throw new Error('가져온 스토리보드에 해당 컷과 샷이 있어야 합니다.');
       }
       const id = crypto.randomUUID();
       const positionStart = role === 'clip'
@@ -483,9 +483,9 @@ export default function WorkflowPanel() {
       dispatch(setMediaFiles([...project.mediaFiles, media]));
       dispatch(setWorkflow({...project.workflow, higgsfieldAssets: [...project.workflow.higgsfieldAssets, asset]}));
       setUrl('');
-      toast.success(`${cutId}/${shotId} Higgsfield ${role} imported at ${positionStart.toFixed(2)}s.`);
+      toast.success(`${cutId}/${shotId} Higgsfield ${role}을 ${positionStart.toFixed(2)}초 위치에 가져왔습니다.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not import Higgsfield media.');
+      toast.error(error instanceof Error ? error.message : 'Higgsfield 미디어를 가져오지 못했습니다.');
     }
   };
 
@@ -496,14 +496,14 @@ export default function WorkflowPanel() {
         if (media.source?.kind === 'generated' || media.source?.kind === 'managed') return media;
         if (media.remoteUrl) return {...media, src: media.remoteUrl};
         const fileId = media.source?.kind === 'indexeddb' ? media.source.fileId : media.fileId;
-        if (!fileId) throw new Error(`Media ${media.id} is not stored in IndexedDB.`);
+        if (!fileId) throw new Error(`미디어 ${media.id}가 IndexedDB에 저장되어 있지 않습니다.`);
         const stored = await getFile(fileId);
         return stored ? {...media, src: URL.createObjectURL(stored)} : media;
       }));
       dispatch(rehydrate({...parsed, mediaFiles}));
-      toast.success('Project JSON imported.');
+      toast.success('프로젝트 JSON을 가져왔습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Invalid project file.');
+      toast.error(error instanceof Error ? error.message : '프로젝트 파일 형식이 올바르지 않습니다.');
     }
   };
 
@@ -511,15 +511,15 @@ export default function WorkflowPanel() {
     try {
       dispatch(setWorkflow({...project.workflow, captions: parseSrt(srt)}));
       dispatch(setIncludeSubtitles(true));
-      toast.success('Korean captions imported.');
+      toast.success('한국어 자막을 가져왔습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Invalid SRT.');
+      toast.error(error instanceof Error ? error.message : 'SRT 형식이 올바르지 않습니다.');
     }
   };
 
   const addCaption = () => {
-    if (!captionText.trim()) return toast.error('Enter caption text.');
-    if (captionEnd <= captionStart) return toast.error('Caption end must be after start.');
+    if (!captionText.trim()) return toast.error('자막 문구를 입력하세요.');
+    if (captionEnd <= captionStart) return toast.error('자막 종료 시간은 시작 시간보다 늦어야 합니다.');
     const startMs = Math.round(captionStart * 1000);
     const endMs = Math.round(captionEnd * 1000);
     dispatch(setWorkflow({...project.workflow, captions: [...project.workflow.captions, {
@@ -530,11 +530,11 @@ export default function WorkflowPanel() {
     }]}));
     dispatch(setIncludeSubtitles(true));
     setCaptionText('');
-    toast.success(`${captionKind} caption added.`);
+    toast.success(`${captionKind} 자막을 추가했습니다.`);
   };
 
   const addTransition = () => {
-    if (!fromMediaId || !toMediaId || fromMediaId === toMediaId) return toast.error('Choose two different media clips.');
+    if (!fromMediaId || !toMediaId || fromMediaId === toMediaId) return toast.error('서로 다른 미디어 클립 두 개를 선택하세요.');
     const transition: TransitionSpec = {
       id: crypto.randomUUID(),
       type: transitionType,
@@ -544,12 +544,12 @@ export default function WorkflowPanel() {
       durationSeconds: transitionDuration,
     };
     dispatch(setWorkflow({...project.workflow, transitions: [...project.workflow.transitions, transition]}));
-    toast.success(`${transitionType} transition added.`);
+    toast.success(`${transitionType} 전환 효과를 추가했습니다.`);
   };
 
   const addEffect = () => {
     const media = project.mediaFiles.find((item) => item.id === effectMediaId);
-    if (!media || !['video', 'image'].includes(media.type)) return toast.error('Choose a visual media clip.');
+    if (!media || !['video', 'image'].includes(media.type)) return toast.error('영상 또는 이미지 클립을 선택하세요.');
     const effect: EffectSpec = {
       id: crypto.randomUUID(),
       targetMediaId: media.id,
@@ -560,7 +560,7 @@ export default function WorkflowPanel() {
       endSeconds: media.positionEnd,
     };
     dispatch(setWorkflow({...project.workflow, effects: [...project.workflow.effects, effect]}));
-    toast.success(`${effectType} effect added to ${media.fileName}.`);
+    toast.success(`${media.fileName}에 ${effectType} 효과를 추가했습니다.`);
   };
 
   const removeEffect = (effectId: string) => {
@@ -568,7 +568,7 @@ export default function WorkflowPanel() {
   };
 
   const recordTake = async () => {
-    if (!takeShotSpecId) { toast.error('Choose a generation-ready shot first.'); return; }
+    if (!takeShotSpecId) { toast.error('먼저 생성 준비가 완료된 샷을 선택하세요.'); return; }
     try {
       const shot = project.workflow.production.shotSpecs.find((item) => item.id === takeShotSpecId);
       const outputAssetId = takeOutputAssetId || crypto.randomUUID();
@@ -592,9 +592,9 @@ export default function WorkflowPanel() {
         : project.workflow.higgsfieldAssets;
       dispatch(setWorkflow({...project.workflow, production: {...project.workflow.production, takes}, higgsfieldAssets}));
       setTakeParentId(''); setTakeOutputAssetId(''); setTakeUrl('');
-      toast.success(`${takeVerdict} take recorded for ${takeShotSpecId}.`);
+      toast.success(`${takeShotSpecId}에 ${takeVerdict} 테이크를 기록했습니다.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not record take.');
+      toast.error(error instanceof Error ? error.message : '테이크를 기록하지 못했습니다.');
     }
   };
 
@@ -605,7 +605,7 @@ export default function WorkflowPanel() {
       ? {...item, selected: true}
       : item.shotSpecId === take.shotSpecId ? {...item, selected: false} : item);
     dispatch(setWorkflow({...project.workflow, production: {...project.workflow.production, takes}}));
-    toast.success(`Take ${take.id.slice(0, 8)}… promoted. Re-approve before rendering.`);
+    toast.success(`테이크 ${take.id.slice(0, 8)}…을 대표 버전으로 지정했습니다. 렌더링 전에 다시 승인하세요.`);
   };
 
   const retakeTake = (takeId: string) => {
@@ -613,7 +613,7 @@ export default function WorkflowPanel() {
     if (!take) return;
     setTakeShotSpecId(take.shotSpecId ?? '');
     setTakeParentId(take.id);
-    toast.success(`Retake form pre-filled for ${take.scope === 'production' ? 'production scope' : take.shotSpecId} (parent ${take.id.slice(0, 8)}…).`);
+    toast.success(`${take.scope === 'production' ? '전체 제작 범위' : take.shotSpecId}의 재생성 양식을 채웠습니다. 상위 테이크: ${take.id.slice(0, 8)}…`);
   };
 
   const addTakeToTimeline = (takeId: string) => {
@@ -626,12 +626,12 @@ export default function WorkflowPanel() {
     const result = buildTakeClipMedia({take, shot, cut, storyboardShot, asset, mediaFiles: project.mediaFiles});
     if (result.alreadyOnTimeline) {
       const media = project.mediaFiles.find((item) => item.id === take.outputAssetId);
-      toast.success(`Take clip is already on the timeline at ${media?.positionStart.toFixed(2)}s.`);
+      toast.success(`테이크 클립이 이미 타임라인 ${media?.positionStart.toFixed(2)}초 위치에 있습니다.`);
       return;
     }
-    if (!result.media) { toast.error('Take has no clip URL — import it with the Higgsfield importer first.'); return; }
+    if (!result.media) { toast.error('테이크에 클립 URL이 없습니다. 먼저 Higgsfield 가져오기를 사용하세요.'); return; }
     dispatch(setMediaFiles([...project.mediaFiles, result.media]));
-    toast.success(`Take clip placed on the timeline at ${result.media.positionStart.toFixed(2)}s.`);
+    toast.success(`테이크 클립을 타임라인 ${result.media.positionStart.toFixed(2)}초 위치에 배치했습니다.`);
   };
 
   const approveRelease = async () => {
@@ -642,13 +642,13 @@ export default function WorkflowPanel() {
         body: JSON.stringify({project}),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Release approval failed.');
+      if (!response.ok) throw new Error(result.error || '최종 승인에 실패했습니다.');
       const releaseApproval = releaseApprovalSchema.parse(result);
       dispatch(setWorkflow({...project.workflow, releaseApproval}));
       setApprovalToken('');
-      toast.success('The exact timeline, media, captions, audio, effects, and export settings are release-approved.');
+      toast.success('현재 타임라인·미디어·자막·오디오·효과·내보내기 설정을 최종 승인했습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Release approval failed.');
+      toast.error(error instanceof Error ? error.message : '최종 승인에 실패했습니다.');
     }
   };
 
@@ -671,31 +671,31 @@ export default function WorkflowPanel() {
       const receipt = await response.json();
       if (!response.ok) {
         if (receipt.code === 'RENDER_RETRY_REQUIRED') setRenderRetryRequired(true);
-        throw new Error(receipt.error || 'Render enqueue failed.');
+        throw new Error(receipt.error || '렌더 작업을 대기열에 등록하지 못했습니다.');
       }
       setRenderRetryRequired(false);
-      if (typeof receipt.statusUrl !== 'string') throw new Error('Render receipt has no status URL.');
-      toast.success(receipt.reused ? 'Existing render job resumed.' : 'Durable render job queued.');
+      if (typeof receipt.statusUrl !== 'string') throw new Error('렌더 접수 내역에 상태 URL이 없습니다.');
+      toast.success(receipt.reused ? '기존 렌더 작업을 재개했습니다.' : '렌더 작업을 대기열에 등록했습니다.');
       for (let attempt = 0; attempt < 360; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
         const statusResponse = await fetch(receipt.statusUrl, {headers: authorization ? {authorization} : {}});
         const statusResult = await statusResponse.json();
-        if (!statusResponse.ok) throw new Error(statusResult.error || 'Render status failed.');
+        if (!statusResponse.ok) throw new Error(statusResult.error || '렌더 상태를 확인하지 못했습니다.');
         if (statusResult.status === 'succeeded') {
           setRenderDownloadUrl(normalizeRenderDownloadUrl(statusResult.downloadUrl, window.location.origin));
           setApiToken('');
           setApprovalToken('');
-          toast.success('Remotion render completed. Use the download link below.');
+          toast.success('Remotion 렌더링을 완료했습니다. 아래 링크에서 내려받으세요.');
           return;
         }
         if (statusResult.status === 'failed' || statusResult.status === 'cancelled' || statusResult.status === 'expired') {
           setRenderRetryRequired(true);
-          throw new Error(statusResult.error || `Render ${statusResult.status}. Explicit retry is required.`);
+          throw new Error(statusResult.error || `렌더 상태: ${statusResult.status}. 직접 다시 시도해야 합니다.`);
         }
       }
-      throw new Error('Render is still running. Refresh status later; the durable worker job was not cancelled.');
+      throw new Error('렌더링이 아직 진행 중입니다. 잠시 후 상태를 새로고침하세요. 서버 작업은 취소되지 않았습니다.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Render failed.');
+      toast.error(error instanceof Error ? error.message : '렌더링에 실패했습니다.');
     } finally {
       setRendering(false);
     }
@@ -734,7 +734,7 @@ export default function WorkflowPanel() {
           {vlogResult ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {[
-                ['인터뷰 brief', vlogResult.interviewBrief],
+                ['인터뷰 브리프', vlogResult.interviewBrief],
                 ['캐릭터 시트', vlogResult.characterSheet],
                 ['스토리보드', vlogResult.storyboard ?? vlogResult.imageStoryboard],
                 ['28축 프롬프트', vlogResult.seedanceMaster?.axes],
@@ -753,16 +753,16 @@ export default function WorkflowPanel() {
         </div>
       </section>
       <section id="generation-creative" className="scroll-mt-3 space-y-2 rounded border border-white/10 p-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Approval gate</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">{approvalLabel}</span></div>
-        <textarea className={`${fieldClass} min-h-32`} value={storyboardJson} onChange={(event) => setStoryboardJson(event.target.value)} placeholder="Paste storyboard-v2 JSON" />
+        <div className="flex items-center justify-between"><h3 className="font-semibold">승인 단계</h3><span className="rounded bg-white/10 px-2 py-1 text-xs">{approvalLabel}</span></div>
+        <textarea className={`${fieldClass} min-h-32`} value={storyboardJson} onChange={(event) => setStoryboardJson(event.target.value)} placeholder="storyboard-v2 JSON 붙여넣기" />
         <div id="generation-authorization" className="scroll-mt-3 flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={importStoryboard}>Import storyboard</button>
-          <button className={buttonClass} onClick={approve} disabled={!project.workflow.storyboard}>Creative approve</button>
-          <button className={buttonClass} onClick={startNewAttempt}>New paid attempt</button>
-          <button className={buttonClass} onClick={previewGenerationAuthorization} disabled={project.workflow.creativeApproval.status !== 'approved'}>Preview BytePlus request</button>
-          <button className={buttonClass} onClick={authorizeGeneration} disabled={!authorizationPreview}>Authorize exact attempt</button>
+          <button className={buttonClass} onClick={importStoryboard}>스토리보드 가져오기</button>
+          <button className={buttonClass} onClick={approve} disabled={!project.workflow.storyboard}>제작 승인</button>
+          <button className={buttonClass} onClick={startNewAttempt}>새 유료 생성 시도</button>
+          <button className={buttonClass} onClick={previewGenerationAuthorization} disabled={project.workflow.creativeApproval.status !== 'approved'}>BytePlus 요청 미리보기</button>
+          <button className={buttonClass} onClick={authorizeGeneration} disabled={!authorizationPreview}>현재 생성 시도 승인</button>
         </div>
-        <div className="rounded bg-black/30 p-2 text-xs text-gray-300">Attempt <code>{attemptId}</code></div>
+        <div className="rounded bg-black/30 p-2 text-xs text-gray-300">생성 시도 <code>{attemptId}</code></div>
         {authorizationPreview && (
           <details className="rounded border border-white/10 bg-black/20 p-2 text-xs">
             <summary className="cursor-pointer font-semibold">{authorizationPreview.model} · {authorizationPreview.task} · {authorizationPreview.duration}s · {authorizationPreview.ratio} · {authorizationPreview.resolution} · refs {authorizationPreview.referenceCount}</summary>
@@ -770,20 +770,20 @@ export default function WorkflowPanel() {
             <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-gray-300">{authorizationPreview.promptPreview}</pre>
           </details>
         )}
-        <input className={fieldClass} type="password" autoComplete="off" value={approvalToken} onChange={(event) => setApprovalToken(event.target.value)} placeholder="Owner approval token (production)" />
-        <p className="text-xs text-gray-400">Creative approval, paid generation authorization, take approval, and release approval are separate. Preview/sign never calls BytePlus.</p>
+        <input className={fieldClass} type="password" autoComplete="off" value={approvalToken} onChange={(event) => setApprovalToken(event.target.value)} placeholder="소유자 승인 토큰(운영 환경)" />
+        <p className="text-xs text-gray-400">제작 승인, 유료 생성 승인, 테이크 승인, 최종 승인은 서로 별개입니다. 미리보기와 서명 과정에서는 BytePlus를 호출하지 않습니다.</p>
       </section>
 
       <section id="generation-jobs" className="scroll-mt-3 space-y-2 rounded border border-white/10 p-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">BytePlus generation jobs</h3><span className="text-xs text-gray-400">server repository projection</span></div>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">BytePlus 생성 작업</h3><span className="text-xs text-gray-400">서버 저장소 조회 결과</span></div>
         <div id="generation-submit" className="scroll-mt-3 flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={submitAuthorizedAttempt} disabled={project.workflow.generationApproval.status !== 'approved'}>Submit authorized attempt</button>
-          <button className={buttonClass} onClick={refreshGenerations}>Refresh status</button>
-          <button className={buttonClass} onClick={() => setPreviewRefreshNonce((value) => value + 1)} disabled={!generatedAssetKey || !apiToken}>Refresh previews</button>
+          <button className={buttonClass} onClick={submitAuthorizedAttempt} disabled={project.workflow.generationApproval.status !== 'approved'}>승인된 생성 시도 제출</button>
+          <button className={buttonClass} onClick={refreshGenerations}>상태 새로고침</button>
+          <button className={buttonClass} onClick={() => setPreviewRefreshNonce((value) => value + 1)} disabled={!generatedAssetKey || !apiToken}>미리보기 새로고침</button>
         </div>
-        <p className="text-xs text-gray-400">GET is read-only. Polling and ingest are owned by the lease worker. Provider success never auto-adds timeline media.</p>
+        <p className="text-xs text-gray-400">GET 요청은 읽기 전용입니다. 폴링과 결과 수집은 작업자가 처리합니다. 공급자 작업이 성공해도 미디어가 타임라인에 자동 추가되지는 않습니다.</p>
         <div className="space-y-2">
-          {generationRecords.length === 0 && <p className="text-xs text-gray-500">No server generation receipts loaded.</p>}
+          {generationRecords.length === 0 && <p className="text-xs text-gray-500">불러온 서버 생성 접수 내역이 없습니다.</p>}
           {generationRecords.map((generation) => (
             <div key={generation.requestKey} className="rounded border border-white/10 bg-black/20 p-2 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -793,8 +793,8 @@ export default function WorkflowPanel() {
               {generation.job.lastError && <p className="mt-1 text-red-300">{generation.job.lastError}</p>}
               {generation.job.status === 'ready' && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button className={buttonClass} onClick={() => registerReadyCandidate(generation)}>Register qc_pending Take</button>
-                  <button className={buttonClass} onClick={() => approveAndImportReadyTake(generation)}>Approve + durable import</button>
+                  <button className={buttonClass} onClick={() => registerReadyCandidate(generation)}>품질 검수 대기 테이크 등록</button>
+                  <button className={buttonClass} onClick={() => approveAndImportReadyTake(generation)}>승인 후 영구 저장</button>
                 </div>
               )}
             </div>
@@ -803,16 +803,16 @@ export default function WorkflowPanel() {
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Production blueprint</h3><span className="text-xs text-gray-400">{project.workflow.production.assets.length} assets · {project.workflow.production.continuityLocks.length} locks · {project.workflow.production.shotSpecs.length} shots · {project.workflow.production.takes.length} takes</span></div>
-        <p className="text-xs text-gray-400">Bounded Asset Registry V2, continuity locks, structured shot specs, and take provenance.</p>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">제작 명세</h3><span className="text-xs text-gray-400">자산 {project.workflow.production.assets.length} · 잠금 {project.workflow.production.continuityLocks.length} · 샷 {project.workflow.production.shotSpecs.length} · 테이크 {project.workflow.production.takes.length}</span></div>
+        <p className="text-xs text-gray-400">자산 레지스트리 V2, 연속성 잠금, 구조화된 샷 명세와 테이크 이력을 관리합니다.</p>
         <textarea className={`${fieldClass} min-h-32 font-mono text-xs`} value={productionJson} onChange={(event) => setProductionJson(event.target.value)} placeholder='{"assets":[],"continuityLocks":[],"shotSpecs":[],"takes":[]}' />
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={() => setProductionJson(JSON.stringify(project.workflow.production, null, 2))}>Load current JSON</button>
-          <button className={buttonClass} onClick={generateFromStoryboard} disabled={!project.workflow.storyboard}>Generate from storyboard</button>
-          <button className={buttonClass} onClick={importProductionManifest} disabled={!productionJson.trim()}>Apply manifest</button>
+          <button className={buttonClass} onClick={() => setProductionJson(JSON.stringify(project.workflow.production, null, 2))}>현재 JSON 불러오기</button>
+          <button className={buttonClass} onClick={generateFromStoryboard} disabled={!project.workflow.storyboard}>스토리보드에서 생성</button>
+          <button className={buttonClass} onClick={importProductionManifest} disabled={!productionJson.trim()}>명세 적용</button>
         </div>
         <select className={fieldClass} value={selectedShotSpecId} onChange={(event) => setSelectedShotSpecId(event.target.value)}>
-          <option value="">Select generation-ready shot</option>
+          <option value="">생성 준비가 완료된 샷 선택</option>
           {project.workflow.production.shotSpecs.map((shot) => <option key={shot.id} value={shot.id}>{shot.id} · {shot.durationSeconds}s</option>)}
         </select>
         {selectedShotSpecId && <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs text-gray-200">{compiledPrompt}</pre>}
@@ -825,10 +825,10 @@ export default function WorkflowPanel() {
                 <summary className="cursor-pointer list-none">
                   <span className="flex items-center justify-between gap-2">
                     <span>{ready ? '🔒' : asset.status === 'locked' ? '⚠️' : '◌'} {asset.tag} · {asset.type} · {asset.state}</span>
-                    <span className={ready ? 'text-green-400' : 'text-red-300'}>{passed}/10 stress</span>
+                    <span className={ready ? 'text-green-400' : 'text-red-300'}>검사 {passed}/10 통과</span>
                   </span>
                 </summary>
-                {asset.stressTests.length === 0 ? <p className="mt-1 text-gray-500">No stress tests yet — locked assets require 10/10 passes.</p> : (
+                {asset.stressTests.length === 0 ? <p className="mt-1 text-gray-500">아직 안정성 검사가 없습니다. 자산을 잠그려면 10개 검사를 모두 통과해야 합니다.</p> : (
                   <ul className="mt-1 space-y-0.5">
                     {asset.stressTests.map((test) => (
                       <li key={test.id} className="flex justify-between gap-2">
@@ -843,30 +843,30 @@ export default function WorkflowPanel() {
           })}
         </div>
         <div className="space-y-2 border-t border-white/10 pt-2">
-          <h4 className="font-semibold text-xs">Manual Take ledger — no provider submission</h4>
-          <p className="text-xs text-gray-500">Server-generated candidates enter through BytePlus generation jobs above; this form only records legacy/manual provenance.</p>
+          <h4 className="font-semibold text-xs">수동 테이크 기록 — 공급자 제출 없음</h4>
+          <p className="text-xs text-gray-500">서버 생성 후보는 위 BytePlus 생성 작업을 통해 들어옵니다. 이 양식은 기존 또는 수동 작업 이력만 기록합니다.</p>
           <div className="grid grid-cols-2 gap-2">
             <select className={fieldClass} value={takeShotSpecId} onChange={(event) => setTakeShotSpecId(event.target.value)}>
-              <option value="">Shot spec</option>
+              <option value="">샷 명세</option>
               {project.workflow.production.shotSpecs.map((shot) => <option key={shot.id} value={shot.id}>{shot.id}</option>)}
             </select>
             <select className={fieldClass} value={takeVerdict} onChange={(event) => setTakeVerdict(event.target.value as GenerationTake['verdict'])}>
-              {['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected'].map((value) => <option key={value} value={value}>{value}</option>)}
+              {['pending', 'accepted', 'bad-roll', 'prompt-problem', 'simplify-shot', 'rejected'].map((value) => <option key={value} value={value}>{{pending: '대기', accepted: '승인', 'bad-roll': '사용 불가', 'prompt-problem': '프롬프트 문제', 'simplify-shot': '샷 단순화', rejected: '거절'}[value]}</option>)}
             </select>
-            <input className={fieldClass} value={takeProvider} onChange={(event) => setTakeProvider(event.target.value)} placeholder="provider (byteplus)" />
-            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="model (dreamina-seedance-2-5-260628)" />
+            <input className={fieldClass} value={takeProvider} onChange={(event) => setTakeProvider(event.target.value)} placeholder="공급자(byteplus)" />
+            <input className={fieldClass} value={takeModel} onChange={(event) => setTakeModel(event.target.value)} placeholder="모델(dreamina-seedance-2-5-260628)" />
             <select className={fieldClass} value={takeMode} onChange={(event) => setTakeMode(event.target.value)}>
               {['t2v', 'omni_reference', 'video_edit', 'video_extension'].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
             <select className={fieldClass} value={takeResolution} onChange={(event) => setTakeResolution(event.target.value)}>
               {['720p', '480p'].map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
-            <input className={fieldClass} value={takeExtensionMode} onChange={(event) => setTakeExtensionMode(event.target.value)} placeholder="extension_mode (forward/backward — video_extension 전용)" />
-            <input className={fieldClass} value={takeOutputAssetId} onChange={(event) => setTakeOutputAssetId(event.target.value)} placeholder="output asset id (optional)" />
-            <input className={fieldClass} value={takeParentId} onChange={(event) => setTakeParentId(event.target.value)} placeholder="parent take id (retake)" />
+            <input className={fieldClass} value={takeExtensionMode} onChange={(event) => setTakeExtensionMode(event.target.value)} placeholder="연장 방향(forward/backward — video_extension 전용)" />
+            <input className={fieldClass} value={takeOutputAssetId} onChange={(event) => setTakeOutputAssetId(event.target.value)} placeholder="출력 자산 ID(선택)" />
+            <input className={fieldClass} value={takeParentId} onChange={(event) => setTakeParentId(event.target.value)} placeholder="상위 테이크 ID(재생성)" />
           </div>
-          <input className={fieldClass} value={takeUrl} onChange={(event) => setTakeUrl(event.target.value)} placeholder="generated clip URL (optional, registers the asset)" />
-          <button className={buttonClass} onClick={recordTake} disabled={!takeShotSpecId}>Record take</button>
+          <input className={fieldClass} value={takeUrl} onChange={(event) => setTakeUrl(event.target.value)} placeholder="생성된 클립 URL(선택, 자산으로 등록)" />
+          <button className={buttonClass} onClick={recordTake} disabled={!takeShotSpecId}>테이크 기록</button>
         </div>
         {project.workflow.production.takes.length > 0 && <div className="space-y-1">
           {project.workflow.production.takes.slice(-8).reverse().map((take) => {
@@ -877,11 +877,11 @@ export default function WorkflowPanel() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold">{take.verdict}{take.selected ? ' ●' : ''}</span>
                   <span className="flex items-center gap-2">
-                    <button className="text-blue-300 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-30" disabled={take.verdict !== 'accepted'} onClick={() => selectTake(take.id)} title="Promote the accepted take">{take.selected ? 'selected' : 'select'}</button>
-                    <button className="text-yellow-300 hover:text-yellow-200" onClick={() => retakeTake(take.id)}>retake</button>
+                    <button className="text-blue-300 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-30" disabled={take.verdict !== 'accepted'} onClick={() => selectTake(take.id)} title="승인된 테이크를 대표 버전으로 지정">{take.selected ? '선택됨' : '선택'}</button>
+                    <button className="text-yellow-300 hover:text-yellow-200" onClick={() => retakeTake(take.id)}>다시 생성</button>
                     {media ? <span className="text-gray-400">@ {media.positionStart.toFixed(1)}s</span>
-                      : asset ? <button className="text-green-300 hover:text-green-200" onClick={() => addTakeToTimeline(take.id)}>+ timeline</button>
-                      : <span className="text-gray-500">no clip</span>}
+                      : asset ? <button className="text-green-300 hover:text-green-200" onClick={() => addTakeToTimeline(take.id)}>+ 타임라인</button>
+                      : <span className="text-gray-500">클립 없음</span>}
                   </span>
                 </div>
                 <div className="text-gray-500">{take.shotSpecId} · {take.model}{take.parentTakeId ? ` · child of ${take.parentTakeId.slice(0, 8)}…` : ''}</div>
@@ -894,36 +894,36 @@ export default function WorkflowPanel() {
       <SeedanceMasterPanel />
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <h3 className="font-semibold">Legacy Higgsfield importer — migration only</h3>
-        <p className="text-xs text-yellow-300">Imported URLs remain external-unverified and cannot receive ReleaseApproval until secure ingest promotes them.</p>
-        <input className={fieldClass} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Legacy HTTPS result URL" />
+        <h3 className="font-semibold">기존 Higgsfield 가져오기 — 마이그레이션 전용</h3>
+        <p className="text-xs text-yellow-300">가져온 URL은 외부 미검증 상태로 유지되며, 안전한 수집 절차를 통과하기 전에는 최종 승인을 받을 수 없습니다.</p>
+        <input className={fieldClass} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="기존 HTTPS 결과 URL" />
         <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={cutId} onChange={(event) => setCutId(event.target.value)} /><input className={fieldClass} value={shotId} onChange={(event) => setShotId(event.target.value)} /></div>
         <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={model} onChange={(event) => setModel(event.target.value)} /><input className={fieldClass} type="number" min={0.1} step={0.1} value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></div>
         <select className={fieldClass} value={role} onChange={(event) => setRole(event.target.value as HiggsfieldAsset['role'])}>
           {['clip', 'audio', 'start', 'end', 'storyboard-sheet'].map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <button className={buttonClass} onClick={importHiggsfield} disabled={!url}>Import legacy storyboard-mapped {role}</button>
+        <button className={buttonClass} onClick={importHiggsfield} disabled={!url}>기존 스토리보드 연결 {role} 가져오기</button>
       </section>
 
       <section className="space-y-2 border-t border-white/10 pt-3">
-        <h3 className="font-semibold">Post-production release recipe</h3>
-        <p className="text-xs text-gray-400">Bind reviewed Korean dialogue to audio media and exact captions; bind verified app UI media and actual ending-card TextElements. All checklist flags are required for generated footage.</p>
+        <h3 className="font-semibold">후반 작업 최종 설정</h3>
+        <p className="text-xs text-gray-400">검수한 한국어 대사를 오디오와 정확한 자막에 연결하고, 검증된 앱 UI 미디어와 실제 엔딩 카드 텍스트 요소를 연결하세요. 생성 영상은 모든 점검 항목을 충족해야 합니다.</p>
         <textarea className={`${fieldClass} min-h-40 font-mono text-xs`} value={postProductionJson} onChange={(event) => setPostProductionJson(event.target.value)} placeholder='{"sourceAudioPolicy":"mute","dialogueCues":[],"ambience":[],"sfx":[],"bgm":[],"appUiOverlays":[],"releaseChecklist":{}}' />
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={() => setPostProductionJson(JSON.stringify(project.workflow.postProduction, null, 2))}>Load current recipe</button>
-          <button className={buttonClass} onClick={importPostProduction} disabled={!postProductionJson.trim()}>Apply recipe</button>
-          <button className={buttonClass} onClick={stagePostProductionMedia} disabled={!apiToken || !approvalToken}>Stage referenced local media</button>
+          <button className={buttonClass} onClick={() => setPostProductionJson(JSON.stringify(project.workflow.postProduction, null, 2))}>현재 설정 불러오기</button>
+          <button className={buttonClass} onClick={importPostProduction} disabled={!postProductionJson.trim()}>설정 적용</button>
+          <button className={buttonClass} onClick={stagePostProductionMedia} disabled={!apiToken || !approvalToken}>참조한 로컬 미디어 준비</button>
         </div>
-        <p className="text-xs text-gray-500">Local TTS, ambience, SFX, BGM, and app UI files must be staged before ReleaseApproval so the server render worker can resolve them by asset ID.</p>
+        <p className="text-xs text-gray-500">최종 승인 전에 로컬 TTS·환경음·효과음·배경음악·앱 UI 파일을 준비해야 서버 렌더 작업자가 자산 ID로 찾을 수 있습니다.</p>
       </section>
 
       <section className="space-y-2 border-t border-white/10 pt-3">
-        <h3 className="font-semibold">Korean captions (SRT)</h3>
-        <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={project.exportSettings.includeSubtitles} onChange={(event) => dispatch(setIncludeSubtitles(event.target.checked))} /> Include captions in preview and render</label>
+        <h3 className="font-semibold">한국어 자막(SRT)</h3>
+        <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={project.exportSettings.includeSubtitles} onChange={(event) => dispatch(setIncludeSubtitles(event.target.checked))} /> 미리보기와 렌더링에 자막 포함</label>
         <textarea className={`${fieldClass} min-h-24`} value={srt} onChange={(event) => setSrt(event.target.value)} placeholder={'1\n00:00:00,000 --> 00:00:02,000\n한국어 자막'} />
-        <button className={buttonClass} onClick={importSrt} disabled={!srt}>Import SRT</button>
+        <button className={buttonClass} onClick={importSrt} disabled={!srt}>SRT 가져오기</button>
         <div className="mt-3 border-t border-white/10 pt-3">
-          <h4 className="mb-2 font-semibold">Caption Registry · Noto Sans KR</h4>
+          <h4 className="mb-2 font-semibold">자막 목록 · Noto Sans KR</h4>
           <input className={fieldClass} value={captionText} onChange={(event) => setCaptionText(event.target.value)} placeholder="대사·효과·예능 자막 문구" />
           <div className="mt-2 grid grid-cols-2 gap-2">
             <select className={fieldClass} value={captionKind} onChange={(event) => { const kind = event.target.value as CaptionKind; setCaptionKind(kind); setCaptionPreset(CAPTION_CATALOG.find((entry) => entry.kind === kind)!.preset); }}>
@@ -931,57 +931,57 @@ export default function WorkflowPanel() {
             </select>
             <select className={fieldClass} value={captionPreset} onChange={(event) => setCaptionPreset(event.target.value as CaptionPreset)}>{CAPTION_CATALOG.filter((entry) => entry.kind === captionKind).map((entry) => <option key={entry.preset} value={entry.preset}>{entry.label}</option>)}</select>
             <select className={fieldClass} value={captionPosition} onChange={(event) => setCaptionPosition(event.target.value as CaptionPosition)}>{['top', 'center', 'bottom', 'lower-third'].map((value) => <option key={value}>{value}</option>)}</select>
-            <input className={fieldClass} type="color" value={captionAccent} onChange={(event) => setCaptionAccent(event.target.value)} aria-label="Caption accent color" />
-            <input className={fieldClass} type="number" min={0} step={0.1} value={captionStart} onChange={(event) => setCaptionStart(Number(event.target.value))} aria-label="Caption start seconds" />
-            <input className={fieldClass} type="number" min={0.1} step={0.1} value={captionEnd} onChange={(event) => setCaptionEnd(Number(event.target.value))} aria-label="Caption end seconds" />
+            <input className={fieldClass} type="color" value={captionAccent} onChange={(event) => setCaptionAccent(event.target.value)} aria-label="자막 강조 색상" />
+            <input className={fieldClass} type="number" min={0} step={0.1} value={captionStart} onChange={(event) => setCaptionStart(Number(event.target.value))} aria-label="자막 시작 시간(초)" />
+            <input className={fieldClass} type="number" min={0.1} step={0.1} value={captionEnd} onChange={(event) => setCaptionEnd(Number(event.target.value))} aria-label="자막 종료 시간(초)" />
           </div>
-          <label className="mt-2 block text-xs text-gray-400">Intensity {captionIntensity.toFixed(2)}<input className="w-full" type="range" min={0} max={1} step={0.05} value={captionIntensity} onChange={(event) => setCaptionIntensity(Number(event.target.value))} /></label>
-          <button className={`${buttonClass} mt-2`} onClick={addCaption} disabled={!captionText.trim()}>Add registry caption</button>
+          <label className="mt-2 block text-xs text-gray-400">강도 {captionIntensity.toFixed(2)}<input className="w-full" type="range" min={0} max={1} step={0.05} value={captionIntensity} onChange={(event) => setCaptionIntensity(Number(event.target.value))} /></label>
+          <button className={`${buttonClass} mt-2`} onClick={addCaption} disabled={!captionText.trim()}>자막 추가</button>
         </div>
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <h3 className="font-semibold">Frame-accurate transition</h3>
+        <h3 className="font-semibold">프레임 단위 전환 효과</h3>
         <select className={fieldClass} value={transitionType} onChange={(event) => setTransitionType(event.target.value as TransitionSpec['type'])}>{TRANSITION_CATALOG.map((entry) => <option key={entry.type} value={entry.type}>{entry.label} · {entry.provider}</option>)}</select>
         <div className="grid grid-cols-2 gap-2">
-          <select className={fieldClass} value={fromMediaId} onChange={(event) => setFromMediaId(event.target.value)}><option value="">From clip</option>{project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}</select>
-          <select className={fieldClass} value={toMediaId} onChange={(event) => setToMediaId(event.target.value)}><option value="">To clip</option>{project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}</select>
+          <select className={fieldClass} value={fromMediaId} onChange={(event) => setFromMediaId(event.target.value)}><option value="">시작 클립</option>{project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}</select>
+          <select className={fieldClass} value={toMediaId} onChange={(event) => setToMediaId(event.target.value)}><option value="">다음 클립</option>{project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}</select>
         </div>
         <input className={fieldClass} type="number" min={0.05} max={3} step={0.05} value={transitionDuration} onChange={(event) => setTransitionDuration(Number(event.target.value))} />
-        <button className={buttonClass} onClick={addTransition} disabled={!fromMediaId || !toMediaId}>Add transition</button>
+        <button className={buttonClass} onClick={addTransition} disabled={!fromMediaId || !toMediaId}>전환 효과 추가</button>
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Remotion effects</h3><span className="text-xs text-gray-400">{project.workflow.effects.length}/1000</span></div>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Remotion 효과</h3><span className="text-xs text-gray-400">{project.workflow.effects.length}/1000</span></div>
         <select className={fieldClass} value={effectType} onChange={(event) => setEffectType(event.target.value as EffectSpec['type'])}>
           {EFFECT_CATALOG.map((effect) => <option key={effect.type} value={effect.type}>{effect.label}</option>)}
         </select>
         <select className={fieldClass} value={effectMediaId} onChange={(event) => setEffectMediaId(event.target.value)}>
-          <option value="">Target clip</option>
+          <option value="">대상 클립</option>
           {project.mediaFiles.filter((media) => media.type === 'video' || media.type === 'image').map((media) => <option key={media.id} value={media.id}>{media.fileName}</option>)}
         </select>
-        <label className="block text-xs text-gray-400">Intensity {effectIntensity.toFixed(2)}<input className="w-full" type="range" min={0} max={1} step={0.05} value={effectIntensity} onChange={(event) => setEffectIntensity(Number(event.target.value))} /></label>
-        <button className={buttonClass} onClick={addEffect} disabled={!effectMediaId}>Add effect to full clip</button>
+        <label className="block text-xs text-gray-400">강도 {effectIntensity.toFixed(2)}<input className="w-full" type="range" min={0} max={1} step={0.05} value={effectIntensity} onChange={(event) => setEffectIntensity(Number(event.target.value))} /></label>
+        <button className={buttonClass} onClick={addEffect} disabled={!effectMediaId}>전체 클립에 효과 추가</button>
         {project.workflow.effects.length > 0 && <div className="space-y-1 pt-1">{project.workflow.effects.map((effect) => {
           const media = project.mediaFiles.find((item) => item.id === effect.targetMediaId);
-          return <div key={effect.id} className="flex items-center justify-between rounded bg-white/5 px-2 py-1 text-xs"><span>{effect.type} · {media?.fileName ?? effect.targetMediaId} · {effect.intensity.toFixed(2)}</span><button className="text-red-300 hover:text-red-200" onClick={() => removeEffect(effect.id)}>Remove</button></div>;
+          return <div key={effect.id} className="flex items-center justify-between rounded bg-white/5 px-2 py-1 text-xs"><span>{effect.type} · {media?.fileName ?? effect.targetMediaId} · {effect.intensity.toFixed(2)}</span><button className="text-red-300 hover:text-red-200" onClick={() => removeEffect(effect.id)}>제거</button></div>;
         })}</div>}
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <h3 className="font-semibold">Project JSON</h3>
-        <button className={buttonClass} onClick={() => downloadProjectDocument(project)}>Export project</button>
-        <label className={`${buttonClass} ml-2 inline-block cursor-pointer`}>Import project<input className="hidden" type="file" accept="application/json,.json" onChange={(event) => event.target.files?.[0] && importProject(event.target.files[0])} /></label>
+        <h3 className="font-semibold">프로젝트 JSON</h3>
+        <button className={buttonClass} onClick={() => downloadProjectDocument(project)}>프로젝트 내보내기</button>
+        <label className={`${buttonClass} ml-2 inline-block cursor-pointer`}>프로젝트 가져오기<input className="hidden" type="file" accept="application/json,.json" onChange={(event) => event.target.files?.[0] && importProject(event.target.files[0])} /></label>
       </section>
 
       <section className="space-y-2 rounded border border-white/10 p-3">
-        <h3 className="font-semibold">Remotion final render</h3>
-        <input className={fieldClass} type="password" value={apiToken} onChange={(event) => setApiToken(event.target.value)} placeholder="CLIPJS_AGENT_TOKEN (production)" />
+        <h3 className="font-semibold">Remotion 최종 렌더링</h3>
+        <input className={fieldClass} type="password" value={apiToken} onChange={(event) => setApiToken(event.target.value)} placeholder="CLIPJS_AGENT_TOKEN(운영 환경)" />
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} onClick={approveRelease} disabled={rendering}>Approve exact final cut</button>
-          <button className={buttonClass} onClick={renderProject} disabled={rendering || project.workflow.releaseApproval.status !== 'approved'}>{rendering ? 'Rendering…' : renderRetryRequired ? 'Retry render explicitly' : 'Render release-approved project'}</button>
+          <button className={buttonClass} onClick={approveRelease} disabled={rendering}>현재 최종 편집본 승인</button>
+          <button className={buttonClass} onClick={renderProject} disabled={rendering || project.workflow.releaseApproval.status !== 'approved'}>{rendering ? '렌더링 중…' : renderRetryRequired ? '렌더링 다시 시도' : '승인된 프로젝트 렌더링'}</button>
         </div>
-        {renderDownloadUrl && <a className={`${buttonClass} inline-block`} href={renderDownloadUrl} download>Download rendered MP4</a>}
+        {renderDownloadUrl && <a className={`${buttonClass} inline-block`} href={renderDownloadUrl} download>렌더링된 MP4 내려받기</a>}
       </section>
     </div>
   );

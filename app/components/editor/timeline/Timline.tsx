@@ -29,7 +29,7 @@ export const Timeline = () => {
         let setElements = null;
 
         if (!activeElement) {
-            toast.error('No element selected.');
+            toast.error('선택한 요소가 없습니다.');
             return;
         }
 
@@ -39,14 +39,14 @@ export const Timeline = () => {
             setElements = setMediaFiles;
 
             if (!element) {
-                toast.error('No element selected.');
+                toast.error('선택한 요소가 없습니다.');
                 return;
             }
 
             const { positionStart, positionEnd } = element;
 
             if (currentTime <= positionStart || currentTime >= positionEnd) {
-                toast.error('Marker is outside the selected element bounds.');
+                toast.error('재생 위치가 선택한 요소의 범위를 벗어났습니다.');
                 return;
             }
 
@@ -83,14 +83,14 @@ export const Timeline = () => {
             setElements = setTextElements;
 
             if (!element) {
-                toast.error('No element selected.');
+                toast.error('선택한 요소가 없습니다.');
                 return;
             }
 
             const { positionStart, positionEnd } = element;
 
             if (currentTime <= positionStart || currentTime >= positionEnd) {
-                toast.error('Marker is outside the selected element.');
+                toast.error('재생 위치가 선택한 요소 밖에 있습니다.');
                 return;
             }
 
@@ -114,7 +114,7 @@ export const Timeline = () => {
         if (elements && setElements) {
             dispatch(setElements(elements as any));
             dispatch(setActiveElement(null));
-            toast.success('Element split successfully.');
+            toast.success('요소를 분할했습니다.');
         }
     };
 
@@ -134,7 +134,7 @@ export const Timeline = () => {
         }
 
         if (!element) {
-            toast.error('No element selected.');
+            toast.error('선택한 요소가 없습니다.');
             return;
         }
 
@@ -150,7 +150,7 @@ export const Timeline = () => {
         if (elements && setElements) {
             dispatch(setElements(elements as any));
             dispatch(setActiveElement(null));
-            toast.success('Element duplicated successfully.');
+            toast.success('요소를 복제했습니다.');
         }
     };
 
@@ -171,7 +171,7 @@ export const Timeline = () => {
         }
 
         if (!element) {
-            toast.error('No element selected.');
+            toast.error('선택한 요소가 없습니다.');
             return;
         }
 
@@ -183,7 +183,7 @@ export const Timeline = () => {
         if (elements && setElements) {
             dispatch(setElements(elements as any));
             dispatch(setActiveElement(null));
-            toast.success('Element deleted successfully.');
+            toast.success('요소를 삭제했습니다.');
         }
     };
 

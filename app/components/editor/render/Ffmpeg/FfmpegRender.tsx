@@ -229,9 +229,9 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
             setPreviewUrl(outputUrl);
             setLoaded(true);
             setIsRendering(false);
-            toast.success('Video rendered successfully');
+            toast.success('영상 렌더링을 완료했습니다.');
         } catch (err) {
-            toast.error('Failed to render video');
+            toast.error('영상 렌더링에 실패했습니다.');
             console.error("Failed to render video:", err);
         }
     };
@@ -255,7 +255,7 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                         <path d="M988 548c-19.9 0-36-16.1-36-36 0-59.4-11.6-117-34.6-171.3a440.45 440.45 0 00-94.3-139.9 437.71 437.71 0 00-139.9-94.3C629 83.6 571.4 72 512 72c-19.9 0-36-16.1-36-36s16.1-36 36-36c69.1 0 136.2 13.5 199.3 40.3C772.3 66 827 103 874 150c47 47 83.9 101.8 109.7 162.7 26.7 63.1 40.2 130.2 40.2 199.3.1 19.9-16 36-35.9 36z"></path>
                     </svg>
                 </span>}
-                <p>{loadFfmpeg ? (isRendering ? 'Rendering...' : 'Render') : 'Loading FFmpeg...'}</p>
+                <p>{loadFfmpeg ? (isRendering ? '렌더링 중…' : '렌더링') : 'FFmpeg를 불러오는 중…'}</p>
             </button>
 
             {/* Render Modal */}
@@ -265,12 +265,12 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                         {/* Title and close button */}
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-semibold">
-                                {isRendering ? 'Rendering...' : `${projectName}`}
+                                {isRendering ? '렌더링 중…' : `${projectName}`}
                             </h2>
                             <button
                                 onClick={handleCloseModal}
                                 className="text-white text-4xl font-bold hover:text-red-400"
-                                aria-label="Close"
+                                aria-label="닫기"
                             >
                                 &times;
                             </button>
@@ -280,7 +280,7 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                             <div>
                                 <div className="bg-black p-2 h-40 text-sm font-mono rounded">
                                     <div>{logMessages}</div>
-                                    <p className="text-xs text-gray-400 italic">The progress bar is experimental in FFmpeg WASM, so it might appear slow or unresponsive even though the actual processing is not.</p>
+                                    <p className="text-xs text-gray-400 italic">FFmpeg WASM의 진행률 표시는 실험 기능이므로 실제 처리는 진행 중이어도 느리거나 멈춘 것처럼 보일 수 있습니다.</p>
                                     <FfmpegProgressBar ffmpeg={ffmpeg} />
                                 </div>
                             </div>
@@ -296,13 +296,13 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                                         className={`inline-flex items-center p-3 bg-white hover:bg-[#ccc] rounded-lg text-gray-900 font-bold transition-all transform `}
                                     >
                                         <Image
-                                            alt='Download'
+                                            alt='다운로드'
                                             className="Black"
                                             height={18}
                                             src={'https://www.svgrepo.com/show/501347/save.svg'}
                                             width={18}
                                         />
-                                        <span className="ml-2">Save Video</span>
+                                        <span className="ml-2">영상 저장</span>
                                     </a>
                                     <a
                                         href="https://github.com/sponsors/mohyware"
@@ -311,7 +311,7 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                                         className={`inline-flex items-center p-3 bg-pink-600 hover:bg-pink-500 rounded-lg text-gray-900 font-bold transition-all transform`}
                                     >
                                         <Heart size={20} className="mr-2" />
-                                        Sponsor on Github
+                                        GitHub 후원
                                     </a>
                                 </div>
                             </div>

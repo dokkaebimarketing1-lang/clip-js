@@ -71,7 +71,7 @@ export default function AddTextButton() {
             rotation: 0,
             animation: 'none'
         });
-        toast.success('Text added successfully.');
+        toast.success('텍스트를 추가했습니다.');
     };
 
     return (
@@ -82,7 +82,7 @@ export default function AddTextButton() {
                         <div className="space-y-8">
                             {/* Text Content */}
                             <div>
-                                <label className="text-xl font-bold mb-2 text-white">Text Content</label>
+                                <label className="text-xl font-bold mb-2 text-white">텍스트 내용</label>
                                 <textarea
                                     value={textConfig.text}
                                     onChange={(e) => setTextConfig({ ...textConfig, text: e.target.value })}
@@ -93,7 +93,7 @@ export default function AddTextButton() {
                             {/* Start and End Time */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-white">Start Time (s)</label>
+                                    <label className="block text-sm font-medium text-white">시작 시간(초)</label>
                                     <input
                                         type="number"
                                         value={textConfig.positionStart}
@@ -103,7 +103,7 @@ export default function AddTextButton() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-white">End Time (s)</label>
+                                    <label className="block text-sm font-medium text-white">종료 시간(초)</label>
                                     <input
                                         type="number"
                                         value={textConfig.positionEnd}
@@ -117,7 +117,7 @@ export default function AddTextButton() {
                             {/* Position */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-white">X Position</label>
+                                    <label className="block text-sm font-medium text-white">가로 위치</label>
                                     <input
                                         type="number"
                                         value={textConfig.x}
@@ -126,7 +126,7 @@ export default function AddTextButton() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-white">Y Position</label>
+                                    <label className="block text-sm font-medium text-white">세로 위치</label>
                                     <input
                                         type="number"
                                         value={textConfig.y}
@@ -139,7 +139,7 @@ export default function AddTextButton() {
                             {/* Font Size and Z-Index */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-white">Font Size</label>
+                                    <label className="block text-sm font-medium text-white">글자 크기</label>
                                     <input
                                         type="number"
                                         value={textConfig.fontSize}
@@ -150,7 +150,7 @@ export default function AddTextButton() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-white">Z-Index</label>
+                                    <label className="block text-sm font-medium text-white">레이어 순서</label>
                                     <input
                                         type="number"
                                         value={textConfig.zIndex}
@@ -164,7 +164,7 @@ export default function AddTextButton() {
                             {/* Font Type */}
                             <div className="grid grid-cols-1 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-white">Font Type</label>
+                                    <label className="block text-sm font-medium text-white">글꼴</label>
                                     <select
                                         value={textConfig.font}
                                         onChange={(e) => setTextConfig({ ...textConfig, font: e.target.value })}
@@ -180,7 +180,7 @@ export default function AddTextButton() {
                             {/* Text Color and Add Text Button */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-white">Text Color</label>
+                                    <label className="block text-sm font-medium text-white">글자 색상</label>
                                     <input
                                         type="color"
                                         value={textConfig.color}
@@ -193,7 +193,7 @@ export default function AddTextButton() {
                                         onClick={handleAddText}
                                         className="px-4 py-2 bg-white text-black hover:bg-[#ccc] rounded"
                                     >
-                                        Add Text
+                                        텍스트 추가
                                     </button>
                                 </div>
                             </div>
