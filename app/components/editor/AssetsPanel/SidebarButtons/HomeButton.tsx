@@ -15,7 +15,7 @@ export default function HomeButton() {
                 width={30}
                 src="https://www.svgrepo.com/show/535437/home.svg"
             />
-            <span className="text-xs">Home</span>
+            <span className="text-xs">홈</span>
         </Link>
     );
 }

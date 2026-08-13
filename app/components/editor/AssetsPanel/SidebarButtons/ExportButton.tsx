@@ -14,7 +14,7 @@ export default function ExportButton({ onClick }: { onClick: () => void }) {
                 width={30}
                 src="https://www.svgrepo.com/show/486665/export.svg"
             />
-            <span className="text-xs">Export</span>
+            <span className="text-xs">내보내기</span>
         </button>
     );
 }

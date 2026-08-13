@@ -25,7 +25,7 @@ export default function MediaProperties() {
                     <h4 className="font-semibold">Source Video</h4>
                     <div className="flex items-center space-x-4">
                         <div>
-                            <label className="block text-sm">Start (s)</label>
+                            <label className="block text-sm">시작 (초)</label>
                             <input
                                 type="number"
                                 readOnly={true}
@@ -39,7 +39,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">End (s)</label>
+                            <label className="block text-sm">끝 (초)</label>
                             <input
                                 type="number"
                                 readOnly={true}
@@ -59,7 +59,7 @@ export default function MediaProperties() {
                     <h4 className="font-semibold">Timing Position</h4>
                     <div className="flex items-center space-x-4">
                         <div>
-                            <label className="block text-sm">Start (s)</label>
+                            <label className="block text-sm">시작 (초)</label>
                             <input
                                 type="number"
                                 readOnly={true}
@@ -73,7 +73,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">End (s)</label>
+                            <label className="block text-sm">끝 (초)</label>
                             <input
                                 type="number"
                                 readOnly={true}
@@ -92,7 +92,7 @@ export default function MediaProperties() {
                     <h4 className="font-semibold">Visual Properties</h4>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm">X Position</label>
+                            <label className="block text-sm">X 위치</label>
                             <input
                                 type="number"
                                 step="10"
@@ -102,7 +102,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Y Position</label>
+                            <label className="block text-sm">Y 위치</label>
                             <input
                                 type="number"
                                 step="10"
@@ -112,7 +112,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Width</label>
+                            <label className="block text-sm">너비</label>
                             <input
                                 type="number"
                                 step="10"
@@ -122,7 +122,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Height</label>
+                            <label className="block text-sm">높이</label>
                             <input
                                 type="number"
                                 step="10"
@@ -132,7 +132,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Zindex</label>
+                            <label className="block text-sm">레이어 순서</label>
                             <input
                                 type="number"
                                 value={mediaFile.zIndex || 0}
@@ -141,7 +141,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Opacity</label>
+                            <label className="block text-sm">불투명도</label>
                             <input
                                 type="range"
                                 min="0"
@@ -158,7 +158,7 @@ export default function MediaProperties() {
                     <h4 className="font-semibold">Audio Properties</h4>
                     <div className="grid grid-cols-1 gap-4">
                         <div>
-                            <label className="block text-sm mb-2 text-white">Volume</label>
+                            <label className="block text-sm mb-2 text-white">음량</label>
                             <input
                                 type="range"
                                 min="0"
@@ -170,7 +170,7 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Playback speed</label>
+                            <label className="block text-sm">재생 속도</label>
                             <input
                                 type="number"
                                 min="0.1"

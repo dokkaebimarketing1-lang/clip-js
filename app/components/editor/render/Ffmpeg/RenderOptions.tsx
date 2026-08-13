@@ -14,7 +14,7 @@ export default function RenderOptions() {
                             <div>
 
                                 {/* Resolution Setting */}
-                                <label className="text-l font-bold mb-2 text-white">Resolution</label>
+                                <label className="text-l font-bold mb-2 text-white">해상도</label>
                                 <select
                                     value={exportSettings.resolution}
                                     onChange={(e) => dispatch(setResolution(e.target.value))}
@@ -30,39 +30,39 @@ export default function RenderOptions() {
 
                             {/* Quality Setting */}
                             <div>
-                                <label className="text-l font-bold mb-2 text-white">Quality</label>
+                                <label className="text-l font-bold mb-2 text-white">화질</label>
                                 <select
                                     value={exportSettings.quality}
                                     onChange={(e) => dispatch(setQuality(e.target.value))}
                                     className="w-full p-2 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:ring-2 focus:ring-white-500 focus:border-white-500"
                                 >
-                                    <option value="low">Low (Fastest)</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="high">High</option>
-                                    <option value="ultra">Ultra (Best Quality)</option>
+                                    <option value="low">낮음 (가장 빠름)</option>
+                                    <option value="medium">보통</option>
+                                    <option value="high">높음</option>
+                                    <option value="ultra">최고 (최상 화질)</option>
                                 </select>
                             </div>
 
                             {/* Processing Speed Setting */}
                             <div>
-                                <label className="text-l font-bold mb-2 text-white">Processing Speed</label>
+                                <label className="text-l font-bold mb-2 text-white">처리 속도</label>
                                 <select
                                     value={exportSettings.speed}
                                     onChange={(e) => dispatch(setSpeed(e.target.value))}
                                     className="w-full p-2 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:ring-2 focus:ring-white-500 focus:border-white-500"
                                 >
-                                    <option value="fastest">Fastest</option>
-                                    <option value="fast">Fast</option>
-                                    <option value="balanced">Balanced</option>
-                                    <option value="slow">Slow</option>
-                                    <option value="slowest">Slowest</option>
+                                    <option value="fastest">가장 빠름</option>
+                                    <option value="fast">빠름</option>
+                                    <option value="balanced">균형</option>
+                                    <option value="slow">느림</option>
+                                    <option value="slowest">가장 느림</option>
                                 </select>
                             </div>
                         </div>
 
                     </div>
                     <div className="mt-4 text-sm text-gray-600">
-                        <p>Current settings: {exportSettings.resolution} at {exportSettings.quality} quality ({exportSettings.speed} processing)</p>
+                        <p>현재 설정: {exportSettings.resolution} · 화질 {exportSettings.quality} · 처리 속도 {exportSettings.speed}</p>
                     </div>
                 </div>
             </div>

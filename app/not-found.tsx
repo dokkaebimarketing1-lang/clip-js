@@ -7,15 +7,15 @@ export default function notFound() {
                 <h1 className='text-9xl md:text-16xl w-full select-none text-center font-black text-gray-100'>
                     404
                 </h1>
-                <p className='text-3xl font-semibold text-center'>Oops! Page not found</p>
+                <p className='text-3xl font-semibold text-center'>페이지를 찾을 수 없습니다.</p>
                 <p className='text-2xl md:px-12 text-center'>
-                    {"The page you're looking for doesn't exist or has been moved."}
+                    {"요청한 페이지가 없거나 이동되었습니다."}
                 </p>
                 <div className='flex flex-row justify-between gap-8'>
                     <Link href="/" as={"/"}
                         className="rounded-full bg-white border border-solid border-transparent transition-colors flex items-center justify-center text-gray-800 gap-2 hover:bg-[#ccc] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
                         id="headlessui-menu-button-:r4:" aria-haspopup="true" aria-expanded="false" data-headlessui-state="" type="button">
-                        <span >Return To Home</span>
+                        <span >홈으로 돌아가기</span>
                     </Link>
                 </div>
             </div>

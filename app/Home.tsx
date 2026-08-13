@@ -8,7 +8,7 @@ export default function Home() {
     <div className="space-y-10">
       {/* <Header /> */}
       <div className="mx-auto bg-surfacePrimary max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 pb-16 text-center lg:pt-32">
-        <p className="mx-auto -mt-4 max-w-2xl text-lg tracking-tight text-white-700 sm:mt-6">Welcome to
+        <p className="mx-auto -mt-4 max-w-2xl text-lg tracking-tight text-white-700 sm:mt-6">ClipJS에 오신 것을 환영합니다
           <span className="border-b border-dotted border-slate-300"></span>
         </p>
 
@@ -21,8 +21,8 @@ export default function Home() {
         </h1>
 
         <p className="mx-auto mt-9 max-w-2xl text-lg tracking-tight text-white-700 sm:mt-6">
-          <span className="inline-block">Edit your videos from your PC or phone no downloads, no registration, no watermarks.</span>
-          <span className="inline-block">Online, Free and Open Source</span>
+          <span className="inline-block">PC나 휴대폰에서 설치 없이 영상을 편집하세요. 가입도 워터마크도 없습니다.</span>
+          <span className="inline-block">온라인에서 사용하는 무료 오픈소스 영상 편집기</span>
         </p>
 
         <div className="mt-12 flex flex-col justify-center gap-y-5 sm:mt-10 sm:flex-row sm:gap-y-0 sm:gap-x-6">
@@ -40,7 +40,7 @@ export default function Home() {
               >
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm1-13h-2v6H7v2h6v6h2v-6h6v-2h-6z" />
               </svg>
-              <span className="ml-3">Get Started</span>
+              <span className="ml-3">시작하기</span>
             </Link>
           </div>
           <Link href="https://github.com/mohyware/clip.js" target="_blank"
@@ -56,14 +56,14 @@ export default function Home() {
             >
               <path d="M12 0C5.372 0 0 5.372 0 12c0 5.303 3.438 9.8 8.207 11.385.6.111.793-.261.793-.577 0-.285-.011-1.04-.016-2.04-3.338.728-4.04-1.562-4.04-1.562-.545-1.38-1.33-1.748-1.33-1.748-1.087-.743.082-.73.082-.73 1.2.085 1.833 1.25 1.833 1.25 1.065 1.833 2.79 1.302 3.467.997.107-.773.417-1.302.758-1.603-2.664-.306-5.467-1.332-5.467-5.92 0-1.307.466-2.381 1.233-3.221-.123-.306-.534-.92.117-1.89 0 0 .765-.25 2.5.92a8.49 8.49 0 0 1 2.292-.306c.772 0 1.556.1 2.292.306 1.733-1.17 2.5-.92 2.5-.92.651.97.24 1.584.117 1.89.767.84 1.233 1.914 1.233 3.221 0 4.604-2.805 5.607-5.473 5.91.431.373.806 1.105.806 2.24 0 1.616-.016 2.93-.016 3.33 0 .315.192.69.8.577 4.771-1.585 8.207-6.082 8.207-11.385C24 5.372 18.628 0 12 0z" />
             </svg>
-            <span className="ml-3">Star on GitHub</span>
+            <span className="ml-3">GitHub에서 별표 주기</span>
           </Link>
         </div>
       </div>
       {/* Features Section */}
       <div className="space-y-10">
         <h2 className="mx-auto max-w-4xl text-center font-display text-5xl font-medium tracking-tight text-white-900 sm:text-4xl">
-          <span className="inline-block">What Can it do?</span>
+          <span className="inline-block">ClipJS로 무엇을 할 수 있나요?</span>
         </h2>
 
         <div className="grid w-full max-w-[1680px] mx-auto py-4 px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">

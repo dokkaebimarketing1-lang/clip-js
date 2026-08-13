@@ -22,7 +22,7 @@ export default function Header() {
                                 href="/"
                                 className="text-md text-white hover:text-gray-800 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
                             >
-                                Home
+                                홈
                             </Link>
                         </li>
                         <li>
@@ -30,7 +30,7 @@ export default function Header() {
                                 href="/projects"
                                 className="text-md text-white hover:text-gray-800 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
                             >
-                                Projects
+                                프로젝트
                             </Link>
                         </li>
                         <li>
@@ -38,7 +38,7 @@ export default function Header() {
                                 href="/about"
                                 className="text-md text-white hover:text-gray-800 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
                             >
-                                About Me
+                                소개
                             </Link>
                         </li>
                     </ul>

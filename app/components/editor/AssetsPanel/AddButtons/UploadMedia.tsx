@@ -36,7 +36,7 @@ export default function AddMedia() {
                     width={12}
                     src="https://www.svgrepo.com/show/514275/upload-cloud.svg"
                 />
-                <span className="text-xs">Add Media</span>
+                <span className="text-xs">미디어 추가</span>
             </label>
             <input
                 type="file"

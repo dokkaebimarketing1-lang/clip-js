@@ -225,7 +225,7 @@ export const Timeline = () => {
                             width={30}
                             src="https://www.svgrepo.com/show/447315/dismiss.svg"
                         />}
-                        <span className="ml-1">Track Marker <span className="text-xs">(T)</span></span>
+                        <span className="ml-1">마커 추적 <span className="text-xs">(T)</span></span>
                     </button>
                     {/* Split */}
                     <button
@@ -239,7 +239,7 @@ export const Timeline = () => {
                             width={30}
                             src="https://www.svgrepo.com/show/509075/cut.svg"
                         />
-                        <span className="ml-1">Split <span className="text-xs">(S)</span></span>
+                        <span className="ml-1">분할 <span className="text-xs">(S)</span></span>
                     </button>
                     {/* Duplicate */}
                     <button
@@ -253,7 +253,7 @@ export const Timeline = () => {
                             width={30}
                             src="https://www.svgrepo.com/show/521623/duplicate.svg"
                         />
-                        <span className="ml-1">Duplicate <span className="text-xs">(D)</span></span>
+                        <span className="ml-1">복제 <span className="text-xs">(D)</span></span>
                     </button>
                     {/* Delete */}
                     <button
@@ -267,13 +267,13 @@ export const Timeline = () => {
                             width={30}
                             src="https://www.svgrepo.com/show/511788/delete-1487.svg"
                         />
-                        <span className="ml-1">Delete <span className="text-xs">(Del)</span></span>
+                        <span className="ml-1">삭제 <span className="text-xs">(Del)</span></span>
                     </button>
                 </div>
 
                 {/* Timeline Zoom */}
                 <div className="flex flex-row justify-between items-center gap-2 mr-4">
-                    <label className="block text-xs mt-1 font-semibold text-white">Zoom</label>
+                    <label className="block text-xs mt-1 font-semibold text-white">확대/축소</label>
                     <span className="text-white text-lg">-</span>
                     <input
                         type="range"

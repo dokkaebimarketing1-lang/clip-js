@@ -13,7 +13,7 @@ export default function LibraryButton({ onClick }: { onClick: () => void }) {
                 width={30}
                 src="https://www.svgrepo.com/show/514275/upload-cloud.svg"
             />
-            <span className="text-xs">Library</span>
+            <span className="text-xs">미디어</span>
         </button>
     );
 }

@@ -286,7 +286,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <div className="fixed inset-0 flex items-center bg-black bg-opacity-50 justify-center z-50">
                         <div className="bg-black bg-opacity-70 p-6 rounded-lg flex flex-col items-center">
                             <div className="w-16 h-16 border-4 border-t-white border-r-white border-opacity-30 border-t-opacity-100 rounded-full animate-spin"></div>
-                            <p className="mt-4 text-white text-lg">Loading project...</p>
+                            <p className="mt-4 text-white text-lg">프로젝트를 불러오는 중...</p>
                         </div>
                     </div>
                 ) : null
@@ -316,7 +316,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 {/* 프로젝트 제작 단계 내비게이션 */}
                 <nav aria-label="프로젝트 제작 단계" className="relative z-50 flex w-[132px] shrink-0 flex-col border-r border-gray-800 bg-neutral-950 p-2">
                     <div className="mb-2 [&_a]:h-10 [&_a]:w-full [&_a]:flex-row [&_a]:gap-2 [&_a]:px-2 [&_img]:max-h-[16px] [&_img]:max-w-[16px] [&_span]:text-[10px]"><HomeButton /></div>
-                    <div className="mb-2 border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">Production</div>
+                    <div className="mb-2 border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">제작</div>
                     <div className="space-y-1">
                         {PROJECT_WORKSPACES.map((item) => (
                             <button

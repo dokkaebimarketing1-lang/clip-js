@@ -38,7 +38,7 @@ export default function TextProperties() {
                     <h4 className="font-semibold">Timing Position</h4>
                     <div className="flex items-center space-x-4">
                         <div>
-                            <label className="block text-sm">Start (s)</label>
+                            <label className="block text-sm">시작 (초)</label>
                             <input
                                 type="number"
                                 value={textElement.positionStart}
@@ -52,7 +52,7 @@ export default function TextProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">End (s)</label>
+                            <label className="block text-sm">끝 (초)</label>
                             <input
                                 type="number"
                                 readOnly={true}
@@ -71,7 +71,7 @@ export default function TextProperties() {
                     <h4 className="font-semibold">Visual Properties</h4>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm">X Position</label>
+                            <label className="block text-sm">X 위치</label>
                             <input
                                 type="number"
                                 step="10"
@@ -81,7 +81,7 @@ export default function TextProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Y Position</label>
+                            <label className="block text-sm">Y 위치</label>
                             <input
                                 type="number"
                                 step="10"
@@ -91,7 +91,7 @@ export default function TextProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Font Size</label>
+                            <label className="block text-sm">글자 크기</label>
                             <input
                                 type="number"
                                 step="5"
@@ -102,7 +102,7 @@ export default function TextProperties() {
                         </div>
                         {/* TODO: add z-index */}
                         {/* <div>
-                            <label className="block text-sm">Z-Index</label>
+                            <label className="block text-sm">레이어 순서</label>
                             <input
                                 type="number"
                                 value={textElement.zIndex || 0}
@@ -130,7 +130,7 @@ export default function TextProperties() {
                     <h4 className="font-semibold">Style Properties</h4>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm">Text Color</label>
+                            <label className="block text-sm">글자 색상</label>
                             <input
                                 type="color"
                                 value={textElement.color || '#ffffff'}
@@ -139,7 +139,7 @@ export default function TextProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">Opacity</label>
+                            <label className="block text-sm">불투명도</label>
                             <input
                                 type="range"
                                 min="0"

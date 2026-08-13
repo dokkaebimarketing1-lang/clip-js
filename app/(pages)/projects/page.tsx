@@ -24,7 +24,7 @@ export default function Projects() {
                 const storedProjects = await listProjects();
                 dispatch(rehydrateProjects(storedProjects));
             } catch (error) {
-                toast.error('Failed to load projects');
+                toast.error('프로젝트를 불러오지 못했습니다.');
                 console.error('Error loading projects:', error);
             } finally {
                 setIsLoading(false);
@@ -84,7 +84,7 @@ export default function Projects() {
             dispatch(addProject(newProject));
             setNewProjectName('');
             setIsCreating(false);
-            toast.success('Project created successfully');
+            toast.success('프로젝트를 만들었습니다.');
         } catch {
             // The storage layer already reports the actionable error. Keep the form open.
         }
@@ -96,7 +96,7 @@ export default function Projects() {
             dispatch(deleteProject(projectId));
             const storedProjects = await listProjects();
             dispatch(rehydrateProjects(storedProjects));
-            toast.success('Project deleted successfully');
+            toast.success('프로젝트를 삭제했습니다.');
         } catch {
             // Do not remove the Redux item when IndexedDB deletion failed.
         }
@@ -108,13 +108,13 @@ export default function Projects() {
                 <br />
                 <br />
                 <h2 className="mx-auto max-w-4xl text-center font-display text-5xl font-medium tracking-tight text-white-900 sm:text-4xl">
-                    <span className="inline-block">Projects</span>
+                    <span className="inline-block">프로젝트</span>
                 </h2>
                 {isLoading ? (
                     <div className="fixed inset-0 flex items-center bg-black bg-opacity-50 justify-center z-50">
                         <div className="bg-black bg-opacity-70 p-6 rounded-lg flex flex-col items-center">
                             <div className="w-16 h-16 border-4 border-t-white border-r-white border-opacity-30 border-t-opacity-100 rounded-full animate-spin"></div>
-                            <p className="mt-4 text-white text-lg">Loading projects...</p>
+                            <p className="mt-4 text-white text-lg">프로젝트를 불러오는 중…</p>
                         </div>
                     </div>
                 ) : (
@@ -129,14 +129,14 @@ export default function Projects() {
                                         <div className="flex items-center space-x-4">
                                             <div className="flex size-9 items-center justify-center rounded-full bg-surface-secondary">
                                                 <Image
-                                                    alt="Add Project"
+                                                    alt="프로젝트 추가"
                                                     className="invert"
                                                     height={18}
                                                     src="https://www.svgrepo.com/show/421119/add-create-new.svg"
                                                     width={18}
                                                 />
                                             </div>
-                                            <h5 className="text-lg font-medium">Add Project</h5>
+                                            <h5 className="text-lg font-medium">프로젝트 추가</h5>
                                         </div>
                                     </figure>
                                 </div>
@@ -175,7 +175,7 @@ export default function Projects() {
                                                             handleDeleteProject(id);
                                                         }}
                                                         className="flex-shrink-0 ml-2 text-red-500 hover:text-red-600 transition-colors"
-                                                        aria-label="Delete project"
+                                                        aria-label="프로젝트 삭제"
                                                     >
                                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
                                                             <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -184,10 +184,10 @@ export default function Projects() {
                                                 </figure>
                                                 <div className="flex flex-col items-start py-1 gap-1 text-sm">
                                                     <p className="text-pretty text-text-secondary dark:text-dark-text-secondary">
-                                                        <span className="font-medium">Created:</span> {new Date(createdAt).toLocaleDateString()}
+                                                        <span className="font-medium">생성일:</span> {new Date(createdAt).toLocaleDateString()}
                                                     </p>
                                                     <p className="text-pretty text-text-secondary dark:text-dark-text-secondary">
-                                                        <span className="font-medium">Last Modified:</span> {new Date(lastModified).toLocaleDateString()}
+                                                        <span className="font-medium">최근 수정:</span> {new Date(lastModified).toLocaleDateString()}
                                                     </p>
                                                 </div>
                                             </div>
@@ -204,7 +204,7 @@ export default function Projects() {
                 {isCreating && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                         <div className="bg-black border border-white border-opacity-10 p-6 rounded-lg w-96">
-                            <h3 className="text-xl font-bold mb-4 text-white">Create New Project</h3>
+                            <h3 className="text-xl font-bold mb-4 text-white">새 프로젝트 만들기</h3>
                             <input
                                 type="text"
                                 ref={inputRef}
@@ -217,7 +217,7 @@ export default function Projects() {
                                         setIsCreating(false);
                                     }
                                 }}
-                                placeholder="Project Name"
+                                placeholder="프로젝트 이름"
                                 className="w-full p-2 mb-4 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:ring-2 focus:ring-white-500 focus:border-white-500"
                             />
                             <div className="flex justify-end gap-2">
@@ -225,13 +225,13 @@ export default function Projects() {
                                     onClick={() => setIsCreating(false)}
                                     className="px-4 py-2 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md hover:bg-[#383838] text-white rounded "
                                 >
-                                    Cancel
+                                    취소
                                 </button>
                                 <button
                                     onClick={handleCreateProject}
                                     className="px-4 py-2 bg-white text-black hover:bg-[#ccc] rounded"
                                 >
-                                    Create
+                                    만들기
                                 </button>
                             </div>
                         </div>

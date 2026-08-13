@@ -14,7 +14,7 @@ export default function ShortcutsButton({ onClick }: { onClick: () => void }) {
                 width={30}
                 src="https://www.svgrepo.com/show/501605/keyboard-shortcuts.svg"
             />
-            <span className="text-xs">Shortcuts</span>
+            <span className="text-xs">단축키</span>
         </button>
     );
 }

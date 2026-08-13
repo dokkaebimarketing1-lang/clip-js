@@ -13,7 +13,7 @@ export default function TextButton({ onClick }: { onClick: () => void }) {
                 width={30}
                 src="https://www.svgrepo.com/show/535686/text.svg"
             />
-            <span className="text-xs">Text</span>
+            <span className="text-xs">텍스트</span>
         </button>
     );
 }
