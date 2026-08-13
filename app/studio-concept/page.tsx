@@ -36,7 +36,7 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
-import {useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import styles from './studio-concept.module.css';
 
 type Stage = 'chat' | 'sheets' | 'storyboard' | 'generation' | 'timeline';
@@ -152,6 +152,12 @@ function ProjectSidebar({onClose}: {onClose: () => void}) {
 }
 
 function ChatStage({message, setMessage, onNext}: {message: string; setMessage: (value: string) => void; onNext: () => void}) {
+  const [whyOpen, setWhyOpen] = useState(false);
+  const briefCardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!whyOpen) return;
+    requestAnimationFrame(() => briefCardRef.current?.scrollIntoView({behavior: 'smooth', block: 'center'}));
+  }, [whyOpen]);
   return <section className={styles.chatStage}>
     <div className={styles.chatScroller}>
       <div className={styles.chatIntro}>
@@ -173,12 +179,30 @@ function ChatStage({message, setMessage, onNext}: {message: string; setMessage: 
             <div className={styles.quickReplies}><button>루이의 사랑스러운 표정</button><button>함께봄의 따뜻한 이미지</button><button>직접 입력할게요</button></div>
           </div>
         </div>
-        <div className={styles.briefCard}>
+        <div className={styles.briefCard} ref={briefCardRef}>
           <div className={styles.briefHeader}><span><FileText size={15}/> 현재 기획</span><span className={styles.briefStatus}>3개 항목 확정</span></div>
           <div className={styles.briefGrid}>
             <div><span>형식</span><strong>브랜드 필름</strong></div><div><span>주인공</span><strong>고양이 루이</strong></div><div><span>분위기</span><strong>따뜻하고 진솔하게</strong></div>
           </div>
-          <button className={styles.whyButton}><ChevronDown size={13}/> 왜 이렇게 정했나요?</button>
+          <button
+            type="button"
+            className={styles.whyButton}
+            aria-expanded={whyOpen}
+            aria-controls="brief-reasoning"
+            onClick={() => setWhyOpen((open) => !open)}
+          >
+            <ChevronDown className={whyOpen ? styles.whyChevronOpen : undefined} size={13}/>
+            왜 이렇게 정했나요?
+          </button>
+          {whyOpen ? <div id="brief-reasoning" className={styles.whyPanel}>
+            <strong><Sparkles size={12}/> 인터뷰 답변을 이렇게 반영했어요</strong>
+            <ul>
+              <li><b>브랜드 필름</b> — 제품 설명보다 함께봄의 인상을 남기는 영상을 원했어요.</li>
+              <li><b>고양이 루이</b> — 이야기의 중심 인물로 직접 지정했어요.</li>
+              <li><b>따뜻하고 진솔하게</b> — 따뜻한 브랜드 영상이라는 표현을 연출 분위기로 반영했어요.</li>
+            </ul>
+            <p>아직 확정 전이므로 인터뷰에서 언제든 수정할 수 있어요.</p>
+          </div> : null}
         </div>
       </div>
     </div>
