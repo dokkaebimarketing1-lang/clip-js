@@ -23,7 +23,7 @@ import StageWorkspace from "@/app/components/editor/workflow/StageWorkspace";
 import StageInspector from "@/app/components/editor/workflow/StageInspector";
 import {MockMediaList, MockPreviewPlayer} from '@/app/components/editor/workflow/MockMediaWorkspace';
 import {deriveGenerationCtaState, type GenerationCtaTarget} from "@/app/lib/workflow/generation-cta";
-import {getProjectWorkspaceLayout, PROJECT_WORKSPACES, type ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
+import {getInitialProjectWorkspace, getProjectWorkspaceLayout, PROJECT_WORKSPACES, type ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
 import {
     ProjectSaveCoordinator,
     type ProjectSaveStatus,
@@ -135,6 +135,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 });
                 dispatch(setCurrentProject(id));
                 dispatch(rehydrate(loadedProject));
+                setWorkspace(getInitialProjectWorkspace({
+                    planningApproved: loadedProject.workflow.planningStatus === 'approved',
+                    hasStoryboard: Boolean(loadedProject.workflow.storyboard),
+                }));
             } catch (error) {
                 console.error('Failed to load project:', error);
                 if (!cancelled) setLoadError(error instanceof Error && error.message === 'PROJECT_LOAD_TIMEOUT'
@@ -328,7 +332,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <div className="mb-2 border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">제작</div>
                     <div className="space-y-1">
                         {PROJECT_WORKSPACES.map((item) => {
-                            const planningLocked = item.id !== 'interview' && projectState.workflow.planningStatus !== 'approved';
+                            const planningLocked = !sampleMode && item.id !== 'interview' && projectState.workflow.planningStatus !== 'approved';
                             return (
                             <button
                                 key={item.id}
@@ -415,8 +419,8 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     </section>}
                 </main>
 
-                {/* 현재 단계 정보. 내부 운영 도구는 고급 탭으로 격리한다. */}
-                <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-l border-gray-800 bg-neutral-900">
+                {/* 스토리보드는 자체 선택 컷 inspector를 사용한다. 다른 단계의 운영 도구는 고급 탭으로 격리한다. */}
+                {workspace !== 'storyboard' ? <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-l border-gray-800 bg-neutral-900">
                     <div className="flex shrink-0 border-b border-gray-800">
                         <button
                             type="button"
@@ -453,7 +457,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             </div>
                         )}
                     </div>
-                </div>
+                </div> : null}
             </div>
         </div>
     );

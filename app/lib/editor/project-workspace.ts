@@ -18,6 +18,17 @@ export const getProjectWorkspaceLayout = (workspace: ProjectWorkspaceId) => ({
   showTimeline: workspace === 'edit',
 });
 
+export const getInitialProjectWorkspace = ({
+  planningApproved,
+  hasStoryboard,
+}: {
+  planningApproved: boolean;
+  hasStoryboard: boolean;
+}): ProjectWorkspaceId => {
+  if (!planningApproved) return 'interview';
+  return hasStoryboard ? 'storyboard' : 'reference';
+};
+
 export type WorkspaceInternalStep = {
   id: string;
   label: string;

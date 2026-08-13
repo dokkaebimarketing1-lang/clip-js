@@ -2,12 +2,12 @@
 
 import Image from 'next/image';
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {useAppDispatch, useAppSelector} from '@/app/store';
-import {setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
+import {store, useAppDispatch, useAppSelector} from '@/app/store';
+import {installCreativeApprovalIfCurrent, setMediaFiles, setWorkflow} from '@/app/store/slices/projectSlice';
 import {attachCutFrameAsset, reorderStoryboardCuts, selectTakeForTimeline} from '@/app/lib/workflow/project-production';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
 import {creativeApprovalSchema, storyboardCutSchema, type CharacterSheet, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
-import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
+import {prepareCreativeApprovalCommand, staleCreativeApprovalMessage} from '@/app/lib/workflow/creative-approval-apply';
 import {deriveGenerationPreflight} from '@/app/lib/workflow/generation-preflight';
 import {takeApprovalSchema} from '@/app/lib/workflow/production-schema';
 
@@ -68,7 +68,18 @@ function FrameUpload({projectId, cutId, role, assetId}: {projectId: string; cutI
   </div>;
 }
 
-export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard: Storyboard; characterSheets?: CharacterSheet[]}) {
+function CutPreview({projectId, cut, selected}: {projectId: string; cut: StoryboardCut; selected: boolean}) {
+  const previewUrl = useAssetPreview(projectId, cut.previewAssetId ?? cut.startFrameAssetId);
+  const firstShot = cut.shots[0];
+  return <div className={`relative aspect-video overflow-hidden rounded-xl border ${selected ? 'border-fuchsia-300/70' : 'border-white/10'} bg-[radial-gradient(circle_at_20%_20%,rgba(217,70,239,.15),transparent_38%),linear-gradient(145deg,#181421,#09080d)]`}>
+    {previewUrl ? <Image src={previewUrl} alt={`${cut.title} 대표 프레임`} fill unoptimized className="object-cover" sizes="240px"/> : <div className="absolute inset-0 flex items-end p-3"><p className="line-clamp-3 text-[11px] font-medium leading-4 text-gray-400">{firstShot?.startFrame ?? '대표 프레임 미등록'}</p></div>}
+    <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-2.5"><span className="rounded-md bg-black/70 px-2 py-1 text-[10px] font-black text-white">{cut.id}</span><span className="font-mono text-[10px] text-white/70">{cut.absoluteStartSeconds}–{cut.absoluteEndSeconds}s</span></div>
+  </div>;
+}
+
+const ShotStateFrame = ({label, text, tone}: {label: 'START' | 'END'; text: string; tone: 'start' | 'end'}) => <div className={`min-h-24 rounded-xl border p-3 ${tone === 'start' ? 'border-sky-400/15 bg-sky-400/[0.045]' : 'border-fuchsia-400/15 bg-fuchsia-400/[0.045]'}`}><div className="flex items-center justify-between"><span className={`text-[10px] font-black tracking-[0.16em] ${tone === 'start' ? 'text-sky-300' : 'text-fuchsia-300'}`}>{label}</span><span className="text-[9px] text-gray-600">{tone === 'start' ? '시작 상태' : '종료 상태'}</span></div><p className="mt-3 text-xs font-medium leading-5 text-gray-200">{text}</p></div>;
+
+export function StoryboardStudio({storyboard, characterSheets = [], reviewOnly = false}: {storyboard: Storyboard; characterSheets?: CharacterSheet[]; reviewOnly?: boolean}) {
   const dispatch = useAppDispatch();
   const project = useAppSelector((state) => state.projectState);
   const imageGenerationEnabled = process.env.NEXT_PUBLIC_CLIPJS_IMAGE_GENERATION_ENABLED === 'true';
@@ -83,6 +94,7 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
   const selected = storyboard.cuts.find((cut) => cut.id === selectedCutId) ?? storyboard.cuts[0];
 
   const reorder = (targetId: string) => {
+    if (reviewOnly) return;
     if (!draggedId || draggedId === targetId) return;
     const ids = storyboard.cuts.map((cut) => cut.id);
     const from = ids.indexOf(draggedId); const to = ids.indexOf(targetId);
@@ -94,6 +106,7 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
   };
 
   const applyEdit = async () => {
+    if (reviewOnly) return;
     if (!selected || !instruction.trim()) return;
     setEditing(true); setMessage('DeepSeek가 선택 컷을 수정하고 있습니다.');
     try {
@@ -115,25 +128,25 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
   };
 
   const approveCurrentStoryboard = async () => {
+    if (reviewOnly) return;
     if (isApproving) return;
+    const requestStoryboard = storyboard;
+    const requestCharacterSheets = characterSheets;
     setIsApproving(true);
     setApprovalError(null);
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/creative-approval/ui`, {
         method: 'POST',
         headers: {'content-type': 'application/json'},
-        body: JSON.stringify({storyboard, characterSheets}),
+        body: JSON.stringify({storyboard: requestStoryboard, characterSheets: requestCharacterSheets}),
       });
       const payload = await response.json() as {creativeApproval?: unknown; error?: string};
       if (!response.ok || !payload.creativeApproval) throw new Error(payload.error ?? '스토리보드를 확정하지 못했습니다.');
       const creativeApproval = creativeApprovalSchema.parse(payload.creativeApproval);
-      dispatch(setWorkflow({
-        ...project.workflow,
-        creativeApproval,
-        generationApproval: {status: 'invalidated'},
-        releaseApproval: {status: 'invalidated'},
-        production: deriveProductionFromStoryboard(storyboard, project.workflow.production),
-      }));
+      const command = await prepareCreativeApprovalCommand(requestStoryboard, requestCharacterSheets, creativeApproval);
+      dispatch(installCreativeApprovalIfCurrent(command));
+      const installed = store.getState().projectState.workflow.creativeApproval;
+      if (installed.status !== 'approved' || installed.signature !== creativeApproval.signature) throw new Error(staleCreativeApprovalMessage);
       setMessage('현재 스토리보드를 Creative 기준으로 확정했습니다. 이후 컷이나 기준 이미지를 바꾸면 승인이 자동 취소됩니다.');
     } catch (error) {
       setApprovalError(error instanceof Error ? error.message : '스토리보드를 확정하지 못했습니다.');
@@ -144,33 +157,43 @@ export function StoryboardStudio({storyboard, characterSheets = []}: {storyboard
 
   const creativeApproved = project.workflow.creativeApproval.status === 'approved';
   const missingFrameCount = storyboard.cuts.filter((cut) => !cut.startFrameAssetId || !cut.endFrameAssetId).length;
+  const selectedIndex = storyboard.cuts.findIndex((cut) => cut.id === selected?.id);
+  const nextCut = selectedIndex >= 0 ? storyboard.cuts[selectedIndex + 1] : undefined;
+  const directorIntent = selected?.shots.map((shot) => shot.action).filter(Boolean).join(' → ') ?? '';
 
-  return <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-    <div className="grid gap-5 md:grid-cols-2">
-      {storyboard.cuts.map((cut) => <article key={cut.id} draggable onDragStart={() => setDraggedId(cut.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(cut.id)} onClick={() => setSelectedCutId(cut.id)} className={`cursor-grab rounded-3xl border bg-[#15131a] p-4 transition ${selected?.id === cut.id ? 'border-fuchsia-400/60 shadow-[0_0_0_1px_rgba(217,70,239,.2)]' : 'border-white/10 hover:border-white/25'}`}>
-        <div className="flex items-center justify-between text-xs"><span className="font-black text-fuchsia-300">⠿ {cut.id}</span><span className="tabular-nums text-gray-500">{cut.absoluteStartSeconds}–{cut.absoluteEndSeconds}초</span></div>
-        <h2 className="mt-3 text-lg font-black text-white">{cut.title}</h2>
-        {cut.characterIds?.length ? <div className="mt-3 flex flex-wrap gap-2">{cut.characterIds.map((characterId) => {
-          const character = characterSheets.find((sheet) => sheet.id === characterId);
-          return <span key={characterId} className="rounded-full border border-fuchsia-400/20 bg-fuchsia-400/[0.08] px-2.5 py-1 text-[11px] font-bold text-fuchsia-200">{character?.name ?? characterId}</span>;
-        })}</div> : null}
-        <p className="mt-2 line-clamp-2 min-h-12 text-sm leading-6 text-gray-400">{cut.shots.map((shot) => shot.action).join(' · ')}</p>
-        <div className="mt-4 grid grid-cols-2 gap-3"><FrameUpload projectId={project.id} cutId={cut.id} role="start" assetId={cut.startFrameAssetId}/><FrameUpload projectId={project.id} cutId={cut.id} role="end" assetId={cut.endFrameAssetId}/></div>
-        <button type="button" disabled={!imageGenerationEnabled} title={imageGenerationEnabled ? '선택 컷의 시작·끝 프레임을 생성합니다.' : '이미지 생성 모델과 유료 제출이 서버에서 비활성화되어 있습니다.'} className="mt-3 w-full rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-gray-400 disabled:cursor-not-allowed disabled:opacity-50">{imageGenerationEnabled ? 'AI 시작·끝 프레임 생성' : 'AI 이미지 생성 잠김'}</button>
-      </article>)}
+  if (!selected) return null;
+
+  return <div className="mt-6 space-y-5">
+    <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#111016]">
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
+        <div><div className="flex items-center gap-2"><span className="rounded-full bg-fuchsia-400/10 px-2.5 py-1 text-[10px] font-black tracking-[0.14em] text-fuchsia-300">STORY FLOW</span><span className="text-xs text-gray-500">전체 영상 흐름</span></div><h2 className="mt-2 text-lg font-black text-white">{storyboard.title}</h2><p className="mt-1 text-xs text-gray-500">컷을 선택하면 아래에서 샷별 시작·끝 상태와 연출을 정밀 검수할 수 있습니다.</p></div>
+        <div className="flex items-center gap-2 text-xs"><span className="rounded-full bg-white/5 px-3 py-1.5 text-gray-300">{storyboard.cuts.length} CUTS</span><span className="rounded-full bg-white/5 px-3 py-1.5 text-gray-300">{storyboard.cuts.reduce((sum, cut) => sum + cut.shots.length, 0)} SHOTS</span><span className="rounded-full bg-sky-400/10 px-3 py-1.5 font-bold text-sky-300">{storyboard.noBgm ? 'NO BGM' : '오디오 포함'}</span></div>
+      </header>
+      <div className="flex gap-3 overflow-x-auto p-4 [scrollbar-color:#3f3a49_transparent]">{storyboard.cuts.map((cut) => <button key={cut.id} type="button" draggable={!reviewOnly} onDragStart={() => { if (!reviewOnly) setDraggedId(cut.id); }} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(cut.id)} onClick={() => setSelectedCutId(cut.id)} className={`w-52 shrink-0 rounded-2xl p-2 text-left transition ${selected.id === cut.id ? 'bg-fuchsia-400/10 ring-1 ring-fuchsia-400/40' : 'bg-white/[0.025] hover:bg-white/[0.05]'}`}><CutPreview projectId={project.id} cut={cut} selected={selected.id === cut.id}/><div className="px-1 pb-1 pt-3"><p className="truncate text-xs font-black text-white">{cut.title}</p><p className="mt-1 text-[10px] text-gray-500">{cut.shots.length}개 샷 · {reviewOnly ? '선택해 상세 검수' : '드래그해 순서 변경'}</p></div></button>)}</div>
+    </section>
+
+    <div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_300px]">
+      <main className="min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0d0c12]">
+        <header className="border-b border-white/10 px-5 py-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className="text-xs font-black text-fuchsia-300">{selected.id}</span><span className="font-mono text-[11px] text-gray-600">{selected.absoluteStartSeconds.toFixed(1)}–{selected.absoluteEndSeconds.toFixed(1)}s</span></div><h2 className="mt-2 text-2xl font-black tracking-tight text-white">{selected.title}</h2></div><div className="flex flex-wrap gap-2">{selected.characterIds?.map((characterId) => { const character = characterSheets.find((sheet) => sheet.id === characterId); return <span key={characterId} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-gray-300">{character?.name ?? characterId}</span>; })}</div></div><div className="mt-4 flex flex-wrap items-center gap-3 text-xs"><span className="rounded-lg bg-fuchsia-400/10 px-2.5 py-1.5 font-black text-fuchsia-200">SHOT BREAKDOWN</span><span className="text-gray-500">한 컷을 {selected.shots.length}개 앵글로 분해한 정밀 콘티</span></div></header>
+
+        <div className="divide-y divide-white/[0.07]">{selected.shots.map((shot, shotIndex) => <article key={shot.id} className="grid gap-4 px-5 py-5 lg:grid-cols-[72px_minmax(0,1fr)_minmax(0,1fr)_240px]">
+          <div><p className="text-sm font-black text-white">S{shotIndex + 1}</p><p className="mt-1 font-mono text-[10px] text-gray-500">{shot.startSeconds.toFixed(1)}–{shot.endSeconds.toFixed(1)}s</p><div className="mt-3 h-1 overflow-hidden rounded-full bg-white/5"><div className="h-full bg-fuchsia-400" style={{width: `${Math.min(100, ((shot.endSeconds - shot.startSeconds) / Math.max(0.1, selected.absoluteEndSeconds - selected.absoluteStartSeconds)) * 100)}%`}}/></div></div>
+          <ShotStateFrame label="START" text={shot.startFrame} tone="start"/>
+          <ShotStateFrame label="END" text={shot.endFrame} tone="end"/>
+          <div className="space-y-3"><div><p className="text-[9px] font-black tracking-[0.15em] text-gray-600">CAMERA / MOVEMENT</p><p className="mt-1 text-xs font-bold leading-5 text-white">{shot.camera}</p></div><div><p className="text-[9px] font-black tracking-[0.15em] text-gray-600">ACTION</p><p className="mt-1 text-xs leading-5 text-gray-300">{shot.action}</p></div><div><p className="text-[9px] font-black tracking-[0.15em] text-amber-400/60">DIALOGUE</p><p className="mt-1 text-xs font-bold leading-5 text-amber-100">{shot.dialogue && shot.dialogue !== '—' ? `“${shot.dialogue}”` : '—'}</p></div>{shot.sfx && shot.sfx !== '—' ? <div><p className="text-[9px] font-black tracking-[0.15em] text-sky-400/60">SFX</p><p className="mt-1 text-xs leading-5 text-sky-100">{shot.sfx}</p></div> : null}</div>
+        </article>)}</div>
+
+        <footer className="grid border-t border-white/10 md:grid-cols-2"><div className="border-b border-white/10 p-5 md:border-b-0 md:border-r"><p className="text-[10px] font-black tracking-[0.16em] text-fuchsia-300">DIRECTOR&apos;S INTENT</p><p className="mt-2 text-xs leading-6 text-gray-300">{directorIntent || '이 컷의 행동 흐름을 확인하세요.'}</p><p className="mt-2 text-[10px] text-gray-600">현재 컷의 행동에서 요약 · AI 창작 메모 아님</p></div><div className="p-5"><p className="text-[10px] font-black tracking-[0.16em] text-sky-300">TRANSITION</p><p className="mt-2 text-xs leading-6 text-gray-300">{nextCut ? `${selected.shots.at(-1)?.endFrame ?? '현재 컷 종료'} → ${nextCut.title}의 ${nextCut.shots[0]?.startFrame ?? '시작 상태'}` : '마지막 컷 · 영상 종료 상태를 확인하세요.'}</p></div></footer>
+
+        <details className="border-t border-white/10 bg-white/[0.02] px-5 py-4"><summary className="cursor-pointer text-xs font-black text-gray-300">영상 생성용 이미지 준비 <span className="ml-2 font-normal text-gray-600">콘티 승인 후 START/END 프레임 등록</span></summary><p className="mt-2 max-w-3xl text-xs leading-5 text-gray-500">위 START/END는 샷의 이야기 상태입니다. 아래 이미지는 승인된 연출을 Seedance가 같은 시작과 끝으로 구현하도록 고정하는 정식 자산입니다.</p>{reviewOnly ? <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3 text-xs leading-5 text-amber-100">샘플 검토 모드에서는 이미지를 업로드하거나 프로젝트 데이터를 변경하지 않습니다.</div> : <><div className="mt-4 grid max-w-2xl grid-cols-2 gap-3"><FrameUpload projectId={project.id} cutId={selected.id} role="start" assetId={selected.startFrameAssetId}/><FrameUpload projectId={project.id} cutId={selected.id} role="end" assetId={selected.endFrameAssetId}/></div><button type="button" disabled={!imageGenerationEnabled} title={imageGenerationEnabled ? '선택 컷의 시작·끝 프레임을 생성합니다.' : '이미지 생성 모델과 유료 제출이 서버에서 비활성화되어 있습니다.'} className="mt-3 rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-gray-400 disabled:cursor-not-allowed disabled:opacity-50">{imageGenerationEnabled ? 'AI 시작·끝 프레임 생성' : 'AI 이미지 생성 잠김'}</button></>}</details>
+      </main>
+
+      <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-5 2xl:sticky 2xl:top-4"><p className="text-[10px] font-black tracking-[0.16em] text-fuchsia-300">SELECTED CUT</p><h3 className="mt-2 text-lg font-black text-white">{selected.id} · {selected.title}</h3><p className="mt-2 text-xs leading-5 text-gray-500">이 컷에서 바꾸고 싶은 내용을 평소 말하듯 입력하세요. 먼저 미리보기만 만들며 자동 적용되지 않습니다.</p><textarea value={instruction} disabled={reviewOnly} onChange={(event) => setInstruction(event.target.value)} rows={6} placeholder="예: S2를 인물 표정 클로즈업으로 바꾸고, 마지막 대사는 그대로 유지해줘" className="mt-4 w-full resize-none rounded-2xl border border-white/10 bg-black/30 p-3 text-sm leading-6 text-white placeholder:text-gray-600 focus:border-fuchsia-400 focus:outline-none"/><button type="button" onClick={() => void applyEdit()} disabled={reviewOnly || editing || !instruction.trim()} className="mt-3 w-full rounded-xl bg-fuchsia-600 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50">{editing ? '수정안 만드는 중…' : 'AI 수정안 미리보기'}</button>{previewCut ? <div className="mt-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-400/[0.07] p-4"><p className="text-[10px] font-black text-fuchsia-300">적용 전 변경안</p><p className="mt-2 text-sm font-black text-white">{previewCut.title}</p><p className="mt-2 text-xs leading-5 text-gray-400">{previewCut.shots.map((shot) => shot.action).join(' · ')}</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPreviewCut(undefined)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-gray-400">취소</button><button type="button" onClick={commitPreview} className="rounded-lg bg-fuchsia-500 px-3 py-2 text-xs font-black text-white">변경안 적용</button></div></div> : null}<p aria-live="polite" className="mt-3 text-xs leading-5 text-gray-500">{message || (reviewOnly ? '전체 흐름에서 컷을 선택해 샷별 연출을 검수할 수 있습니다.' : '전체 흐름에서 컷을 선택하거나 드래그해 순서를 바꿀 수 있습니다.')}</p></aside>
     </div>
-    <aside className="h-fit rounded-3xl border border-white/10 bg-[#15131a] p-5 xl:sticky xl:top-0">
-      <p className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-300">AI 컷 수정</p>
-      <h3 className="mt-2 font-black text-white">{selected?.id} · {selected?.title}</h3>
-      <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={5} placeholder="예: 제목을 따뜻한 첫인상으로 바꾸고, 루이가 카메라를 바라보게 해줘" className="mt-4 w-full resize-none rounded-2xl border border-white/10 bg-black/30 p-3 text-sm leading-6 text-white placeholder:text-gray-600 focus:border-fuchsia-400 focus:outline-none"/>
-      <button type="button" onClick={() => void applyEdit()} disabled={editing || !instruction.trim()} className="mt-3 w-full rounded-xl bg-fuchsia-600 px-4 py-2.5 text-sm font-black text-white hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-50">{editing ? 'DeepSeek 수정 중…' : 'AI 수정 미리보기'}</button>
-      {previewCut ? <div className="mt-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-400/[0.07] p-4"><p className="text-[11px] font-black text-fuchsia-300">적용 전 미리보기</p><p className="mt-2 text-sm font-black text-white">{previewCut.title}</p><p className="mt-2 text-xs leading-5 text-gray-400">{previewCut.shots.map((shot) => shot.action).join(' · ')}</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPreviewCut(undefined)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-gray-400">취소</button><button type="button" onClick={commitPreview} className="rounded-lg bg-fuchsia-500 px-3 py-2 text-xs font-black text-white">이 수정 적용</button></div></div> : null}
-      <p aria-live="polite" className="mt-3 text-xs leading-5 text-gray-500">{message || '드래그로 순서를 바꾸거나 선택한 컷을 자연어로 수정합니다.'}</p>
-      <div className={`mt-5 rounded-2xl border p-4 ${creativeApproved ? 'border-emerald-400/25 bg-emerald-400/[0.06]' : 'border-white/10 bg-black/20'}`}><p className={`text-sm font-black ${creativeApproved ? 'text-emerald-300' : 'text-white'}`}>{creativeApproved ? '✓ Creative 승인 완료' : '이 스토리보드를 확정할까요?'}</p><p className="mt-2 text-xs leading-5 text-gray-400">현재 {storyboard.cuts.length}개 컷 · START/END 프레임 미완료 {missingFrameCount}개. 확정 후 컷·캐릭터·기준 이미지를 바꾸면 승인이 자동 취소됩니다.</p>{creativeApproved ? null : <button type="button" disabled={isApproving || Boolean(previewCut)} onClick={() => void approveCurrentStoryboard()} className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-40">{isApproving ? '확정 중…' : '검수 완료 · 이 스토리보드 확정'}</button>}{previewCut ? <p className="mt-2 text-[11px] text-amber-200">먼저 수정 미리보기를 적용하거나 취소하세요.</p> : null}{approvalError ? <p role="alert" className="mt-2 text-xs text-red-300">{approvalError}</p> : null}</div>
-    </aside>
+
+    <section className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border px-5 py-4 shadow-2xl backdrop-blur-xl ${creativeApproved ? 'border-emerald-400/30 bg-[#10201b]/95' : 'border-amber-300/25 bg-[#191711]/95'}`}><div><div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${creativeApproved ? 'bg-emerald-400' : 'bg-amber-300'}`}/><p className={`text-sm font-black ${creativeApproved ? 'text-emerald-200' : 'text-white'}`}>{reviewOnly ? '샘플 검토 모드 · 실제 프로젝트 승인과 분리' : creativeApproved ? '현재 콘티 버전 승인 완료' : '전체 흐름과 선택 컷을 모두 확인했나요?'}</p></div><p className="mt-1 text-xs text-gray-400">{storyboard.cuts.length}개 컷 · {storyboard.cuts.reduce((sum, cut) => sum + cut.shots.length, 0)}개 샷 · 생성용 이미지 미완료 {missingFrameCount}개</p></div>{reviewOnly ? <span className="rounded-full border border-amber-400/25 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100">승인 제외</span> : creativeApproved ? <span className="rounded-full bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-300">Creative locked</span> : <button type="button" disabled={isApproving || Boolean(previewCut)} onClick={() => void approveCurrentStoryboard()} className="rounded-xl bg-emerald-400 px-5 py-3 text-sm font-black text-black shadow-[0_8px_30px_rgba(52,211,153,.2)] disabled:cursor-not-allowed disabled:opacity-40">{isApproving ? '현재 버전 잠그는 중…' : '검수 완료 · 현재 콘티 승인'}</button>}{previewCut ? <p className="basis-full text-[11px] text-amber-200">수정 미리보기를 적용하거나 취소한 뒤 승인할 수 있습니다.</p> : null}{approvalError ? <p role="alert" className="basis-full text-xs text-red-300">{approvalError}</p> : null}</section>
   </div>;
 }
-
 const TakeVideo = ({projectId, assetId, label}: {projectId: string; assetId?: string; label: string}) => {
   const url = useAssetPreview(projectId, assetId);
   return <div className="flex aspect-video items-center justify-center overflow-hidden rounded-2xl bg-black">{url ? <video src={url} controls muted playsInline className="h-full w-full object-contain"/> : <span className="text-sm text-gray-600">{label} 미리보기 없음</span>}</div>;

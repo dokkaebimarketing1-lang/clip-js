@@ -47,7 +47,7 @@ describe('storyboard to production derivation', () => {
     expect(merged.shotSpecs[0].continuityLockId).toBe('continuity-museum');
   });
 
-  it('never duplicates or destroys existing shot specs', () => {
+  it('재승인 시 storyboard 소유 필드는 최신 값으로 갱신하고 사용자 세부 설정은 보존한다', () => {
     const existing: ProductionManifest = {
       assets: [{
         id: 'asset-roco', tag: '@roco', type: 'character' as const, state: 'base', descriptor: 'Roco.',
@@ -77,8 +77,49 @@ describe('storyboard to production derivation', () => {
     expect(merged.shotSpecs).toHaveLength(2);
     const refined = merged.shotSpecs.find((spec) => spec.cutId === 'CUT01' && spec.shotId === 'S1');
     expect(refined?.optics).toBe('50mm');
-    expect(refined?.actionBeats[0].action).toBe('refined beat');
+    expect(refined?.actionBeats[0].action).toBe('Roco enters');
+    expect(refined?.camera).toEqual(['wide push-in']);
+    expect(refined?.audio.dialogue).toBe('—');
+    expect(refined?.positiveConstraints).toEqual([
+      'one character',
+      'match approved storyboard frame: museum wide → door open',
+    ]);
     expect(merged.shotSpecs.filter((spec) => spec.cutId === 'CUT01' && spec.shotId === 'S2')).toHaveLength(1);
+    expect(productionManifestSchema.parse(merged)).toBeTruthy();
+  });
+
+  it('재승인된 storyboard에서 삭제된 shot과 cut의 production lineage를 제거한다', () => {
+    const initial = deriveProductionFromStoryboard(storyboard);
+    const reduced: Storyboard = {
+      ...storyboard,
+      cuts: [{...storyboard.cuts[0], shots: [storyboard.cuts[0].shots[1]]}],
+    };
+    const staleShotTake = {
+      id: 'take-removed-shot', scope: 'shot' as const, shotSpecId: 'removed-spec',
+      structuredSpecHash: '1'.repeat(64), compiledPromptHash: '2'.repeat(64), assetBundleHash: '3'.repeat(64), continuityLockHash: '4'.repeat(64),
+      provider: 'test', model: 'test', verdict: 'pending' as const, selected: false, createdAt: '2026-08-14T00:00:00.000Z',
+      qcStatus: 'legacy' as const, takeApproval: {status: 'draft' as const},
+    };
+    const staleDescendantTake = {
+      ...staleShotTake, id: 'take-removed-descendant', scope: 'production' as const,
+      shotSpecId: undefined, parentTakeId: staleShotTake.id,
+    };
+    const staleGrandchildTake = {
+      ...staleDescendantTake, id: 'take-removed-grandchild', parentTakeId: staleDescendantTake.id,
+    };
+    const independentProductionTake = {
+      ...staleShotTake, id: 'take-production', scope: 'production' as const, shotSpecId: undefined,
+    };
+    const merged = deriveProductionFromStoryboard(reduced, {
+      ...initial,
+      continuityLocks: [...initial.continuityLocks, {...initial.continuityLocks[0], id: 'removed-lock', sceneId: 'CUT-REMOVED'}],
+      shotSpecs: [...initial.shotSpecs, {...initial.shotSpecs[0], id: 'removed-spec', cutId: 'CUT-REMOVED', shotId: 'S9', continuityLockId: 'removed-lock'}],
+      takes: [staleShotTake, staleDescendantTake, staleGrandchildTake, independentProductionTake],
+    });
+
+    expect(merged.shotSpecs.map((spec) => `${spec.cutId}/${spec.shotId}`)).toEqual(['CUT01/S2']);
+    expect(merged.continuityLocks.map((lock) => lock.sceneId)).toEqual(['CUT01']);
+    expect(merged.takes.map((take) => take.id)).toEqual(['take-production']);
     expect(productionManifestSchema.parse(merged)).toBeTruthy();
   });
 

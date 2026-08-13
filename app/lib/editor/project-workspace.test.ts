@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
   PROJECT_WORKSPACES,
+  getInitialProjectWorkspace,
   getProjectWorkspaceLayout,
   getWorkspaceInternalSteps,
   shouldShowSampleMedia,
@@ -28,6 +29,12 @@ describe('project workspace navigation', () => {
     expect(getProjectWorkspaceLayout('edit')).toEqual({showSources: true, showTimeline: true});
     expect(getProjectWorkspaceLayout('interview')).toEqual({showSources: false, showTimeline: false});
     expect(getProjectWorkspaceLayout('storyboard')).toEqual({showSources: false, showTimeline: false});
+  });
+
+  it('재진입하면 저장된 제작 진행 상태가 있는 화면부터 보여준다', () => {
+    expect(getInitialProjectWorkspace({planningApproved: false, hasStoryboard: false})).toBe('interview');
+    expect(getInitialProjectWorkspace({planningApproved: true, hasStoryboard: false})).toBe('reference');
+    expect(getInitialProjectWorkspace({planningApproved: true, hasStoryboard: true})).toBe('storyboard');
   });
 
   it('빈 프로젝트는 예시 자산을 자동 표시하지 않는다', () => {

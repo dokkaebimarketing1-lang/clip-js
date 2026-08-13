@@ -9,6 +9,10 @@ import {
     invalidateForReleaseChange,
 } from '@/app/lib/workflow/approval';
 import {generationInputs} from '@/app/lib/workflow/approval-v3';
+import {deriveProductionFromStoryboard} from '@/app/lib/workflow/storyboard-converter';
+import type {CreativeApprovalCommand} from '@/app/lib/workflow/creative-approval-apply';
+import type {StoryboardInstallCommand} from '@/app/lib/workflow/storyboard-apply';
+import {isPlanningRequestCurrent, type PlanningInstallCommand} from '@/app/lib/workflow/planning-apply';
 
 export const initialState: ProjectState = {
     projectSchemaVersion: 3,
@@ -138,6 +142,45 @@ const projectStateSlice = createSlice({
             const captionEnd = nextWorkflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
             state.duration = Math.max(mediaEnd, textEnd, captionEnd);
         },
+        setPlanningStatus: (state, action: PayloadAction<'draft' | 'approved'>) => {
+            state.workflow.planningStatus = action.payload;
+        },
+        installPlanningIfCurrent: (state, action: PayloadAction<PlanningInstallCommand>) => {
+            if (!isPlanningRequestCurrent(state.workflow, action.payload.expectedWorkflow)) return;
+            const nextWorkflow = invalidateForCreativeChange({
+                ...state.workflow,
+                planningStatus: 'draft',
+                interviewBrief: action.payload.interviewBrief,
+                styleBible: action.payload.styleBible,
+                styleBibleHash: action.payload.styleBibleHash,
+                characterSheet: action.payload.characterSheets[0],
+                characterSheets: action.payload.characterSheets,
+                storyboard: undefined,
+                seedanceMaster: action.payload.seedanceMaster,
+            });
+            state.workflow = workflowStateSchema.parse(nextWorkflow);
+        },
+        installStoryboardIfCurrent: (state, action: PayloadAction<StoryboardInstallCommand>) => {
+            const currentSheets = state.workflow.characterSheets ?? (state.workflow.characterSheet ? [state.workflow.characterSheet] : []);
+            if (
+                JSON.stringify(state.workflow.interviewBrief ?? null) !== JSON.stringify(action.payload.expectedInterviewBrief)
+                || JSON.stringify(state.workflow.styleBible ?? null) !== JSON.stringify(action.payload.expectedStyleBible)
+                || state.workflow.styleBibleHash !== action.payload.expectedStyleBibleHash
+                || JSON.stringify(currentSheets) !== JSON.stringify(action.payload.expectedCharacterSheets)
+            ) return;
+            state.workflow = invalidateForCreativeChange({...state.workflow, storyboard: action.payload.storyboard});
+        },
+        installCreativeApprovalIfCurrent: (state, action: PayloadAction<CreativeApprovalCommand>) => {
+            const currentSheets = state.workflow.characterSheets ?? (state.workflow.characterSheet ? [state.workflow.characterSheet] : []);
+            if (
+                JSON.stringify(state.workflow.storyboard ?? null) !== JSON.stringify(action.payload.expectedStoryboard)
+                || JSON.stringify(currentSheets) !== JSON.stringify(action.payload.expectedCharacterSheets)
+            ) return;
+            state.workflow.creativeApproval = action.payload.approval;
+            state.workflow.generationApproval = {status: 'invalidated'};
+            state.workflow.releaseApproval = {status: 'invalidated'};
+            state.workflow.production = deriveProductionFromStoryboard(action.payload.expectedStoryboard, state.workflow.production);
+        },
         setIncludeSubtitles: (state, action: PayloadAction<boolean>) => {
             state.exportSettings.includeSubtitles = action.payload;
             state.workflow.releaseApproval = invalidateApproval(state.workflow.releaseApproval);
@@ -208,6 +251,10 @@ export const {
     setFilesID,
     setExportSettings,
     setWorkflow,
+    setPlanningStatus,
+    installPlanningIfCurrent,
+    installStoryboardIfCurrent,
+    installCreativeApprovalIfCurrent,
     setIncludeSubtitles,
     setResolution,
     setQuality,
