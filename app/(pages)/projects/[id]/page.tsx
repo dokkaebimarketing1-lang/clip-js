@@ -322,7 +322,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     }
 
     return (
-        <div className="flex flex-col h-screen select-none">
+        <div className="flex h-screen select-none flex-col overflow-hidden bg-[#090a0f] text-gray-100">
             {saveStatus.state === 'error' && (
                 <div role="alert" className="z-[100] flex items-center justify-between gap-4 border-b border-red-500 bg-red-950 px-4 py-2 text-sm text-white">
                     <span>자동 저장 실패: {saveStatus.error ?? '프로젝트를 저장하지 못했습니다.'} 편집 내용은 아직 이 브라우저에만 있습니다.</span>
@@ -350,11 +350,12 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 ) : null
             }
             {/* 상단바: 로고/프로젝트명 + CTA + 저장상태 */}
-            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-800 bg-neutral-950 px-4">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-black tracking-tight text-fuchsia-400">ClipJS</span>
-                    <span className="h-4 w-px bg-gray-700" />
-                    <ProjectName />
+            <header className="flex h-14 shrink-0 items-center gap-4 border-b border-white/[0.08] bg-[#0c0d12]/95 px-4 shadow-[0_1px_0_rgba(255,255,255,.02)] backdrop-blur-xl">
+                <div className="flex min-w-0 items-center gap-3">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-xs font-black text-white shadow-[0_0_24px_rgba(217,70,239,.22)]">C</span>
+                    <span className="hidden text-sm font-black tracking-[-0.03em] text-white sm:inline">ClipJS</span>
+                    <span className="h-4 w-px shrink-0 bg-white/10" aria-hidden="true" />
+                    <div className="min-w-0"><ProjectName /></div>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                     <span className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${saveStatus.state === 'saved' ? 'text-emerald-400' : 'text-amber-400'}`}>
@@ -372,10 +373,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
             <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* 프로젝트 제작 단계 내비게이션 */}
-                <nav aria-label="프로젝트 제작 단계" className="relative z-50 flex w-[132px] shrink-0 flex-col border-r border-gray-800 bg-neutral-950 p-2">
-                    <div className="mb-2 [&_a]:h-10 [&_a]:w-full [&_a]:flex-row [&_a]:gap-2 [&_a]:px-2 [&_img]:max-h-[16px] [&_img]:max-w-[16px] [&_span]:text-[10px]"><HomeButton /></div>
-                    <div className="mb-2 border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">제작</div>
-                    <div className="space-y-1">
+                <nav aria-label="프로젝트 제작 단계" className="relative z-50 flex w-[76px] shrink-0 flex-col border-r border-white/[0.08] bg-[#0c0d12] p-2 lg:w-[164px] lg:p-3">
+                    <div className="mb-3 [&_a]:h-10 [&_a]:w-full [&_a]:flex-row [&_a]:justify-center [&_a]:gap-2 [&_a]:px-2 [&_img]:max-h-[16px] [&_img]:max-w-[16px] [&_span]:hidden lg:[&_a]:justify-start lg:[&_span]:inline lg:[&_span]:text-[11px]"><HomeButton /></div>
+                    <div className="mb-2 hidden border-t border-white/[0.08] pt-3 text-[9px] font-black uppercase tracking-[0.2em] text-gray-600 lg:block">제작 흐름</div>
+                    <div className="space-y-1.5">
                         {PROJECT_WORKSPACES.map((item) => {
                             const planningLocked = !sampleMode && item.id !== 'interview' && projectState.workflow.planningStatus !== 'approved';
                             return (
@@ -383,13 +384,14 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 key={item.id}
                                 type="button"
                                 aria-current={workspace === item.id ? 'page' : undefined}
+                                aria-label={`${item.step}단계 ${item.label}${planningLocked ? ' · 기획 확정 후 이용 가능' : ''}`}
                                 disabled={planningLocked}
-                                title={planningLocked ? 'AI 기획 초안을 먼저 검수하고 확정하세요.' : undefined}
+                                title={planningLocked ? 'AI 기획 초안을 먼저 검수하고 확정하세요.' : `${item.step}단계 ${item.label}`}
                                 onClick={() => setWorkspace(item.id)}
-                                className={`group flex w-full items-center gap-2 rounded-lg border px-2 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-35 ${workspace === item.id ? 'border-fuchsia-500/60 bg-fuchsia-500/15 text-white shadow-[inset_3px_0_0_#d946ef]' : 'border-transparent text-gray-400 hover:border-white/10 hover:bg-white/5 hover:text-gray-200'}`}
+                                className={`group flex w-full items-center justify-center gap-2 rounded-xl border px-2 py-2.5 text-left transition-[border-color,background-color,color,box-shadow] lg:justify-start ${workspace === item.id ? 'border-fuchsia-400/35 bg-fuchsia-400/[0.1] text-white shadow-[inset_3px_0_0_#d946ef]' : 'border-transparent text-gray-500 hover:border-white/10 hover:bg-white/[0.045] hover:text-gray-200'} disabled:cursor-not-allowed disabled:opacity-35`}
                             >
-                                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-black ${workspace === item.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-500 group-hover:text-gray-300'}`}>{item.step}</span>
-                                <span className="whitespace-nowrap text-[11px] font-bold leading-tight">{item.label}</span>
+                                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-black ${workspace === item.id ? 'bg-gradient-to-br from-fuchsia-500 to-violet-600 text-white shadow-[0_0_18px_rgba(217,70,239,.22)]' : 'bg-white/[0.055] text-gray-500 group-hover:text-gray-300'}`}>{item.step}</span>
+                                <span className="hidden whitespace-nowrap text-[11px] font-bold leading-tight lg:inline">{item.label}</span>
                             </button>
                             );
                         })}
@@ -469,7 +471,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </main>
 
                 {/* 스토리보드는 자체 선택 컷 inspector를 사용한다. 다른 단계의 운영 도구는 고급 탭으로 격리한다. */}
-                {workspace !== 'storyboard' ? <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-l border-gray-800 bg-neutral-900">
+                {workspace !== 'storyboard' ? <aside aria-label="단계 도구" className="hidden min-h-0 w-[286px] shrink-0 flex-col border-l border-white/[0.08] bg-[#0d0f15] lg:flex 2xl:w-[320px]">
                     <div className="flex shrink-0 border-b border-gray-800">
                         <button
                             type="button"
@@ -507,7 +509,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             </div>
                         )}
                     </div>
-                </div> : null}
+                </aside> : null}
             </div>
         </div>
     );

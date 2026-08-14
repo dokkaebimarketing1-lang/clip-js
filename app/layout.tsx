@@ -1,5 +1,5 @@
 import './globals.css'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Roboto_Mono } from "next/font/google";
 import { Providers } from './providers'
 import Header from "./components/header/Header";
@@ -18,8 +18,15 @@ const geistMono = Roboto_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'ClipJS',
-  description: 'A free online video editor that enables you to edit videos directly from your web browser.',
+  title: {
+    default: 'ClipJS · AI 영상 제작 스튜디오',
+    template: '%s · ClipJS',
+  },
+  description: '기획부터 캐릭터, 콘티, 생성, 편집까지 한 흐름으로 완성하는 AI 영상 제작 스튜디오',
+}
+
+export const viewport: Viewport = {
+  themeColor: '#08090d',
 }
 
 export default function RootLayout({
@@ -28,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ko" suppressHydrationWarning>
       <body
         className={`min-h-screen flex flex-col bg-darkSurfacePrimary text-text-primary dark:bg-darkSurfacePrimary dark:text-dark-text-primary font-sans ${geistSans.variable} ${geistMono.variable} antialiased`}
       >

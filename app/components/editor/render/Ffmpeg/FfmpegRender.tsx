@@ -162,7 +162,7 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                 // Apply text 
                 if (textElements.length > 0) {
                     // load fonts
-                    let fonts = ['Arial', 'Inter', 'Lato'];
+                    const fonts = ['Arial', 'Inter', 'Lato'];
                     for (let i = 0; i < fonts.length; i++) {
                         const font = fonts[i];
                         const res = await fetch(`/fonts/${font}.ttf`);
@@ -305,13 +305,13 @@ export default function FfmpegRender({ loadFunction, loadFfmpeg, ffmpeg, logMess
                                         <span className="ml-2">영상 저장</span>
                                     </a>
                                     <a
-                                        href="https://github.com/sponsors/mohyware"
+                                        href="https://aikkumhub.com"
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className={`inline-flex items-center p-3 bg-pink-600 hover:bg-pink-500 rounded-lg text-gray-900 font-bold transition-all transform`}
+                                        className={`inline-flex items-center p-3 bg-fuchsia-700 hover:bg-fuchsia-600 rounded-lg text-white font-bold transition-colors`}
                                     >
                                         <Heart size={20} className="mr-2" />
-                                        GitHub 후원
+                                        AI꿈 Hub
                                     </a>
                                 </div>
                             </div>

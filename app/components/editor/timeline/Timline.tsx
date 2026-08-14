@@ -205,8 +205,8 @@ export const Timeline = () => {
 
     return (
         <div className="flex w-full flex-col gap-2">
-            <div className="flex flex-row items-center justify-between gap-12 w-full">
-                <div className="flex flex-row items-center gap-2">
+            <div className="flex w-full flex-row items-center justify-between gap-3">
+                <div className="flex shrink-0 flex-row items-center gap-2">
                     {/* Track Marker */}
                     <button
                         onClick={() => dispatch(setMarkerTrack(!enableMarkerTracking))}
@@ -272,8 +272,8 @@ export const Timeline = () => {
                 </div>
 
                 {/* Timeline Zoom */}
-                <div className="flex flex-row justify-between items-center gap-2 mr-4">
-                    <label className="block text-xs mt-1 font-semibold text-white">확대/축소</label>
+                <div className="mr-2 flex shrink-0 flex-row items-center gap-1.5">
+                    <label className="whitespace-nowrap text-[11px] font-semibold text-gray-300">확대/축소</label>
                     <span className="text-white text-lg">-</span>
                     <input
                         type="range"
@@ -282,7 +282,7 @@ export const Timeline = () => {
                         step="1"
                         value={timelineZoom}
                         onChange={(e) => throttledZoom(Number(e.target.value))}
-                        className="w-[100px] bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:border-white-500"
+                        className="w-[72px] rounded border border-white/10 bg-darkSurfacePrimary text-white shadow-md focus:outline-none focus:ring-2 focus:ring-fuchsia-400 2xl:w-[100px]"
                     />
                     <span className="text-white text-lg">+</span>
                 </div>
