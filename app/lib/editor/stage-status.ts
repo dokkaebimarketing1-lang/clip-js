@@ -42,7 +42,8 @@ export const deriveStageStepStates = async ({workspace, project, hasSubmittedGen
   const allCharacterImages = sheets.length > 0 && sheets.every((sheet) => Boolean(sheet.referenceImageId));
   const hasStyleAnchor = hasStyleBible;
   const allCharactersLocked = hasStyleBible;
-  const storyboardIsCurrent = isStoryboardBuiltFromCharacterReferences(workflow.storyboard, sheets, workflow.styleBibleHash);
+  const storyboardIsCurrent = hasStyleBible
+    && isStoryboardBuiltFromCharacterReferences(workflow.storyboard, sheets, workflow.styleBibleHash);
 
   let creativeApproved = false;
   if (storyboardIsCurrent && workflow.storyboard && workflow.creativeApproval.status === 'approved') {

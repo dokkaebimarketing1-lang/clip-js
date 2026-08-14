@@ -84,6 +84,20 @@ describe('pipeline-aligned stage status', () => {
     expect(states['style-bible']).toBe('waiting');
   });
 
+  it('Style Bible 본문이 현재 hash와 다르면 storyboard와 downstream 승인을 완료로 표시하지 않는다', async () => {
+    const workflow = await currentWorkflow();
+    workflow.generationApproval = await approveGeneration(workflow.storyboard!, workflow.production, workflow.seedanceMaster, 'owner');
+    workflow.styleBible = {...styleBible, lighting: '변경된 조명'};
+
+    const storyboardStates = await statesFor(projectFor(workflow), 'storyboard');
+    const generationStates = await statesFor(projectFor(workflow), 'generation', true);
+
+    expect(storyboardStates.storyboard).toBe('current');
+    expect(storyboardStates['creative-approval']).toBe('waiting');
+    expect(generationStates['generation-approval']).toBe('waiting');
+    expect(generationStates['generation-job']).toBe('waiting');
+  });
+
   it('현재 blueprint exact-match Generation 승인과 제출 상태를 분리한다', async () => {
     const workflow = await currentWorkflow();
     workflow.generationApproval = await approveGeneration(workflow.storyboard!, workflow.production, workflow.seedanceMaster, 'owner');
