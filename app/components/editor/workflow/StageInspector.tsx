@@ -25,14 +25,16 @@ export default function StageInspector({workspace, project, sampleMode, hasSubmi
   } | null>(null);
 
   useEffect(() => {
+    if (sampleMode) return;
     let current = true;
     void deriveStageStepStates({workspace, project, hasSubmittedGeneration}).then((next) => {
       if (current) setResult({project, workspace, hasSubmittedGeneration, states: next});
     });
     return () => { current = false; };
-  }, [hasSubmittedGeneration, project, workspace]);
+  }, [hasSubmittedGeneration, project, sampleMode, workspace]);
 
-  const states = result?.project === project && result.workspace === workspace && result.hasSubmittedGeneration === hasSubmittedGeneration ? result.states : null;
+  const sampleStates = Object.fromEntries(steps.map((step, index) => [step.id, index === 0 ? 'current' : 'pending'])) as Record<string, StageStepState>;
+  const states = sampleMode ? sampleStates : result?.project === project && result.workspace === workspace && result.hasSubmittedGeneration === hasSubmittedGeneration ? result.states : null;
   const completeCount = states ? steps.filter((step) => states[step.id] === 'complete').length : 0;
   const hasBrief = Boolean(workflow.interviewBrief);
   const characterCount = workflow.characterSheets?.length ?? (workflow.characterSheet ? 1 : 0);
@@ -68,13 +70,13 @@ export default function StageInspector({workspace, project, sampleMode, hasSubmi
       </ol>
 
       <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4" aria-labelledby="project-data-title">
-        <h3 id="project-data-title" className="text-xs font-extrabold text-gray-300">프로젝트 현황</h3>
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
+        <h3 id="project-data-title" className="text-xs font-extrabold text-gray-300">{sampleMode ? '샘플 현황' : '프로젝트 현황'}</h3>
+        {sampleMode ? <p className="mt-4 text-xs leading-5 text-gray-500">예시 자산만 표시합니다. 실제 프로젝트의 기획·캐릭터·콘티·승인 수는 샘플 화면에 노출하지 않습니다.</p> : <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
           <div><dt className="text-[10px] text-gray-600">기획 초안</dt><dd className="mt-1 text-sm font-black text-gray-200">{hasBrief ? '준비됨' : '없음'}</dd></div>
           <div><dt className="text-[10px] text-gray-600">캐릭터</dt><dd className="clip-number mt-1 text-sm font-black text-gray-200">{characterCount}명</dd></div>
           <div><dt className="text-[10px] text-gray-600">콘티</dt><dd className="mt-1 text-sm font-black text-gray-200">{hasStoryboard ? '준비됨' : '없음'}</dd></div>
           <div><dt className="text-[10px] text-gray-600">승인 Take</dt><dd className="clip-number mt-1 text-sm font-black text-gray-200">{approvedTakeCount}개</dd></div>
-        </dl>
+        </dl>}
       </section>
 
       <div>

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import {FormEvent, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {useAppDispatch, useAppSelector} from '@/app/store';
 import {
   acknowledgeProjectRevision,
@@ -122,9 +122,12 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const [storyboardError, setStoryboardError] = useState<string | null>(null);
   const [isLockingStyle, setIsLockingStyle] = useState(false);
   const [pendingStyleAnchorId, setPendingStyleAnchorId] = useState<string | null>(null);
+  const composeControllerRef = useRef<AbortController | null>(null);
   const workflowRef = useRef(workflow);
   const projectStateRef = useRef(projectState);
   const characterSheetsRef = useRef(allCharacterSheets);
+  const sampleModeRef = useRef(sampleMode);
+  useLayoutEffect(() => { sampleModeRef.current = sampleMode; }, [sampleMode]);
   useEffect(() => { workflowRef.current = workflow; }, [workflow]);
   useEffect(() => { projectStateRef.current = projectState; }, [projectState]);
   useEffect(() => { characterSheetsRef.current = allCharacterSheets; }, [allCharacterSheets]);
@@ -137,12 +140,13 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const progress = deriveCreationProgress({brief: interviewBrief, styleBible, styleBibleHash, characterSheets: allCharacterSheets, hasStoryboard: storyboardIsCurrent, workspace});
 
   useEffect(() => {
-    if (storyboard && allCharacterSheets.every((sheet) => sheet.referenceImageId) && !storyboardIsCurrent) {
+    if (!sampleMode && storyboard && allCharacterSheets.every((sheet) => sheet.referenceImageId) && !storyboardIsCurrent) {
       dispatch(setWorkflow(invalidateForCreativeChange({...workflowRef.current, storyboard: undefined})));
     }
-  }, [allCharacterSheets, dispatch, storyboard, storyboardIsCurrent]);
+  }, [allCharacterSheets, dispatch, sampleMode, storyboard, storyboardIsCurrent]);
 
   const connectCharacterReference = useCallback((characterId: string, assetId: string, previewUrl: string, lineage?: {styleBibleHash: string; styleReferenceImageIds: string[]}) => {
+    if (sampleModeRef.current) return;
     const nextSheets = characterSheetsRef.current.map((sheet) =>
       (sheet.id ?? sheet.name) === characterId ? {...sheet, referenceImageId: assetId, referenceStyleHash: lineage?.styleBibleHash, styleReferenceImageIds: lineage?.styleReferenceImageIds} : sheet,
     );
@@ -156,6 +160,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }, [dispatch]);
 
   useEffect(() => {
+    if (sampleMode) return;
     const pending = allCharacterSheets.filter((sheet) => {
       const characterId = sheet.id ?? sheet.name;
       return sheet.referenceImageId
@@ -180,20 +185,25 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       if (!cancelled) setCharacterPreviewUrls((current) => ({...current, ...Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1])))}));
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [allCharacterSheets, characterPreviewUrls, projectId]);
+  }, [allCharacterSheets, characterPreviewUrls, projectId, sampleMode]);
 
   const compose = async (event: FormEvent) => {
     event.preventDefault();
+    if (sampleModeRef.current) return;
     const input = sentence.trim();
     if (!input || isComposing) return;
     setIsComposing(true);
     setComposeError(null);
     const expectedWorkflow = workflowRef.current;
+    composeControllerRef.current?.abort();
+    const controller = new AbortController();
+    composeControllerRef.current = controller;
     try {
       const response = await fetch('/api/vlog/compose', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({sentence: input}),
+        signal: controller.signal,
       });
       const payload = await response.json() as Record<string, unknown>;
       if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'AI 기획을 완료하지 못했습니다.');
@@ -208,14 +218,18 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
         characterSheets: parsedSheets,
         seedanceMaster: payload.seedanceMaster,
       });
+      if (controller.signal.aborted || sampleModeRef.current) return;
       const stillCurrent = isPlanningRequestCurrent(workflowRef.current, command.expectedWorkflow);
       dispatch(installPlanningIfCurrent(command));
       if (stillCurrent) setShowRecompose(false);
       else setComposeError('AI 기획 중 프로젝트 내용이 변경되어 이전 요청의 결과를 적용하지 않았습니다. 현재 내용을 확인한 뒤 다시 요청하세요.');
     } catch (error) {
-      setComposeError(error instanceof Error ? error.message : 'AI 기획을 완료하지 못했습니다.');
+      if (!controller.signal.aborted) setComposeError(error instanceof Error ? error.message : 'AI 기획을 완료하지 못했습니다.');
     } finally {
-      setIsComposing(false);
+      if (composeControllerRef.current === controller) {
+        composeControllerRef.current = null;
+        setIsComposing(false);
+      }
     }
   };
 
@@ -244,6 +258,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }), []);
 
   const persistCompletedStoryboardJob = useCallback(async (job: StoryboardJobResponse) => {
+    if (sampleModeRef.current) throw new Error('SAMPLE_READ_ONLY');
     if (job.status !== 'completed') throw new Error('완료되지 않은 콘티 작업입니다.');
     const snapshot = applyCompletedStoryboardJob(projectStateRef.current, job);
     const command = prepareCompletedStoryboardJobCommand(job);
@@ -257,7 +272,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }, [dispatch, flushProjectChanges, projectId]);
 
   const pollStoryboardJob = useCallback(async (jobId: string, signal: AbortSignal) => {
-    while (!signal.aborted && projectStateRef.current.id === projectId) {
+    while (!signal.aborted && !sampleModeRef.current && projectStateRef.current.id === projectId) {
       setStoryboardJobStatus((current) => current === 'recovering' ? 'recovering' : 'processing');
       const response = await fetch('/api/vlog/storyboard', {
         method: 'POST',
@@ -274,7 +289,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
         throw new Error(error);
       }
       const job = storyboardJobResponseSchema.parse(raw);
-      if (signal.aborted || projectStateRef.current.id !== projectId) return;
+      if (signal.aborted || sampleModeRef.current || projectStateRef.current.id !== projectId) return;
       setStoryboardJobId(job.jobId);
       if (job.status === 'completed') {
         await persistCompletedStoryboardJob(job);
@@ -297,6 +312,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }, [persistCompletedStoryboardJob, projectId]);
 
   const startStoryboardPolling = useCallback((jobId: string, recovering = false) => {
+    if (sampleModeRef.current) return;
     storyboardPollControllerRef.current?.abort();
     const controller = new AbortController();
     storyboardPollControllerRef.current = controller;
@@ -315,7 +331,16 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     });
   }, [pollStoryboardJob, projectId]);
 
-  useEffect(() => () => storyboardPollControllerRef.current?.abort(), []);
+  useEffect(() => () => {
+    storyboardPollControllerRef.current?.abort();
+    composeControllerRef.current?.abort();
+  }, []);
+  useEffect(() => {
+    if (sampleMode) {
+      storyboardPollControllerRef.current?.abort();
+      composeControllerRef.current?.abort();
+    }
+  }, [sampleMode]);
 
   useEffect(() => {
     if (sampleMode || storyboardIsCurrent || !currentStoryboardInput || currentStoryboardJobId) return;
@@ -352,19 +377,21 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }, [currentStoryboardInput, currentStoryboardJobId, projectId, sampleMode, startStoryboardPolling, storyboardIsCurrent]);
 
   const generateStoryboard = async () => {
-    if (!currentStoryboardInput || storyboardBusy) return;
+    if (sampleModeRef.current || !currentStoryboardInput || storyboardBusy) return;
     setStoryboardError(null);
     setStoryboardJobProjectId(projectId);
     setStoryboardJobStatus('queued');
     onNavigate('storyboard');
     try {
       await flushProjectChanges();
+      if (sampleModeRef.current) return;
       const response = await fetch('/api/vlog/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
         body: JSON.stringify(currentStoryboardInput),
       });
       const raw = await response.json() as unknown;
+      if (sampleModeRef.current) return;
       if (!response.ok) {
         const error = raw && typeof raw === 'object' && 'error' in raw && typeof raw.error === 'string'
           ? raw.error
@@ -374,13 +401,14 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       const job = storyboardJobResponseSchema.parse(raw);
       startStoryboardPolling(job.jobId);
     } catch (error) {
-      if (projectStateRef.current.id !== projectId) return;
+      if (sampleModeRef.current || projectStateRef.current.id !== projectId) return;
       setStoryboardJobStatus('failed');
       setStoryboardError(error instanceof Error ? error.message : '스토리보드 작업을 시작하지 못했습니다.');
     }
   };
 
   const saveBriefDraft = () => {
+    if (sampleModeRef.current) return;
     const parsed = interviewBriefSchema.safeParse(briefDraft);
     if (!parsed.success) {
       setComposeError('주제·장면·길이·분위기·대사를 모두 확인해 주세요.');
@@ -397,7 +425,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   const startCharacterImageGeneration = async () => {
-    if (!activeCharacter?.id || !styleBible || !styleBibleHash || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
+    if (sampleModeRef.current || !activeCharacter?.id || !styleBible || !styleBibleHash || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
     const targetCharacterId = activeCharacter.id;
     setCharacterUploadError(null);
     setGenerationCharacterId(targetCharacterId);
@@ -435,15 +463,16 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   useEffect(() => {
-    if (!imageGenerationJobId || !['queued', 'processing'].includes(imageGenerationStatus)) return;
+    if (sampleMode || !imageGenerationJobId || !['queued', 'processing'].includes(imageGenerationStatus)) return;
     let cancelled = false;
     const poll = async () => {
+      if (sampleModeRef.current) return;
       try {
         const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image?jobId=${encodeURIComponent(imageGenerationJobId)}&characterId=${encodeURIComponent(generationCharacterId ?? '')}`);
         const payload = await response.json() as {status?: string; assetId?: string; previewUrl?: string; lineage?: {styleBibleHash: string; styleReferenceImageIds: string[]}; error?: string};
         if (!response.ok) throw new Error(payload.error ?? '이미지 상태 조회 실패');
         if (payload.status === 'completed' && payload.assetId && payload.previewUrl) {
-          if (cancelled) return;
+          if (cancelled || sampleModeRef.current) return;
           if (!generationCharacterId) throw new Error('생성 대상 캐릭터를 확인하지 못했습니다.');
           connectCharacterReference(generationCharacterId, payload.assetId, payload.previewUrl, payload.lineage);
           setCompletedCharacterId(generationCharacterId);
@@ -466,10 +495,10 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     void poll();
     const timer = window.setInterval(() => void poll(), 4000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [connectCharacterReference, generationCharacterId, imageGenerationJobId, imageGenerationStatus, projectId]);
+  }, [connectCharacterReference, generationCharacterId, imageGenerationJobId, imageGenerationStatus, projectId, sampleMode]);
 
   const uploadCharacterReference = async (file: File) => {
-    if (!activeCharacter || isUploadingCharacter) return;
+    if (sampleModeRef.current || !activeCharacter || isUploadingCharacter) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setCharacterUploadError('PNG, JPEG, WebP 이미지만 등록할 수 있습니다.');
       return;
@@ -497,12 +526,13 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   };
 
   const lockActiveReferenceAsProjectStyle = async () => {
-    if (!activeCharacter?.referenceImageId || pendingStyleAnchorId !== activeCharacter.referenceImageId || !interviewBrief || isLockingStyle) return;
+    if (sampleModeRef.current || !activeCharacter?.referenceImageId || pendingStyleAnchorId !== activeCharacter.referenceImageId || !interviewBrief || isLockingStyle) return;
     setIsLockingStyle(true);
     setCharacterUploadError(null);
     try {
       const response = await fetch('/api/vlog/style-bible', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({projectId, anchorReferenceImageId: activeCharacter.referenceImageId, tone: interviewBrief.tone})});
       const payload = await response.json() as {styleBible?: unknown; styleBibleHash?: string; error?: string};
+      if (sampleModeRef.current) return;
       if (!response.ok || !payload.styleBibleHash) throw new Error(payload.error ?? '스타일 기준을 확정하지 못했습니다.');
       const lockedBible = styleBibleSchema.parse(payload.styleBible);
       const nextSheets = characterSheetsRef.current.map((sheet) => sheet.id === activeCharacter.id
@@ -512,16 +542,38 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
       setPendingStyleAnchorId(null);
       setConfirmImageCredit(false);
     } catch (error) {
+      if (sampleModeRef.current) return;
       setCharacterUploadError(error instanceof Error ? error.message : '스타일 기준을 확정하지 못했습니다.');
     } finally { setIsLockingStyle(false); }
   };
+
+  if (workspace === 'interview' && sampleMode) {
+    return (
+      <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
+        <div className="mx-auto flex min-h-full max-w-5xl flex-col">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">1 · 아이디어 입력</p>
+            <h1 className="mt-2 text-3xl font-black text-white text-balance">어떤 영상을 만들고 싶으세요?</h1>
+            <p className="mt-2 text-sm leading-6 text-gray-400">샘플 모드에서는 입력과 AI 기획 실행을 체험용 화면으로만 확인하며 프로젝트 데이터는 변경하지 않습니다.</p>
+          </div>
+          <div className="mt-10 max-w-3xl rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-6">
+            <p className="text-sm font-black text-amber-200">샘플 전용 · 읽기 전용</p>
+            <p className="mt-2 text-sm leading-6 text-amber-100/70">실제 기획을 만들려면 샘플 모드를 종료하고 프로젝트에서 아이디어를 입력하세요.</p>
+            <label htmlFor="sample-video-concept" className="sr-only">영상 콘셉트 샘플</label>
+            <textarea id="sample-video-concept" value="따뜻한 오후의 거실에서 크림색 시바견이 카메라를 바라보는 20초 브랜드 필름" readOnly disabled rows={3} className="mt-5 w-full resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-base leading-6 text-gray-400"/>
+            <button type="button" disabled className="mt-3 rounded-xl bg-fuchsia-500 px-5 py-2.5 text-sm font-black text-white opacity-40">이 내용으로 기획 만들기 →</button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (workspace === 'interview') {
     const planningApproved = workflow.planningStatus === 'approved';
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
         <div className="mx-auto flex min-h-full max-w-5xl flex-col">
-          <div className="flex items-start justify-between gap-6">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between sm:gap-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">1 · 아이디어 입력</p>
               <h1 className="mt-2 text-3xl font-black text-white text-balance">어떤 영상을 만들고 싶으세요?</h1>
@@ -571,8 +623,8 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }
 
   if (workspace === 'reference') {
-    const useSampleReference = shouldUseSampleFallback(sampleMode, allCharacterSheets.length > 0);
-    const displayed = activeCharacter ?? (useSampleReference ? SAMPLE_CHARACTER : undefined);
+    const useSampleReference = sampleMode || shouldUseSampleFallback(sampleMode, allCharacterSheets.length > 0);
+    const displayed = (useSampleReference ? SAMPLE_CHARACTER : activeCharacter) as CharacterSheet | undefined;
     const activeKey = displayed ? displayed.id ?? displayed.name : '';
     const activePreviewUrl = characterPreviewUrls[activeKey];
     const readyCount = allCharacterSheets.filter((sheet) => sheet.referenceImageId).length;
@@ -631,7 +683,8 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   }
 
   if (workspace === 'storyboard') {
-    const displayedStoryboard = storyboard ?? (sampleMode ? SAMPLE_STORYBOARD : undefined);
+    const useSampleStoryboard = sampleMode;
+    const displayedStoryboard = useSampleStoryboard ? SAMPLE_STORYBOARD : storyboard;
     const cuts = displayedStoryboard?.cuts ?? [];
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
@@ -640,14 +693,14 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <h1 className="mt-2 text-3xl font-black text-white">장면의 흐름을 검수합니다</h1>
           <p className="mt-2 text-sm text-gray-400">이미지가 없는 실제 컷에는 빈 상태를 표시합니다. 샘플 이미지는 승인 해시에 포함되지 않습니다.</p>
           <DecisionPath items={['콘티 생성', '컷·샷 직접 검수', '필요한 컷 수정', '현재 버전 콘티 전체 승인']}/>
-          {storyboardBusy ? <div role="status" aria-live="polite" className="mt-8 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.07] p-10 text-center"><span className="h-12 w-12 animate-pulse rounded-full border-4 border-fuchsia-300 border-t-transparent"/><p className="mt-6 text-xl font-black text-white">스토리 콘티를 구성하고 있습니다</p><p className="mt-2 max-w-xl text-sm leading-6 text-gray-300">작업 상태는 안전하게 저장됩니다. 이 화면을 닫거나 새로고침해도 같은 프로젝트에서 진행 상태와 결과를 복구합니다.</p></div> : currentStoryboardError && !cuts.length ? <div className="mt-8"><EmptyState title="스토리보드를 만들지 못했습니다" description={currentStoryboardError} action={<div className="flex flex-wrap justify-center gap-3"><button type="button" onClick={() => onNavigate('reference')} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-black text-white">기준 시트 확인</button><button type="button" onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white">스토리보드 다시 시도</button></div>}/></div> : !cuts.length ? <div className="mt-8">{progress.state === 'character-ready' ? <div className="rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/[0.08] p-8 text-center"><h2 className="text-2xl font-black text-white">기준 이미지 검수가 끝났습니다</h2><p className="mt-3 text-sm leading-6 text-gray-400">확정한 캐릭터 이미지와 프로젝트 화풍을 입력으로 스토리 콘티를 만듭니다. 생성 후 컷별 화면·행동·카메라·대사를 직접 수정하고 승인할 수 있습니다.</p><button type="button" onClick={() => void generateStoryboard()} className="mt-5 rounded-xl bg-fuchsia-500 px-6 py-3 text-sm font-black text-white">스토리 콘티 생성</button></div> : <div className="rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-8 text-center"><h2 className="text-2xl font-black text-white">캐릭터 검수가 아직 끝나지 않았습니다</h2><p className="mt-3 text-sm leading-6 text-gray-300">{progress.state === 'style-review-needed' ? `프로젝트 화풍과 일치하지 않는 캐릭터 ${Math.max(0, characterCount - styleConfirmedCharacterCount)}명이 남았습니다.` : `기준 이미지가 없는 캐릭터 ${Math.max(0, characterCount - readyCharacterCount)}명이 남았습니다.`}</p><p className="mt-1 text-xs text-gray-500">기준 시트에서 이미지를 직접 확인하고 확정해야 스토리 콘티를 만들 수 있습니다.</p><button type="button" onClick={() => onNavigate('reference')} className="mt-5 rounded-xl bg-amber-300 px-6 py-3 text-sm font-black text-black">기준 시트로 돌아가기</button></div>}</div> : displayedStoryboard ? <><div className={`mt-8 rounded-3xl border p-5 ${storyboard ? 'border-emerald-400/25 bg-emerald-400/[0.07]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${storyboard ? 'text-emerald-200' : 'text-amber-100'}`}>{storyboard ? `✓ ${storyboard.cuts.length}개 컷의 스토리 콘티가 준비됐습니다` : '샘플 검토 모드 · 실제 프로젝트 데이터와 분리'}</p><p className="mt-2 text-sm text-gray-300">전체 흐름을 먼저 확인한 뒤 컷을 선택해 START→END, 카메라, 행동, 대사와 SFX를 샷 단위로 검수하세요.</p></div><StoryboardStudio storyboard={displayedStoryboard} characterSheets={storyboard ? allCharacterSheets : []} reviewOnly={!storyboard}/></> : null}
+          {!sampleMode && storyboardBusy ? <div role="status" aria-live="polite" className="mt-8 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.07] p-10 text-center"><span className="h-12 w-12 animate-pulse rounded-full border-4 border-fuchsia-300 border-t-transparent"/><p className="mt-6 text-xl font-black text-white">스토리 콘티를 구성하고 있습니다</p><p className="mt-2 max-w-xl text-sm leading-6 text-gray-300">작업 상태는 안전하게 저장됩니다. 이 화면을 닫거나 새로고침해도 같은 프로젝트에서 진행 상태와 결과를 복구합니다.</p></div> : currentStoryboardError && !cuts.length ? <div className="mt-8"><EmptyState title="스토리보드를 만들지 못했습니다" description={currentStoryboardError} action={<div className="flex flex-wrap justify-center gap-3"><button type="button" onClick={() => onNavigate('reference')} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-black text-white">기준 시트 확인</button><button type="button" onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white">스토리보드 다시 시도</button></div>}/></div> : !cuts.length ? <div className="mt-8">{progress.state === 'character-ready' ? <div className="rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/[0.08] p-8 text-center"><h2 className="text-2xl font-black text-white">기준 이미지 검수가 끝났습니다</h2><p className="mt-3 text-sm leading-6 text-gray-400">확정한 캐릭터 이미지와 프로젝트 화풍을 입력으로 스토리 콘티를 만듭니다. 생성 후 컷별 화면·행동·카메라·대사를 직접 수정하고 승인할 수 있습니다.</p><button type="button" onClick={() => void generateStoryboard()} className="mt-5 rounded-xl bg-fuchsia-500 px-6 py-3 text-sm font-black text-white">스토리 콘티 생성</button></div> : <div className="rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-8 text-center"><h2 className="text-2xl font-black text-white">캐릭터 검수가 아직 끝나지 않았습니다</h2><p className="mt-3 text-sm leading-6 text-gray-300">{progress.state === 'style-review-needed' ? `프로젝트 화풍과 일치하지 않는 캐릭터 ${Math.max(0, characterCount - styleConfirmedCharacterCount)}명이 남았습니다.` : `기준 이미지가 없는 캐릭터 ${Math.max(0, characterCount - readyCharacterCount)}명이 남았습니다.`}</p><p className="mt-1 text-xs text-gray-500">기준 시트에서 이미지를 직접 확인하고 확정해야 스토리 콘티를 만들 수 있습니다.</p><button type="button" onClick={() => onNavigate('reference')} className="mt-5 rounded-xl bg-amber-300 px-6 py-3 text-sm font-black text-black">기준 시트로 돌아가기</button></div>}</div> : displayedStoryboard ? <><div className={`mt-8 rounded-3xl border p-5 ${!sampleMode && storyboard ? 'border-emerald-400/25 bg-emerald-400/[0.07]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${!sampleMode && storyboard ? 'text-emerald-200' : 'text-amber-100'}`}>{!sampleMode && storyboard ? `✓ ${storyboard.cuts.length}개 컷의 스토리 콘티가 준비됐습니다` : '샘플 검토 모드 · 실제 프로젝트 데이터와 분리'}</p><p className="mt-2 text-sm text-gray-300">전체 흐름을 먼저 확인한 뒤 컷을 선택해 START→END, 카메라, 행동, 대사와 SFX를 샷 단위로 검수하세요.</p></div><StoryboardStudio storyboard={displayedStoryboard} characterSheets={sampleMode ? [] : allCharacterSheets} reviewOnly={sampleMode || !storyboard}/></> : null}
         </div>
       </section>
     );
   }
 
   if (workspace === 'generation') {
-    const useSampleGeneration = shouldUseSampleFallback(sampleMode, workflow.production.takes.length > 0);
+    const useSampleGeneration = sampleMode;
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
         <div className="mx-auto max-w-6xl">
@@ -655,7 +708,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <h1 className="mt-2 text-3xl font-black text-white">승인된 입력만 생성합니다</h1>
           <p className="mt-2 text-sm text-gray-400">사양과 실제 견적을 확인한 뒤 생성 실행을 별도로 승인하고, 유료 제출 후 도착한 생성본을 다시 승인하거나 반려합니다.</p>
           <DecisionPath items={['사양·실제 견적 확인', '생성 실행 승인', '유료 제출·상태 확인', '생성본 승인·반려']}/>
-          <div className="mt-8"><TakeStudio reviewOnly={sampleMode}/></div>
+          {!sampleMode ? <div className="mt-8"><TakeStudio reviewOnly={false}/></div> : null}
           {useSampleGeneration ? <section className="mt-10 border-t border-white/10 pt-8" aria-label="생성 결과 UI 체험"><div className="mb-4 rounded-2xl border border-amber-400/25 bg-amber-400/[0.08] p-4"><p className="text-sm font-black text-amber-200">아래는 결과 검수 UI 체험용 샘플입니다</p><p className="mt-2 text-xs leading-5 text-amber-100/70">현재 프로젝트의 생성 진행·Take·승인 상태와 무관하며, 프로젝트 자산 ID와 해시가 없어 승인하거나 타임라인에 연결할 수 없습니다.</p></div><article className="overflow-hidden rounded-3xl border border-white/10 bg-black"><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">UI 체험용 결과 · 승인 대상 아님</div><div className="flex aspect-video items-center justify-center"><video className="h-full w-full object-contain" src="/mock-assets/sample-video-web.mp4" poster="/mock-assets/video-poster.webp" controls muted playsInline preload="metadata"/></div></article></section> : null}
         </div>
       </section>

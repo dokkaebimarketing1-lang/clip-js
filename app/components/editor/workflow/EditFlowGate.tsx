@@ -16,6 +16,7 @@ export default function EditFlowGate({project, sampleMode}: EditFlowGateProps) {
   const [releaseResult, setReleaseResult] = useState<{project: ProjectState; approved: boolean} | null>(null);
   useEffect(() => {
     let current = true;
+    if (sampleMode) return () => { current = false; };
     const approval = project.workflow.releaseApproval;
     if (approval.status !== 'approved' || !approval.renderInputHash) return () => { current = false; };
     void computeRenderInputHash(project).then((hash) => {
@@ -24,7 +25,7 @@ export default function EditFlowGate({project, sampleMode}: EditFlowGateProps) {
       if (current) setReleaseResult({project, approved: false});
     });
     return () => { current = false; };
-  }, [project]);
+  }, [project, sampleMode]);
   const releaseApproved = releaseResult?.project === project && releaseResult.approved;
   const tone = sampleMode
     ? 'border-amber-400/25 bg-amber-400/[0.10]'
@@ -53,8 +54,13 @@ export default function EditFlowGate({project, sampleMode}: EditFlowGateProps) {
           </p>
         </div>
         <div className="flex gap-2 text-[11px] font-bold">
-          <span className={`rounded-full px-3 py-1 ${approvedTakeCount ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-gray-500'}`}>승인 생성본 {approvedTakeCount}</span>
-          <span className={`rounded-full px-3 py-1 ${releaseApproved ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-gray-500'}`}>최종 출력 {releaseApproved ? '승인' : '대기'}</span>
+          {sampleMode ? <>
+            <span className="rounded-full bg-amber-400/15 px-3 py-1 text-amber-200">읽기 전용</span>
+            <span className="rounded-full bg-white/5 px-3 py-1 text-gray-400">저장 안 함</span>
+          </> : <>
+            <span className={`rounded-full px-3 py-1 ${approvedTakeCount ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-gray-500'}`}>승인 생성본 {approvedTakeCount}</span>
+            <span className={`rounded-full px-3 py-1 ${releaseApproved ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-gray-500'}`}>최종 출력 {releaseApproved ? '승인' : '대기'}</span>
+          </>}
         </div>
       </div>
     </div>

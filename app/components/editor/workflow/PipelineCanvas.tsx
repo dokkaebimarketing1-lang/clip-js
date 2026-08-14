@@ -54,14 +54,14 @@ export default function PipelineCanvas({
 }) {
   const [selectedStage, setSelectedStage] = useState<StageId | null>(null);
   const [selectedShot, setSelectedShot] = useState<number | null>(null);
-  const isMock = sampleMode && !storyboard;
-
-  const shots = storyboard?.cuts.flatMap((cut) =>
+  const effectiveStoryboard = sampleMode ? undefined : storyboard;
+  const isMock = sampleMode;
+  const shots = effectiveStoryboard?.cuts.flatMap((cut) =>
     cut.shots.map((shot) => ({cut: cut.title, ...shot})),
   ) ?? (sampleMode ? MOCK_SHOTS : []);
 
-  const ib = interviewBrief ?? (sampleMode ? MOCK_INTERVIEW : undefined);
-  const cs = characterSheet ?? (sampleMode ? MOCK_CHARACTER : undefined);
+  const ib = sampleMode ? MOCK_INTERVIEW : interviewBrief;
+  const cs = sampleMode ? MOCK_CHARACTER : characterSheet;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-neutral-950">
@@ -74,7 +74,7 @@ export default function PipelineCanvas({
         <div className="grid grid-cols-4 gap-2">
           {STAGES.map((stage, i) => {
             const active = selectedStage === stage.id;
-            const done = Boolean(storyboard) || (stage.id === 'interview' && interviewBrief) || (stage.id === 'character' && characterSheet);
+            const done = Boolean(effectiveStoryboard) || (stage.id === 'interview' && ib) || (stage.id === 'character' && cs);
             return (
               <button
                 key={stage.id}

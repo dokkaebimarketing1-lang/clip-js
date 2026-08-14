@@ -42,8 +42,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const pendingSaveRef = useRef<ProjectState | null>(null);
     const autosaveTimeoutRef = useRef<number | null>(null);
     const editorUrlRef = useRef('');
+    const mobileSourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const mobileSourcesCloseRef = useRef<HTMLButtonElement | null>(null);
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
     const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
+    const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
     const [rightTab, setRightTab] = useState<'stage' | 'advanced' | 'props'>('stage');
     const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('preview');
     const [workspace, setWorkspace] = useState<ProjectWorkspaceId>('interview');
@@ -57,6 +60,23 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const searchParams = useSearchParams();
     const sampleMode = searchParams.get('sample') === '1';
     const effectiveRightTab = sampleMode ? 'stage' : rightTab;
+
+    useEffect(() => {
+        if (!mobileSourcesOpen) return;
+        const focusFrame = window.requestAnimationFrame(() => mobileSourcesCloseRef.current?.focus());
+        const trigger = mobileSourcesTriggerRef.current;
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            setMobileSourcesOpen(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.cancelAnimationFrame(focusFrame);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.requestAnimationFrame(() => trigger?.focus());
+        };
+    }, [mobileSourcesOpen]);
 
     useEffect(() => {
         const handleGenerationStatus = (event: Event) => {
@@ -87,12 +107,17 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         hasSubmittedGeneration: generationGateStates['generation-job'] === 'complete',
     }) : null;
 
+    const navigateWorkspace = (next: ProjectWorkspaceId) => {
+        setMobileSourcesOpen(false);
+        setWorkspace(next);
+    };
+
     const openGenerationGate = (target: GenerationCtaTarget) => {
         if (sampleMode) {
             setRightTab('stage');
             return;
         }
-        setWorkspace(target === 'compose' || target === 'creative' ? 'storyboard' : 'generation');
+        navigateWorkspace(target === 'compose' || target === 'creative' ? 'storyboard' : 'generation');
         setCenterTab('pipeline');
         if (target !== 'compose' && target !== 'creative') setRightTab('advanced');
         window.setTimeout(() => {
@@ -102,7 +127,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
     const { activeElement } = projectState;
     const workspaceLayout = getProjectWorkspaceLayout(workspace);
-    const showMockMedia = sampleMode && projectState.mediaFiles.length === 0;
+    const showMockMedia = sampleMode;
     const enableSampleMode = () => {
         setRightTab('stage');
         router.replace(`/projects/${id}?sample=1`);
@@ -188,7 +213,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
     // Debounced autosave. Failures remain visible and retryable via ProjectSaveCoordinator.
     useEffect(() => {
-        if (!projectState || projectState.id !== currentProjectId || isLoading) return;
+        if (sampleMode || !projectState || projectState.id !== currentProjectId || isLoading) return;
         let coordinator = saveCoordinatorRef.current;
         if (!coordinator) return;
         if (projectState.revision > coordinator.getStatus().savedRevision) {
@@ -219,7 +244,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
             window.clearTimeout(timeout);
             if (autosaveTimeoutRef.current === timeout) autosaveTimeoutRef.current = null;
         };
-    }, [projectState, currentProjectId, isLoading, dispatch]);
+    }, [projectState, currentProjectId, isLoading, dispatch, sampleMode]);
 
     useEffect(() => {
         const flushProject = (rawEvent: Event) => {
@@ -228,6 +253,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 reject: (error: unknown) => void;
                 snapshot?: ProjectState;
             }>;
+            if (sampleMode) return event.detail.reject(new Error('SAMPLE_READ_ONLY'));
             if (autosaveTimeoutRef.current !== null) {
                 window.clearTimeout(autosaveTimeoutRef.current);
                 autosaveTimeoutRef.current = null;
@@ -255,9 +281,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         };
         window.addEventListener('clipjs:flush-project', flushProject);
         return () => window.removeEventListener('clipjs:flush-project', flushProject);
-    }, [currentProjectId]);
+    }, [currentProjectId, sampleMode]);
 
     useEffect(() => {
+        if (sampleMode) return;
         const blockUnsafeExit = (event: BeforeUnloadEvent) => {
             if (!['dirty', 'saving', 'error'].includes(saveStatus.state)) return;
             event.preventDefault();
@@ -265,9 +292,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         };
         window.addEventListener('beforeunload', blockUnsafeExit);
         return () => window.removeEventListener('beforeunload', blockUnsafeExit);
-    }, [saveStatus.state]);
+    }, [sampleMode, saveStatus.state]);
 
     useEffect(() => {
+        if (sampleMode) return;
         const saveBeforeNavigation = (event: MouseEvent) => {
             if (!['dirty', 'saving', 'error'].includes(saveStatus.state)) return;
             const target = event.target;
@@ -286,9 +314,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         };
         document.addEventListener('click', saveBeforeNavigation, true);
         return () => document.removeEventListener('click', saveBeforeNavigation, true);
-    }, [saveStatus.state]);
+    }, [sampleMode, saveStatus.state]);
 
     useEffect(() => {
+        if (sampleMode) return;
         if (!editorUrlRef.current) editorUrlRef.current = window.location.href;
         const onPopState = () => {
             if (saveStatus.state === 'saved') return;
@@ -306,7 +335,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         };
         window.addEventListener('popstate', onPopState);
         return () => window.removeEventListener('popstate', onPopState);
-    }, [saveStatus.state]);
+    }, [sampleMode, saveStatus.state]);
 
 
     if (loadError) {
@@ -323,7 +352,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
     return (
         <div className="flex h-screen select-none flex-col overflow-hidden bg-[#090a0f] text-gray-100">
-            {saveStatus.state === 'error' && (
+            {!sampleMode && saveStatus.state === 'error' && (
                 <div role="alert" className="z-[100] flex items-center justify-between gap-4 border-b border-red-500 bg-red-950 px-4 py-2 text-sm text-white">
                     <span>자동 저장 실패: {saveStatus.error ?? '프로젝트를 저장하지 못했습니다.'} 편집 내용은 아직 이 브라우저에만 있습니다.</span>
                     <button
@@ -333,7 +362,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     >저장 다시 시도</button>
                 </div>
             )}
-            {(saveStatus.state === 'dirty' || saveStatus.state === 'saving') && (
+            {!sampleMode && (saveStatus.state === 'dirty' || saveStatus.state === 'saving') && (
                 <div role="status" className="absolute right-3 top-3 z-[90] rounded bg-black/80 px-3 py-1 text-xs text-white/80">
                     {saveStatus.state === 'saving' ? '저장 중…' : '저장 대기 중…'}
                 </div>
@@ -355,14 +384,14 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-xs font-black text-white shadow-[0_0_24px_rgba(217,70,239,.22)]">C</span>
                     <span className="hidden text-sm font-black tracking-[-0.03em] text-white sm:inline">ClipJS</span>
                     <span className="h-4 w-px shrink-0 bg-white/10" aria-hidden="true" />
-                    <div className="min-w-0"><ProjectName /></div>
+                    <div className="min-w-0">{sampleMode ? <span className="block truncate text-sm font-black text-amber-200">샘플 프로젝트 · 읽기 전용</span> : <ProjectName />}</div>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
-                    <span className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${saveStatus.state === 'saved' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${saveStatus.state === 'saved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                        {saveStatus.state === 'saved' ? '저장됨' : saveStatus.state === 'saving' ? '저장 중…' : '저장 대기'}
+                    <span className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${sampleMode ? 'text-amber-200' : saveStatus.state === 'saved' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${sampleMode ? 'bg-amber-300' : saveStatus.state === 'saved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                        {sampleMode ? '저장 안 함' : saveStatus.state === 'saved' ? '저장됨' : saveStatus.state === 'saving' ? '저장 중…' : '저장 대기'}
                     </span>
-                    {generationCta ? <button
+                    {!sampleMode && generationCta ? <button
                         type="button"
                         aria-label={generationCta.label}
                         className="rounded-lg bg-gradient-to-r from-fuchsia-600 to-purple-600 px-3 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
@@ -371,7 +400,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </div>
             </header>
 
-            <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div className="relative flex min-h-0 flex-1 overflow-hidden">
                 {/* 프로젝트 제작 단계 내비게이션 */}
                 <nav aria-label="프로젝트 제작 단계" className="relative z-50 flex w-[76px] shrink-0 flex-col border-r border-white/[0.08] bg-[#0c0d12] p-2 lg:w-[164px] lg:p-3">
                     <div className="mb-3 [&_a]:h-10 [&_a]:w-full [&_a]:flex-row [&_a]:justify-center [&_a]:gap-2 [&_a]:px-2 [&_img]:max-h-[16px] [&_img]:max-w-[16px] [&_span]:hidden lg:[&_a]:justify-start lg:[&_span]:inline lg:[&_span]:text-[11px]"><HomeButton /></div>
@@ -387,7 +416,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 aria-label={`${item.step}단계 ${item.label}${planningLocked ? ' · 기획 확정 후 이용 가능' : ''}`}
                                 disabled={planningLocked}
                                 title={planningLocked ? 'AI 기획 초안을 먼저 검수하고 확정하세요.' : `${item.step}단계 ${item.label}`}
-                                onClick={() => setWorkspace(item.id)}
+                                onClick={() => navigateWorkspace(item.id)}
                                 className={`group flex w-full items-center justify-center gap-2 rounded-xl border px-2 py-2.5 text-left transition-[border-color,background-color,color,box-shadow] lg:justify-start ${workspace === item.id ? 'border-fuchsia-400/35 bg-fuchsia-400/[0.1] text-white shadow-[inset_3px_0_0_#d946ef]' : 'border-transparent text-gray-500 hover:border-white/10 hover:bg-white/[0.045] hover:text-gray-200'} disabled:cursor-not-allowed disabled:opacity-35`}
                             >
                                 <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-black ${workspace === item.id ? 'bg-gradient-to-br from-fuchsia-500 to-violet-600 text-white shadow-[0_0_18px_rgba(217,70,239,.22)]' : 'bg-white/[0.055] text-gray-500 group-hover:text-gray-300'}`}>{item.step}</span>
@@ -399,22 +428,23 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </nav>
 
                 {/* 왼쪽 소스 패널 (상시 노출) */}
-                {workspaceLayout.showSources && <div className="relative z-40 min-h-0 w-[260px] shrink-0 overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3">
+                {workspaceLayout.showSources && <div id="mobile-edit-sources" className={`${mobileSourcesOpen ? 'absolute inset-y-0 left-[76px] flex' : 'hidden'} z-40 min-h-0 w-[260px] shrink-0 flex-col overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3 md:static md:flex`}>
                     <div className="mb-3 flex gap-1 rounded-lg bg-black/30 p-1">
                         <button type="button" onClick={() => setLeftTab('media')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'media' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>미디어</button>
                         <button type="button" onClick={() => setLeftTab('text')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'text' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>텍스트</button>
+                        <button ref={mobileSourcesCloseRef} type="button" aria-label="소스 패널 닫기" onClick={() => setMobileSourcesOpen(false)} className="rounded-md px-2 text-gray-400 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:hidden">×</button>
                     </div>
                     {leftTab === 'media' && (
                         <div>
                             <h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 소스</h2>
-                            <AddMedia />
+                            {!sampleMode ? <AddMedia /> : <p className="rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs leading-5 text-amber-100">샘플 모드에서는 미디어를 추가하거나 변경할 수 없습니다.</p>}
                             <div className="mt-4">{showMockMedia ? <MockMediaList /> : <MediaList />}</div>
                         </div>
                     )}
                     {leftTab === 'text' && (
                         <div>
                             <h2 className="mb-3 text-sm font-semibold text-gray-200">텍스트</h2>
-                            <AddText />
+                            {!sampleMode ? <AddText /> : <p className="rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs leading-5 text-amber-100">샘플 모드에서는 텍스트를 추가하거나 변경할 수 없습니다.</p>}
                         </div>
                     )}
 
@@ -423,6 +453,14 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 {/* 중앙: 단계별 워크스페이스 + 편집 타임라인 */}
                 <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
                     {workspace === 'edit' && <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/10 bg-neutral-950 px-2">
+                        <button
+                            ref={mobileSourcesTriggerRef}
+                            type="button"
+                            aria-expanded={mobileSourcesOpen}
+                            aria-controls="mobile-edit-sources"
+                            onClick={() => setMobileSourcesOpen(true)}
+                            className="h-7 rounded-md border border-white/10 px-2 text-[10px] font-bold text-gray-300 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:hidden"
+                        >소스</button>
                         <button
                             type="button"
                             onClick={() => setCenterTab('pipeline')}
@@ -445,8 +483,8 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 storyboard={projectState.workflow.storyboard}
                                 sampleMode={sampleMode}
                                 onEnableSample={enableSampleMode}
-                                onOpenEdit={() => setWorkspace('edit')}
-                                onNavigate={setWorkspace}
+                                onOpenEdit={() => navigateWorkspace('edit')}
+                                onNavigate={navigateWorkspace}
                             />
                         ) : centerTab === 'preview' ? (
                             <div className="flex h-full flex-col overflow-hidden bg-black">
@@ -457,17 +495,24 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             <div className="flex h-full flex-col overflow-hidden">
                                 <EditFlowGate project={projectState} sampleMode={sampleMode}/>
                                 <div className="min-h-0 flex-1"><PipelineCanvas
-                                    interviewBrief={projectState.workflow.interviewBrief}
-                                    characterSheet={projectState.workflow.characterSheet}
-                                    storyboard={projectState.workflow.storyboard}
+                                    interviewBrief={sampleMode ? undefined : projectState.workflow.interviewBrief}
+                                    characterSheet={sampleMode ? undefined : projectState.workflow.characterSheet}
+                                    storyboard={sampleMode ? undefined : projectState.workflow.storyboard}
                                     sampleMode={sampleMode}
                                 /></div>
                             </div>
                         )}
                     </div>
                     {workspaceLayout.showTimeline && <section aria-label="타임라인 편집기" className="h-[210px] shrink-0 overflow-y-auto border-t border-gray-700 bg-[#17161a] px-2 pb-2">
-                        <Timeline />
-                    </section>}
+                                            {sampleMode ? <div className="p-3">
+                                                <div className="flex items-center justify-between text-xs text-gray-400"><span className="font-black text-amber-200">샘플 타임라인 · 읽기 전용</span><span>저장 안 함</span></div>
+                                                <div className="mt-4 grid gap-2">
+                                                    <div className="h-9 rounded-lg border border-fuchsia-400/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-bold text-fuchsia-100">V1 · 샘플 영상 클립</div>
+                                                    <div className="h-9 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100">A1 · 샘플 오디오</div>
+                                                    <div className="h-9 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-gray-400">T1 · 샘플 텍스트</div>
+                                                </div>
+                                            </div> : <Timeline />}
+                                        </section>}
                 </main>
 
                 {/* 스토리보드는 자체 선택 컷 inspector를 사용한다. 다른 단계의 운영 도구는 고급 탭으로 격리한다. */}
@@ -486,8 +531,9 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         >{sampleMode ? '실행 잠금' : workspace === 'generation' ? '생성 실행' : '고급'}</button>
                         {workspace === 'edit' ? <button
                             type="button"
+                            disabled={sampleMode}
                             onClick={() => setRightTab('props')}
-                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${rightTab === 'props' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 disabled:cursor-not-allowed disabled:text-gray-700 ${rightTab === 'props' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >속성</button> : null}
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">
