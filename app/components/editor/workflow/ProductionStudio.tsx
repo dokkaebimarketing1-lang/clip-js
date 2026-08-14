@@ -9,6 +9,7 @@ import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
 import {creativeApprovalSchema, storyboardCutSchema, type CharacterSheet, type Storyboard, type StoryboardCut} from '@/app/lib/workflow/schema';
 import {prepareCreativeApprovalCommand, staleCreativeApprovalMessage} from '@/app/lib/workflow/creative-approval-apply';
 import {deriveGenerationPreflight} from '@/app/lib/workflow/generation-preflight';
+import {deriveStageStepStates, type StageStepState} from '@/app/lib/editor/stage-status';
 import {takeApprovalSchema} from '@/app/lib/workflow/production-schema';
 
 const sha256 = async (file: File) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))).map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -219,20 +220,32 @@ const GenerationQuotePanel = ({duration, resolution, generateAudio, shotCount}: 
   </section>
 );
 
-export function TakeStudio() {
+export function TakeStudio({reviewOnly = false}: {reviewOnly?: boolean} = {}) {
   const dispatch = useAppDispatch();
   const project = useAppSelector((state) => state.projectState);
   const [selectedShotId, setSelectedShotId] = useState(project.workflow.production.shotSpecs[0]?.id ?? '');
   const [viewTakeId, setViewTakeId] = useState<string>();
   const [qcBusy, setQcBusy] = useState(false);
   const [qcError, setQcError] = useState<string>();
+  const [stageResult, setStageResult] = useState<{project: typeof project; states: Record<string, StageStepState>} | null>(null);
   const takes = useMemo(() => project.workflow.production.takes.filter((take) => take.scope === 'shot' ? take.shotSpecId === selectedShotId : true), [project.workflow.production.takes, selectedShotId]);
   const current = takes.find((take) => take.id === viewTakeId) ?? takes.find((take) => take.selected) ?? takes[0];
   const compare = takes.filter((take) => take.outputAssetId).slice(0, 2);
-  const preflight = useMemo(() => deriveGenerationPreflight(project, false), [project]);
-  const choose = (takeId: string) => { const next = selectTakeForTimeline(project, takeId); dispatch(setWorkflow(next.workflow)); dispatch(setMediaFiles(next.mediaFiles)); setViewTakeId(takeId); };
+  useEffect(() => {
+    let current = true;
+    void deriveStageStepStates({workspace: 'generation', project, hasSubmittedGeneration: false}).then((states) => {
+      if (current) setStageResult({project, states});
+    });
+    return () => { current = false; };
+  }, [project]);
+  const currentStates = stageResult?.project === project ? stageResult.states : null;
+  const preflight = useMemo(() => deriveGenerationPreflight(project, false, {
+    storyboardCurrent: currentStates?.storyboard === 'complete',
+    creativeApprovalCurrent: currentStates?.['creative-approval'] === 'complete',
+  }), [currentStates, project]);
+  const choose = (takeId: string) => { if (reviewOnly) return; const next = selectTakeForTimeline(project, takeId); dispatch(setWorkflow(next.workflow)); dispatch(setMediaFiles(next.mediaFiles)); setViewTakeId(takeId); };
   const decideTake = async (decision: 'approved' | 'rejected') => {
-    if (!current || qcBusy) return;
+    if (reviewOnly || !current || qcBusy) return;
     setQcBusy(true); setQcError(undefined);
     try {
       let takeApproval = current.takeApproval;
@@ -262,7 +275,7 @@ export function TakeStudio() {
     <div className="flex flex-wrap gap-2">{project.workflow.production.shotSpecs.map((spec) => <button key={spec.id} type="button" onClick={() => setSelectedShotId(spec.id)} className={`rounded-full px-4 py-2 text-xs font-bold ${selectedShotId === spec.id ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-400'}`}>{spec.cutId} · {spec.shotId}</button>)}</div>
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div><TakeVideo projectId={project.id} assetId={current?.outputAssetId} label={current?.id ?? 'take'}/><div className="mt-3 flex flex-wrap gap-2">{takes.map((take) => <button key={take.id} type="button" onClick={() => setViewTakeId(take.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold ${current?.id === take.id ? 'border-fuchsia-400 bg-fuchsia-400/10 text-fuchsia-200' : 'border-white/10 text-gray-400'}`}>{take.id}{take.selected ? ' · 타임라인' : ''}</button>)}</div></div>
-      <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-5"><p className="text-xs text-gray-500">현재 버전</p><h3 className="mt-2 break-all font-black text-white">{current?.id}</h3><p className="mt-3 text-xs text-gray-400">QC {current?.qcStatus} · {current?.resolution ?? '해상도 미상'}</p>{current?.qcStatus === 'qc_pending' ? <div className="mt-5"><p className="text-xs leading-5 text-gray-400">영상을 직접 재생해 캐릭터·동작·화풍을 확인한 뒤 결정하세요. 반려해도 자동 재생성·추가 과금은 없습니다.</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" disabled={qcBusy} onClick={() => void decideTake('rejected')} className="rounded-xl border border-red-400/30 px-3 py-2.5 text-xs font-black text-red-200 disabled:opacity-40">이 버전 반려</button><button type="button" disabled={qcBusy} onClick={() => void decideTake('approved')} className="rounded-xl bg-emerald-400 px-3 py-2.5 text-xs font-black text-black disabled:opacity-40">이 버전 승인</button></div>{qcError ? <p role="alert" className="mt-2 text-xs text-red-300">{qcError}</p> : null}</div> : null}{current ? <button type="button" onClick={() => choose(current.id)} disabled={current.qcStatus !== 'approved'} className="mt-5 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40">{current.qcStatus === 'approved' ? '타임라인에 이 버전 배치' : current.qcStatus === 'rejected' ? '반려된 버전' : '승인 후 배치 가능'}</button> : null}</aside>
+      <aside className="rounded-3xl border border-white/10 bg-[#15131a] p-5"><p className="text-xs text-gray-500">현재 버전</p><h3 className="mt-2 break-all font-black text-white">{current?.id}</h3><p className="mt-3 text-xs text-gray-400">QC {current?.qcStatus} · {current?.resolution ?? '해상도 미상'}</p>{current?.qcStatus === 'qc_pending' ? <div className="mt-5"><p className="text-xs leading-5 text-gray-400">영상을 직접 재생해 캐릭터·동작·화풍을 확인한 뒤 결정하세요. 반려해도 자동 재생성·추가 과금은 없습니다.</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" disabled={reviewOnly || qcBusy} onClick={() => void decideTake('rejected')} className="rounded-xl border border-red-400/30 px-3 py-2.5 text-xs font-black text-red-200 disabled:opacity-40">이 버전 반려</button><button type="button" disabled={reviewOnly || qcBusy} onClick={() => void decideTake('approved')} className="rounded-xl bg-emerald-400 px-3 py-2.5 text-xs font-black text-black disabled:opacity-40">이 버전 승인</button></div>{qcError ? <p role="alert" className="mt-2 text-xs text-red-300">{qcError}</p> : null}</div> : null}{current ? <button type="button" onClick={() => choose(current.id)} disabled={reviewOnly || current.qcStatus !== 'approved'} className="mt-5 w-full rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40">{reviewOnly ? '샘플에서는 배치할 수 없습니다' : current.qcStatus === 'approved' ? '타임라인에 이 버전 배치' : current.qcStatus === 'rejected' ? '반려된 버전' : '승인 후 배치 가능'}</button> : null}</aside>
     </div>
     {compare.length === 2 ? <div><h3 className="mb-3 font-black text-white">A/B 나란히 비교</h3><div className="grid gap-4 md:grid-cols-2">{compare.map((take, index) => <div key={take.id}><TakeVideo projectId={project.id} assetId={take.outputAssetId} label={`버전 ${index ? 'B' : 'A'}`}/><p className="mt-2 text-xs text-gray-500">{index ? 'B' : 'A'} · {take.id}</p></div>)}</div></div> : null}
   </div>;

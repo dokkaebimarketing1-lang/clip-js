@@ -23,7 +23,7 @@ const readyProject = () => {
 
 describe('generation preflight', () => {
   it('reports a complete generation-ready package without authorizing paid submission', () => {
-    const result = deriveGenerationPreflight(readyProject(), false);
+    const result = deriveGenerationPreflight(readyProject(), false, {storyboardCurrent: true, creativeApprovalCurrent: true});
     expect(result.readyForAuthorization).toBe(true);
     expect(result.providerSubmitEnabled).toBe(false);
     expect(result.checks.map((check) => [check.id, check.passed])).toEqual([
@@ -34,8 +34,25 @@ describe('generation preflight', () => {
   it('identifies every missing cut frame before generation', () => {
     const project = readyProject();
     delete project.workflow.storyboard!.cuts[0].endFrameAssetId;
-    const result = deriveGenerationPreflight(project, false);
+    const result = deriveGenerationPreflight(project, false, {storyboardCurrent: true, creativeApprovalCurrent: true});
     expect(result.readyForAuthorization).toBe(false);
     expect(result.missingFrameCutIds).toEqual(['CUT01']);
+  });
+
+  it('exact-match currentness가 없으면 존재하는 승인 객체를 통과로 표시하지 않는다', () => {
+    const result = deriveGenerationPreflight(readyProject(), false);
+    expect(result.readyForAuthorization).toBe(false);
+    expect(result.checks.find((check) => check.id === 'storyboard')?.passed).toBe(false);
+    expect(result.checks.find((check) => check.id === 'creative-approval')?.passed).toBe(false);
+  });
+
+  it('콘티가 없으면 프레임이 모두 연결됐다고 표시하지 않는다', () => {
+    const project = readyProject();
+    project.workflow.storyboard = undefined;
+    const result = deriveGenerationPreflight(project, false);
+    expect(result.checks.find((check) => check.id === 'frames')).toMatchObject({
+      passed: false,
+      detail: '현재 검수할 콘티가 없습니다.',
+    });
   });
 });

@@ -21,8 +21,10 @@ import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
 import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
 import StageWorkspace from "@/app/components/editor/workflow/StageWorkspace";
 import StageInspector from "@/app/components/editor/workflow/StageInspector";
+import EditFlowGate from "@/app/components/editor/workflow/EditFlowGate";
 import {MockMediaList, MockPreviewPlayer} from '@/app/components/editor/workflow/MockMediaWorkspace';
 import {deriveGenerationCtaState, type GenerationCtaTarget} from "@/app/lib/workflow/generation-cta";
+import {deriveStageStepStates, type StageStepState} from '@/app/lib/editor/stage-status';
 import {getInitialProjectWorkspace, getProjectWorkspaceLayout, PROJECT_WORKSPACES, type ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
 import {
     ProjectSaveCoordinator,
@@ -46,6 +48,15 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('preview');
     const [workspace, setWorkspace] = useState<ProjectWorkspaceId>('interview');
     const [hasSubmittedGeneration, setHasSubmittedGeneration] = useState(false);
+    const [generationGateResult, setGenerationGateResult] = useState<{
+        project: ProjectState;
+        submitted: boolean;
+        states: Record<string, StageStepState>;
+    } | null>(null);
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const sampleMode = searchParams.get('sample') === '1';
+    const effectiveRightTab = sampleMode ? 'stage' : rightTab;
 
     useEffect(() => {
         const handleGenerationStatus = (event: Event) => {
@@ -56,29 +67,46 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
         return () => window.removeEventListener('clipjs:generation-status', handleGenerationStatus);
     }, []);
 
-    const generationCta = deriveGenerationCtaState({
-        hasStoryboard: Boolean(projectState.workflow.storyboard),
-        creativeApproved: projectState.workflow.creativeApproval.status === 'approved',
-        generationApproved: projectState.workflow.generationApproval.status === 'approved',
-        hasSubmittedGeneration,
-    });
+    useEffect(() => {
+        let current = true;
+        void deriveStageStepStates({workspace: 'generation', project: projectState, hasSubmittedGeneration}).then((states) => {
+            if (current) setGenerationGateResult({project: projectState, submitted: hasSubmittedGeneration, states});
+        });
+        return () => { current = false; };
+    }, [hasSubmittedGeneration, projectState]);
+    const generationGateStates = generationGateResult?.project === projectState
+        && generationGateResult.submitted === hasSubmittedGeneration
+        ? generationGateResult.states
+        : null;
+    const canEnterStoryboardFlow = generationGateStates?.['planning-approval'] === 'complete'
+        && generationGateStates['character-lock'] === 'complete';
+    const generationCta = !sampleMode && generationGateStates && canEnterStoryboardFlow ? deriveGenerationCtaState({
+        hasStoryboard: generationGateStates.storyboard === 'complete',
+        creativeApproved: generationGateStates['creative-approval'] === 'complete',
+        generationApproved: generationGateStates['generation-approval'] === 'complete',
+        hasSubmittedGeneration: generationGateStates['generation-job'] === 'complete',
+    }) : null;
 
     const openGenerationGate = (target: GenerationCtaTarget) => {
-        setWorkspace('generation');
+        if (sampleMode) {
+            setRightTab('stage');
+            return;
+        }
+        setWorkspace(target === 'compose' || target === 'creative' ? 'storyboard' : 'generation');
         setCenterTab('pipeline');
-        setRightTab('advanced');
+        if (target !== 'compose' && target !== 'creative') setRightTab('advanced');
         window.setTimeout(() => {
             document.getElementById(`generation-${target}`)?.scrollIntoView({behavior: 'smooth', block: 'start'});
         }, 0);
     };
 
-    const router = useRouter();
-    const searchParams = useSearchParams();
-    const sampleMode = searchParams.get('sample') === '1';
     const { activeElement } = projectState;
     const workspaceLayout = getProjectWorkspaceLayout(workspace);
     const showMockMedia = sampleMode && projectState.mediaFiles.length === 0;
-    const enableSampleMode = () => router.replace(`/projects/${id}?sample=1`);
+    const enableSampleMode = () => {
+        setRightTab('stage');
+        router.replace(`/projects/${id}?sample=1`);
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -316,12 +344,12 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <span className={`h-1.5 w-1.5 rounded-full ${saveStatus.state === 'saved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                         {saveStatus.state === 'saved' ? '저장됨' : saveStatus.state === 'saving' ? '저장 중…' : '저장 대기'}
                     </span>
-                    {projectState.workflow.storyboard ? <button
+                    {generationCta ? <button
                         type="button"
-                        aria-label="기획 데이터 승인 검토"
+                        aria-label={generationCta.label}
                         className="rounded-lg bg-gradient-to-r from-fuchsia-600 to-purple-600 px-3 py-1.5 text-xs font-bold text-white shadow transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
                         onClick={() => openGenerationGate(generationCta.target)}
-                    >기획 데이터 검토</button> : null}
+                    >{generationCta.label}</button> : null}
                 </div>
             </header>
 
@@ -402,16 +430,20 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 onNavigate={setWorkspace}
                             />
                         ) : centerTab === 'preview' ? (
-                            <div className="flex h-full items-center justify-center overflow-hidden bg-black">
-                                {showMockMedia ? <MockPreviewPlayer /> : <PreviewPlayer />}
+                            <div className="flex h-full flex-col overflow-hidden bg-black">
+                                <EditFlowGate project={projectState} sampleMode={sampleMode}/>
+                                <div className="min-h-0 flex-1">{showMockMedia ? <MockPreviewPlayer /> : <PreviewPlayer />}</div>
                             </div>
                         ) : (
-                            <PipelineCanvas
-                                interviewBrief={projectState.workflow.interviewBrief}
-                                characterSheet={projectState.workflow.characterSheet}
-                                storyboard={projectState.workflow.storyboard}
-                                sampleMode={sampleMode}
-                            />
+                            <div className="flex h-full flex-col overflow-hidden">
+                                <EditFlowGate project={projectState} sampleMode={sampleMode}/>
+                                <div className="min-h-0 flex-1"><PipelineCanvas
+                                    interviewBrief={projectState.workflow.interviewBrief}
+                                    characterSheet={projectState.workflow.characterSheet}
+                                    storyboard={projectState.workflow.storyboard}
+                                    sampleMode={sampleMode}
+                                /></div>
+                            </div>
                         )}
                     </div>
                     {workspaceLayout.showTimeline && <section aria-label="타임라인 편집기" className="h-[210px] shrink-0 overflow-y-auto border-t border-gray-700 bg-[#17161a] px-2 pb-2">
@@ -425,13 +457,14 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <button
                             type="button"
                             onClick={() => setRightTab('stage')}
-                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${rightTab === 'stage' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${effectiveRightTab === 'stage' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >단계 정보</button>
                         <button
                             type="button"
+                            disabled={sampleMode}
                             onClick={() => setRightTab('advanced')}
-                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 ${rightTab === 'advanced' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
-                        >고급</button>
+                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 disabled:cursor-not-allowed disabled:text-gray-700 ${effectiveRightTab === 'advanced' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                        >{sampleMode ? '실행 잠금' : workspace === 'generation' ? '생성 실행' : '고급'}</button>
                         {workspace === 'edit' ? <button
                             type="button"
                             onClick={() => setRightTab('props')}
@@ -439,16 +472,16 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         >속성</button> : null}
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                        {rightTab === 'stage' ? (
+                        {effectiveRightTab === 'stage' ? (
                             <StageInspector
                                 workspace={workspace}
-                                workflow={projectState.workflow}
-                                mediaCount={projectState.mediaFiles.length}
+                                project={projectState}
                                 sampleMode={sampleMode}
+                                hasSubmittedGeneration={hasSubmittedGeneration}
                                 onOpenAdvanced={() => setRightTab('advanced')}
                             />
-                        ) : rightTab === 'advanced' ? (
-                            <div><div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4"><p className="text-sm font-black text-amber-200">고급 운영 콘솔</p><p className="mt-2 text-xs leading-5 text-amber-100/60">내부 8단계, 승인 해시, 생성 공급자와 복구 도구입니다. 일반 제작 흐름에서는 단계 정보 탭을 사용하세요.</p></div><WorkflowPanel /></div>
+                        ) : effectiveRightTab === 'advanced' ? (
+                            <div><div className={`mb-4 rounded-2xl border p-4 ${workspace === 'generation' ? 'border-fuchsia-400/25 bg-fuchsia-400/[0.07]' : 'border-amber-400/20 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${workspace === 'generation' ? 'text-fuchsia-200' : 'text-amber-200'}`}>{workspace === 'generation' ? '생성 실행' : '고급 운영 콘솔'}</p><p className={`mt-2 text-xs leading-5 ${workspace === 'generation' ? 'text-fuchsia-100/60' : 'text-amber-100/60'}`}>{workspace === 'generation' ? '사양·비용 확인 → Generation 승인 → 유료 제출 → 작업 상태 확인 순서로 진행합니다. JSON·토큰·공급자 세부값은 아래 고급 항목입니다.' : '승인 해시, 생성 공급자와 복구 도구입니다. 일반 제작 흐름에서는 단계 정보 탭을 사용하세요.'}</p></div><WorkflowPanel /></div>
                         ) : (
                             <div className="space-y-4">
                                 {activeElement === 'media' && <div><h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 속성</h2><MediaProperties /></div>}

@@ -67,6 +67,12 @@ const EmptyState = ({title, description, action}: {title: string; description: s
 
 const BriefField = ({label, value, onChange, multiline = false}: {label: string; value: string; onChange: (value: string) => void; multiline?: boolean}) => <label className="block"><span className="text-xs font-black text-gray-400">{label}</span>{multiline ? <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={3} className="mt-2 w-full resize-y rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white focus:border-fuchsia-400 focus:outline-none"/> : <input value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white focus:border-fuchsia-400 focus:outline-none"/>}</label>;
 
+const DecisionPath = ({items}: {items: string[]}) => (
+  <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="이 단계의 결정 순서">
+    {items.map((item, index) => <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3"><span className="text-[10px] font-black text-fuchsia-300">{String(index + 1).padStart(2, '0')}</span><p className="mt-1 text-sm font-bold text-gray-200">{item}</p></div>)}
+  </div>
+);
+
 export default function StageWorkspace({workspace, interviewBrief, characterSheet, characterSheets, storyboard, sampleMode, onEnableSample, onOpenEdit, onNavigate}: StageWorkspaceProps) {
   const dispatch = useAppDispatch();
   const projectId = useAppSelector((state) => state.projectState.id);
@@ -374,7 +380,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
         <div className="mx-auto flex min-h-full max-w-5xl flex-col">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">1 · AI 인터뷰</p>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">1 · 아이디어 입력</p>
               <h1 className="mt-2 text-3xl font-black text-white text-balance">어떤 영상을 만들고 싶으세요?</h1>
               <p className="mt-2 text-sm leading-6 text-gray-400">한 문장으로 시작하면 AI가 브리프와 출연 캐릭터 시트를 구성합니다.</p>
             </div>
@@ -439,11 +445,13 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
         <div className="mx-auto max-w-6xl">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">2 · 기준 시트</p>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">2 · 캐릭터·스타일</p>
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div><h1 className="text-3xl font-black text-white">출연 캐릭터별 기준을 고정합니다</h1><p className="mt-2 text-sm text-gray-400">메인 캐릭터마다 별도 기준 이미지가 필요합니다. 강아지와 다람쥐라면 각각 한 장씩 준비합니다.</p></div>
             {totalCount ? <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"><div className="text-right"><p className="text-xs text-gray-500">이미지 · 스타일 잠금</p><p className="mt-1 text-xl font-black text-white">{readyCount}/{totalCount} · {styleLockedCount}/{totalCount}</p></div></div> : null}
           </div>
+          <DecisionPath items={['캐릭터별 기준 이미지 준비', '기준 후보의 전체 영향 확인', 'Style Bible·대표 기준 화풍 확정', '나머지 캐릭터 동일 화풍 검수']}/>
+          <div className="mt-4 rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/[0.06] p-4"><p className="text-sm font-black text-fuchsia-100">현재 구현의 확정 경계</p><p className="mt-2 text-xs leading-5 text-gray-300">기준 이미지 1장을 프로젝트 대표 기준 화풍으로 채택할 때 Style Bible도 함께 확정됩니다. 확정 전에는 다른 캐릭터의 유료 동일 화풍 생성을 시작하지 않습니다.</p></div>
           {generationBusy ? <div role="status" aria-live="polite" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-fuchsia-400/35 bg-fuchsia-500/[0.10] p-5"><div className="flex items-center gap-4"><span className="h-4 w-4 animate-pulse rounded-full bg-fuchsia-300"/><div><p className="text-sm font-black text-fuchsia-200">{generationCharacter?.name ?? '선택한 캐릭터'} 기준 이미지를 만들고 있습니다</p><p className="mt-1 text-sm text-gray-300">완료될 때까지 다른 캐릭터를 선택할 수 없습니다.</p></div></div><span className="rounded-full bg-fuchsia-300 px-3 py-1.5 text-xs font-black text-black">{imageGenerationStatus === 'submitting' ? '요청 전송 중' : imageGenerationStatus === 'queued' ? '생성 대기 중' : '이미지 생성 중'}</span></div> : null}
           {imageGenerationStatus === 'completed' ? <div role="status" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-emerald-400/30 bg-emerald-400/[0.08] p-5"><div><p className="text-sm font-black text-emerald-200">✓ {completedCharacter?.name ?? '선택한 캐릭터'}의 새 기준 이미지가 도착했습니다</p><p className="mt-1 text-sm text-gray-300">크게 확인한 뒤 마음에 들면 계속 진행하고, 마음에 들지 않으면 다시 만들거나 인터뷰를 수정하세요.</p></div><button type="button" onClick={() => setImageGenerationStatus('idle')} className="rounded-xl border border-emerald-300/30 px-4 py-2 text-sm font-black text-emerald-100">확인했습니다</button></div> : null}
           {!displayed ? <div className="mt-8"><EmptyState title="기준 시트가 없습니다" description="인터뷰에서 AI 기획을 완료하세요. AI가 주요 출연 캐릭터를 분리해 각각의 기준 시트를 만듭니다."/></div> : (
@@ -485,9 +493,10 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
         <div className="mx-auto max-w-6xl">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">3 · 스토리보드</p>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">3 · 콘티·승인</p>
           <h1 className="mt-2 text-3xl font-black text-white">장면의 흐름을 검수합니다</h1>
           <p className="mt-2 text-sm text-gray-400">이미지가 없는 실제 컷에는 빈 상태를 표시합니다. 샘플 이미지는 승인 해시에 포함되지 않습니다.</p>
+          <DecisionPath items={['콘티 생성', '컷·샷 직접 검수', '필요한 컷 수정', '현재 버전 콘티 전체 승인']}/>
           {isGeneratingStoryboard ? <div role="status" aria-live="polite" className="mt-8 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.07] p-10 text-center"><span className="h-12 w-12 animate-pulse rounded-full border-4 border-fuchsia-300 border-t-transparent"/><p className="mt-6 text-xl font-black text-white">스토리 콘티를 구성하고 있습니다</p><p className="mt-2 max-w-xl text-sm leading-6 text-gray-300">확정한 기획과 캐릭터 기준으로 컷 순서, 화면, 행동, 카메라, 대사를 나누고 있습니다. 완료되면 이 화면에 바로 나타납니다.</p></div> : storyboardError && !cuts.length ? <div className="mt-8"><EmptyState title="스토리보드를 만들지 못했습니다" description={storyboardError} action={<div className="flex flex-wrap justify-center gap-3"><button type="button" onClick={() => onNavigate('reference')} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-black text-white">기준 시트 확인</button><button type="button" onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white">스토리보드 다시 생성</button></div>}/></div> : !cuts.length ? <div className="mt-8">{progress.state === 'character-ready' ? <div className="rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/[0.08] p-8 text-center"><h2 className="text-2xl font-black text-white">기준 이미지 검수가 끝났습니다</h2><p className="mt-3 text-sm leading-6 text-gray-400">확정한 캐릭터 이미지와 프로젝트 화풍을 입력으로 스토리 콘티를 만듭니다. 생성 후 컷별 화면·행동·카메라·대사를 직접 수정하고 승인할 수 있습니다.</p><button type="button" onClick={() => void generateStoryboard()} className="mt-5 rounded-xl bg-fuchsia-500 px-6 py-3 text-sm font-black text-white">스토리 콘티 생성</button></div> : <div className="rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-8 text-center"><h2 className="text-2xl font-black text-white">캐릭터 검수가 아직 끝나지 않았습니다</h2><p className="mt-3 text-sm leading-6 text-gray-300">{progress.state === 'style-review-needed' ? `프로젝트 화풍과 일치하지 않는 캐릭터 ${Math.max(0, characterCount - styleConfirmedCharacterCount)}명이 남았습니다.` : `기준 이미지가 없는 캐릭터 ${Math.max(0, characterCount - readyCharacterCount)}명이 남았습니다.`}</p><p className="mt-1 text-xs text-gray-500">기준 시트에서 이미지를 직접 확인하고 확정해야 스토리 콘티를 만들 수 있습니다.</p><button type="button" onClick={() => onNavigate('reference')} className="mt-5 rounded-xl bg-amber-300 px-6 py-3 text-sm font-black text-black">기준 시트로 돌아가기</button></div>}</div> : displayedStoryboard ? <><div className={`mt-8 rounded-3xl border p-5 ${storyboard ? 'border-emerald-400/25 bg-emerald-400/[0.07]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${storyboard ? 'text-emerald-200' : 'text-amber-100'}`}>{storyboard ? `✓ ${storyboard.cuts.length}개 컷의 스토리 콘티가 준비됐습니다` : '샘플 검토 모드 · 실제 프로젝트 데이터와 분리'}</p><p className="mt-2 text-sm text-gray-300">전체 흐름을 먼저 확인한 뒤 컷을 선택해 START→END, 카메라, 행동, 대사와 SFX를 샷 단위로 검수하세요.</p></div><StoryboardStudio storyboard={displayedStoryboard} characterSheets={storyboard ? allCharacterSheets : []} reviewOnly={!storyboard}/></> : null}
         </div>
       </section>
@@ -499,13 +508,12 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     return (
       <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
         <div className="mx-auto max-w-6xl">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">4 · 영상 생성</p>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">4 · 생성·검수</p>
           <h1 className="mt-2 text-3xl font-black text-white">승인된 입력만 생성합니다</h1>
-          <p className="mt-2 text-sm text-gray-400">화면에 보이는 자산과 승인 해시가 일치해야 유료 제출을 열 수 있습니다.</p>
-          {useSampleGeneration ? <div className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-            <article className="overflow-hidden rounded-3xl border border-white/10 bg-black"><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">샘플 결과 · 생성 결과 및 승인 대상 아님</div><div className="flex aspect-video items-center justify-center"><video className="h-full w-full object-contain" src="/mock-assets/sample-video-web.mp4" poster="/mock-assets/video-poster.webp" controls muted playsInline preload="metadata"/></div></article>
-            <aside className="space-y-4"><div className="rounded-3xl border border-white/10 bg-[#15131a] p-6"><h2 className="font-black text-white">현재 상태</h2><p className="mt-3 text-sm leading-6 text-gray-400">샘플 자산은 프로젝트 자산 ID와 해시가 없어 승인할 수 없습니다.</p></div><div className="rounded-3xl border border-red-400/20 bg-red-400/[0.06] p-6"><p className="text-sm font-black text-red-200">유료 제출 잠김</p><p className="mt-2 text-sm leading-6 text-red-100/70">정식 자산 연결·Creative 승인·생성 승인이 완료돼야 합니다.</p></div></aside>
-          </div> : <TakeStudio/>}
+          <p className="mt-2 text-sm text-gray-400">사양과 실제 견적을 확인한 뒤 생성 실행을 별도로 승인하고, 유료 제출 후 도착한 생성본을 다시 승인하거나 반려합니다.</p>
+          <DecisionPath items={['사양·실제 견적 확인', '생성 실행 승인', '유료 제출·상태 확인', '생성본 승인·반려']}/>
+          <div className="mt-8"><TakeStudio reviewOnly={sampleMode}/></div>
+          {useSampleGeneration ? <section className="mt-10 border-t border-white/10 pt-8" aria-label="생성 결과 UI 체험"><div className="mb-4 rounded-2xl border border-amber-400/25 bg-amber-400/[0.08] p-4"><p className="text-sm font-black text-amber-200">아래는 결과 검수 UI 체험용 샘플입니다</p><p className="mt-2 text-xs leading-5 text-amber-100/70">현재 프로젝트의 생성 진행·Take·승인 상태와 무관하며, 프로젝트 자산 ID와 해시가 없어 승인하거나 타임라인에 연결할 수 없습니다.</p></div><article className="overflow-hidden rounded-3xl border border-white/10 bg-black"><div className="border-b border-amber-400/20 bg-amber-400/10 px-4 py-2 text-xs font-bold text-amber-200">UI 체험용 결과 · 승인 대상 아님</div><div className="flex aspect-video items-center justify-center"><video className="h-full w-full object-contain" src="/mock-assets/sample-video-web.mp4" poster="/mock-assets/video-poster.webp" controls muted playsInline preload="metadata"/></div></article></section> : null}
         </div>
       </section>
     );
@@ -514,7 +522,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   return (
     <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
       <div className="mx-auto max-w-5xl">
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">5 · 편집</p>
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">5 · 편집·출력</p>
         <h1 className="mt-2 text-3xl font-black text-white">생성본을 타임라인에서 완성합니다</h1>
         <div className="mt-8"><EmptyState title="편집할 프로젝트 미디어가 없습니다" description="생성 완료된 take 또는 업로드한 미디어를 타임라인에 추가하세요. 샘플 미디어는 정식 클립으로 가장하지 않습니다." action={<button type="button" onClick={onOpenEdit} className="rounded-xl bg-white px-5 py-2.5 text-sm font-black text-black hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">편집기 열기</button>}/></div>
       </div>

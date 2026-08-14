@@ -1,43 +1,42 @@
 'use client';
 
+import {useEffect, useState} from 'react';
 import {getWorkspaceInternalSteps, type ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
-import type {WorkflowState} from '@/app/lib/workflow/schema';
+import {deriveStageStepStates, titleByWorkspace, type StageStepState} from '@/app/lib/editor/stage-status';
+import type {ProjectState} from '@/app/types';
 
 type StageInspectorProps = {
   workspace: ProjectWorkspaceId;
-  workflow: WorkflowState;
-  mediaCount: number;
+  project: ProjectState;
   sampleMode: boolean;
+  hasSubmittedGeneration: boolean;
   onOpenAdvanced: () => void;
 };
 
-const titleByWorkspace: Record<ProjectWorkspaceId, string> = {
-  interview: 'AI 기획',
-  reference: '기준 자산',
-  storyboard: '장면 구성',
-  generation: '생성 승인',
-  edit: '편집 상태',
-};
-
-export default function StageInspector({workspace, workflow, mediaCount, sampleMode, onOpenAdvanced}: StageInspectorProps) {
+export default function StageInspector({workspace, project, sampleMode, hasSubmittedGeneration, onOpenAdvanced}: StageInspectorProps) {
+  const workflow = project.workflow;
   const steps = getWorkspaceInternalSteps(workspace);
+  const [result, setResult] = useState<{
+    project: ProjectState;
+    workspace: ProjectWorkspaceId;
+    hasSubmittedGeneration: boolean;
+    states: Record<string, StageStepState>;
+  } | null>(null);
+  useEffect(() => {
+    let current = true;
+    void deriveStageStepStates({workspace, project, hasSubmittedGeneration}).then((next) => {
+      if (current) setResult({project, workspace, hasSubmittedGeneration, states: next});
+    });
+    return () => { current = false; };
+  }, [hasSubmittedGeneration, project, workspace]);
+  const states = result?.project === project
+    && result.workspace === workspace
+    && result.hasSubmittedGeneration === hasSubmittedGeneration
+    ? result.states
+    : null;
   const hasBrief = Boolean(workflow.interviewBrief);
-  const hasCharacter = Boolean(workflow.characterSheet);
+  const characterCount = workflow.characterSheets?.length ?? (workflow.characterSheet ? 1 : 0);
   const hasStoryboard = Boolean(workflow.storyboard);
-  const creativeApproved = workflow.creativeApproval.status === 'approved';
-  const generationApproved = workflow.generationApproval.status === 'approved';
-
-  const statusFor = (id: string) => {
-    if (id === 'sentence' || id === 'interview') return hasBrief;
-    if (id === 'image-storyboard') return false;
-    if (id === 'character') return hasCharacter;
-    if (id === 'reference-approval') return creativeApproved;
-    if (id === 'storyboard' || id === 'direction' || id === 'prompt-review') return hasStoryboard;
-    if (id === 'generation-approval') return generationApproved;
-    if (id === 'paid-submit') return false;
-    if (id === 'takes' || id === 'timeline' || id === 'render') return mediaCount > 0;
-    return false;
-  };
 
   return (
     <aside className="space-y-5" aria-label={`${titleByWorkspace[workspace]} 단계 정보`}>
@@ -50,18 +49,20 @@ export default function StageInspector({workspace, workflow, mediaCount, sampleM
 
       <div className="space-y-2">
         {steps.map((step) => {
-          const complete = statusFor(step.id);
-          return <div key={step.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3"><span className={`h-2.5 w-2.5 rounded-full ${complete ? 'bg-emerald-400' : 'bg-gray-600'}`}/><span className="text-sm font-semibold text-gray-200">{step.label}</span><span className={`ml-auto text-xs font-bold ${complete ? 'text-emerald-300' : 'text-gray-500'}`}>{complete ? '완료' : '대기'}</span></div>;
+          const state = states?.[step.id];
+          return <div key={step.id} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${state === 'current' ? 'border-fuchsia-400/35 bg-fuchsia-400/[0.08]' : 'border-white/10 bg-white/[0.025]'}`}><span className={`h-2.5 w-2.5 rounded-full ${state === 'complete' ? 'bg-emerald-400' : state === 'current' ? 'bg-fuchsia-400 shadow-[0_0_10px_#e879f9]' : 'bg-gray-700'}`}/><span className="text-sm font-semibold text-gray-200">{step.label}</span><span className={`ml-auto text-xs font-bold ${state === 'complete' ? 'text-emerald-300' : state === 'current' ? 'text-fuchsia-200' : 'text-gray-600'}`}>{!states ? '확인 중' : state === 'complete' ? '완료' : state === 'current' ? '지금 할 일' : '이후'}</span></div>;
         })}
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 text-xs leading-5 text-gray-400">
         <p className="font-bold text-gray-200">프로젝트 데이터</p>
-        <dl className="mt-3 space-y-2"><div className="flex justify-between"><dt>인터뷰 브리프</dt><dd>{hasBrief ? '있음' : '없음'}</dd></div><div className="flex justify-between"><dt>캐릭터 텍스트</dt><dd>{hasCharacter ? '있음' : '없음'}</dd></div><div className="flex justify-between"><dt>스토리보드</dt><dd>{hasStoryboard ? '있음' : '없음'}</dd></div><div className="flex justify-between"><dt>정식 미디어</dt><dd>{mediaCount}개</dd></div></dl>
+        <dl className="mt-3 space-y-2"><div className="flex justify-between"><dt>기획 초안</dt><dd>{hasBrief ? '있음' : '없음'}</dd></div><div className="flex justify-between"><dt>캐릭터</dt><dd>{characterCount}명</dd></div><div className="flex justify-between"><dt>콘티</dt><dd>{hasStoryboard ? '있음' : '없음'}</dd></div><div className="flex justify-between"><dt>승인된 Take</dt><dd>{workflow.production.takes.filter((take) => take.takeApproval.status === 'approved').length}개</dd></div></dl>
       </div>
 
-      <button type="button" onClick={onOpenAdvanced} className="w-full rounded-xl border border-white/15 px-4 py-2.5 text-sm font-bold text-gray-300 hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">고급 운영 콘솔 열기</button>
-      <p className="text-xs leading-5 text-gray-500">JSON·해시·승인·생성 공급자 설정은 운영 콘솔에서만 확인합니다.</p>
+      <button type="button" disabled={sampleMode} onClick={onOpenAdvanced} className="w-full rounded-xl border border-white/15 px-4 py-2.5 text-sm font-bold text-gray-300 hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 disabled:cursor-not-allowed disabled:text-gray-600 disabled:hover:border-white/15">
+        {sampleMode ? '샘플에서는 실행할 수 없습니다' : workspace === 'generation' ? '사양·비용 확인하고 생성 실행' : '고급 운영 콘솔 열기'}
+      </button>
+      <p className="text-xs leading-5 text-gray-500">{workspace === 'generation' ? '실제 견적과 생성 실행 승인을 확인한 뒤 제출하고, 생성 상태는 실행 화면에서 따로 확인합니다.' : 'JSON·해시·승인·생성 공급자 설정은 운영 콘솔에서만 확인합니다.'}</p>
     </aside>
   );
 }

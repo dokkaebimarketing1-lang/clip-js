@@ -13,9 +13,9 @@ export type GenerationCtaState = {
 };
 
 export const deriveGenerationCtaState = (input: GenerationCtaInput): GenerationCtaState => {
-  if (!input.hasStoryboard) return {label: 'VLOG 구성', target: 'compose'};
-  if (!input.creativeApproved) return {label: 'Creative 승인', target: 'creative'};
-  if (!input.generationApproved) return {label: '생성 요청 검토', target: 'authorization'};
-  if (!input.hasSubmittedGeneration) return {label: '승인된 영상 생성', target: 'submit'};
+  if (!input.hasStoryboard) return {label: '콘티 만들기', target: 'compose'};
+  if (!input.creativeApproved) return {label: '콘티 전체 승인', target: 'creative'};
+  if (!input.generationApproved) return {label: '사양·비용 확인', target: 'authorization'};
+  if (!input.hasSubmittedGeneration) return {label: '승인 내용으로 유료 생성', target: 'submit'};
   return {label: '생성 상태 확인', target: 'jobs'};
 };
