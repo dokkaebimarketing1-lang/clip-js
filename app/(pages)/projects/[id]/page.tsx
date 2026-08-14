@@ -223,7 +223,11 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
     useEffect(() => {
         const flushProject = (rawEvent: Event) => {
-            const event = rawEvent as CustomEvent<{resolve: (revision: number) => void; reject: (error: unknown) => void}>;
+            const event = rawEvent as CustomEvent<{
+                resolve: (revision: number) => void;
+                reject: (error: unknown) => void;
+                snapshot?: ProjectState;
+            }>;
             if (autosaveTimeoutRef.current !== null) {
                 window.clearTimeout(autosaveTimeoutRef.current);
                 autosaveTimeoutRef.current = null;
@@ -231,14 +235,27 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
             const coordinator = saveCoordinatorRef.current;
             if (!coordinator) return event.detail.reject(new Error('Project save coordinator is unavailable.'));
             const status = coordinator.getStatus();
-            const operation = status.state === 'error'
-                ? coordinator.retry()
-                : status.state === 'saved' ? coordinator.flush() : coordinator.saveLatest();
+            let operation;
+            if (event.detail.snapshot) {
+                if (event.detail.snapshot.id !== currentProjectId) {
+                    return event.detail.reject(new Error('Project snapshot does not belong to the active project.'));
+                }
+                if (status.state === 'error') {
+                    coordinator.markDirty(event.detail.snapshot);
+                    operation = coordinator.retry();
+                } else {
+                    operation = coordinator.saveNow(event.detail.snapshot);
+                }
+            } else {
+                operation = status.state === 'error'
+                    ? coordinator.retry()
+                    : status.state === 'saved' ? coordinator.flush() : coordinator.saveLatest();
+            }
             void operation.then((ack) => event.detail.resolve(ack.revision)).catch(event.detail.reject);
         };
         window.addEventListener('clipjs:flush-project', flushProject);
         return () => window.removeEventListener('clipjs:flush-project', flushProject);
-    }, []);
+    }, [currentProjectId]);
 
     useEffect(() => {
         const blockUnsafeExit = (event: BeforeUnloadEvent) => {

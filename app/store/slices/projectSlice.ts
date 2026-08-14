@@ -160,6 +160,11 @@ const projectStateSlice = createSlice({
             });
             state.workflow = workflowStateSchema.parse(nextWorkflow);
         },
+        acknowledgeProjectRevision: (state, action: PayloadAction<{projectId: string; revision: number}>) => {
+            if (state.id !== action.payload.projectId) return;
+            if (!Number.isSafeInteger(action.payload.revision) || action.payload.revision <= state.revision) return;
+            state.revision = action.payload.revision;
+        },
         installStoryboardIfCurrent: (state, action: PayloadAction<StoryboardInstallCommand>) => {
             const currentSheets = state.workflow.characterSheets ?? (state.workflow.characterSheet ? [state.workflow.characterSheet] : []);
             if (
@@ -253,6 +258,7 @@ export const {
     setWorkflow,
     setPlanningStatus,
     installPlanningIfCurrent,
+    acknowledgeProjectRevision,
     installStoryboardIfCurrent,
     installCreativeApprovalIfCurrent,
     setIncludeSubtitles,

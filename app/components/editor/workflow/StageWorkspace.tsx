@@ -3,7 +3,13 @@
 import Image from 'next/image';
 import {FormEvent, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useAppDispatch, useAppSelector} from '@/app/store';
-import {installPlanningIfCurrent, installStoryboardIfCurrent, setPlanningStatus, setWorkflow} from '@/app/store/slices/projectSlice';
+import {
+  acknowledgeProjectRevision,
+  installPlanningIfCurrent,
+  installStoryboardIfCurrent,
+  setPlanningStatus,
+  setWorkflow,
+} from '@/app/store/slices/projectSlice';
 import {StoryboardStudio, TakeStudio} from './ProductionStudio';
 import {
   characterSheetSchema,
@@ -17,8 +23,14 @@ import type {ProjectWorkspaceId} from '@/app/lib/editor/project-workspace';
 import {deriveCreationProgress, isStoryboardBuiltFromCharacterReferences} from '@/app/lib/editor/creation-progress';
 import {shouldUseSampleFallback} from '@/app/lib/editor/sample-fallback';
 import {invalidateForCreativeChange} from '@/app/lib/workflow/approval';
-import {prepareStoryboardInstallCommand} from '@/app/lib/workflow/storyboard-apply';
 import {isPlanningRequestCurrent, preparePlanningInstallCommand} from '@/app/lib/workflow/planning-apply';
+import {
+  applyCompletedStoryboardJob,
+  prepareCompletedStoryboardJobCommand,
+  storyboardJobResponseSchema,
+  type StoryboardJobResponse,
+} from '@/app/lib/storyboard-jobs/storyboard-job-client';
+import {storyboardJobInputSchema, type StoryboardJobInput} from '@/app/lib/storyboard-jobs/storyboard-job-schema';
 
 type StageWorkspaceProps = {
   workspace: ProjectWorkspaceId;
@@ -75,8 +87,9 @@ const DecisionPath = ({items}: {items: string[]}) => (
 
 export default function StageWorkspace({workspace, interviewBrief, characterSheet, characterSheets, storyboard, sampleMode, onEnableSample, onOpenEdit, onNavigate}: StageWorkspaceProps) {
   const dispatch = useAppDispatch();
-  const projectId = useAppSelector((state) => state.projectState.id);
-  const workflow = useAppSelector((state) => state.projectState.workflow);
+  const projectState = useAppSelector((state) => state.projectState);
+  const projectId = projectState.id;
+  const workflow = projectState.workflow;
   const [sentence, setSentence] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
@@ -103,13 +116,17 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const [generationCharacterId, setGenerationCharacterId] = useState<string | null>(null);
   const [completedCharacterId, setCompletedCharacterId] = useState<string | null>(null);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<'idle' | 'submitting' | 'queued' | 'processing' | 'completed' | 'failed'>('idle');
-  const [isGeneratingStoryboard, setIsGeneratingStoryboard] = useState(false);
+  const [storyboardJobId, setStoryboardJobId] = useState<string | null>(null);
+  const [storyboardJobProjectId, setStoryboardJobProjectId] = useState<string | null>(null);
+  const [storyboardJobStatus, setStoryboardJobStatus] = useState<'idle' | 'recovering' | 'queued' | 'processing' | 'completed' | 'failed' | 'stale'>('idle');
   const [storyboardError, setStoryboardError] = useState<string | null>(null);
   const [isLockingStyle, setIsLockingStyle] = useState(false);
   const [pendingStyleAnchorId, setPendingStyleAnchorId] = useState<string | null>(null);
   const workflowRef = useRef(workflow);
+  const projectStateRef = useRef(projectState);
   const characterSheetsRef = useRef(allCharacterSheets);
   useEffect(() => { workflowRef.current = workflow; }, [workflow]);
+  useEffect(() => { projectStateRef.current = projectState; }, [projectState]);
   useEffect(() => { characterSheetsRef.current = allCharacterSheets; }, [allCharacterSheets]);
   const styleBible = workflow.styleBible;
   const styleBibleHash = workflow.styleBibleHash;
@@ -202,38 +219,164 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     }
   };
 
-  const generateStoryboard = async () => {
-    if (!interviewBrief || !styleBible || !styleBibleHash || allCharacterSheets.length === 0 || allCharacterSheets.some((sheet) => !sheet.referenceImageId || sheet.referenceStyleHash !== styleBibleHash) || isGeneratingStoryboard) return;
-    const request = {
-      interviewBrief: interviewBriefSchema.parse(interviewBrief),
-      styleBible: styleBibleSchema.parse(styleBible),
+  const currentStoryboardInput = useMemo<StoryboardJobInput | undefined>(() => {
+    if (!interviewBrief || !styleBible || !styleBibleHash || allCharacterSheets.length === 0
+      || allCharacterSheets.some((sheet) => !sheet.referenceImageId || sheet.referenceStyleHash !== styleBibleHash)) return undefined;
+    const parsed = storyboardJobInputSchema.safeParse({
+      projectId,
+      sentence: `${interviewBrief.subject}. ${interviewBrief.action}. ${interviewBrief.extraNotes ?? ''}`.trim(),
+      interviewBrief,
+      styleBible,
       styleBibleHash,
-      characterSheets: allCharacterSheets.map((sheet) => characterSheetSchema.parse(sheet)),
-    };
-    setIsGeneratingStoryboard(true);
+      characterSheets: allCharacterSheets,
+    });
+    return parsed.success ? parsed.data : undefined;
+  }, [allCharacterSheets, interviewBrief, projectId, styleBible, styleBibleHash]);
+  const storyboardJobBelongsToProject = storyboardJobProjectId === projectId;
+  const currentStoryboardJobId = storyboardJobBelongsToProject ? storyboardJobId : null;
+  const currentStoryboardJobStatus = storyboardJobBelongsToProject ? storyboardJobStatus : 'idle';
+  const currentStoryboardError = storyboardJobBelongsToProject ? storyboardError : null;
+  const storyboardBusy = ['recovering', 'queued', 'processing'].includes(currentStoryboardJobStatus);
+  const storyboardPollControllerRef = useRef<AbortController | null>(null);
+
+  const flushProjectChanges = useCallback((snapshot?: typeof projectState) => new Promise<number>((resolve, reject) => {
+    window.dispatchEvent(new CustomEvent('clipjs:flush-project', {detail: {resolve, reject, snapshot}}));
+  }), []);
+
+  const persistCompletedStoryboardJob = useCallback(async (job: StoryboardJobResponse) => {
+    if (job.status !== 'completed') throw new Error('완료되지 않은 콘티 작업입니다.');
+    const snapshot = applyCompletedStoryboardJob(projectStateRef.current, job);
+    const command = prepareCompletedStoryboardJobCommand(job);
+    dispatch(installStoryboardIfCurrent(command));
+    const revision = await flushProjectChanges(snapshot);
+    if (projectStateRef.current.id !== projectId) return;
+    applyCompletedStoryboardJob(projectStateRef.current, job);
+    dispatch(acknowledgeProjectRevision({projectId, revision}));
+    setStoryboardJobStatus('completed');
     setStoryboardError(null);
-    onNavigate('storyboard');
-    try {
+  }, [dispatch, flushProjectChanges, projectId]);
+
+  const pollStoryboardJob = useCallback(async (jobId: string, signal: AbortSignal) => {
+    while (!signal.aborted && projectStateRef.current.id === projectId) {
+      setStoryboardJobStatus((current) => current === 'recovering' ? 'recovering' : 'processing');
       const response = await fetch('/api/vlog/storyboard', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
-        body: JSON.stringify({projectId, sentence: `${request.interviewBrief.subject}. ${request.interviewBrief.action}. ${request.interviewBrief.extraNotes ?? ''}`.trim(), ...request}),
+        body: JSON.stringify({action: 'run', projectId, jobId}),
+        cache: 'no-store',
+        signal,
       });
-      const payload = await response.json() as {storyboard?: unknown; error?: string};
-      if (!response.ok || !payload.storyboard) throw new Error(payload.error ?? '스토리보드를 생성하지 못했습니다.');
-      const command = prepareStoryboardInstallCommand({...request, storyboard: payload.storyboard});
-      const latest = workflowRef.current;
-      const latestSheets = latest.characterSheets ?? (latest.characterSheet ? [latest.characterSheet] : []);
-      const stillCurrent = JSON.stringify(latest.interviewBrief ?? null) === JSON.stringify(command.expectedInterviewBrief)
-        && JSON.stringify(latest.styleBible ?? null) === JSON.stringify(command.expectedStyleBible)
-        && latest.styleBibleHash === command.expectedStyleBibleHash
-        && JSON.stringify(latestSheets) === JSON.stringify(command.expectedCharacterSheets);
-      dispatch(installStoryboardIfCurrent(command));
-      if (!stillCurrent) setStoryboardError('생성 중 기획 또는 기준 시트가 변경되어 이전 요청의 콘티를 적용하지 않았습니다. 현재 내용을 확인한 뒤 다시 생성하세요.');
+      const raw = await response.json() as unknown;
+      if (!response.ok) {
+        const error = raw && typeof raw === 'object' && 'error' in raw && typeof raw.error === 'string'
+          ? raw.error
+          : '스토리보드 작업 상태를 불러오지 못했습니다.';
+        throw new Error(error);
+      }
+      const job = storyboardJobResponseSchema.parse(raw);
+      if (signal.aborted || projectStateRef.current.id !== projectId) return;
+      setStoryboardJobId(job.jobId);
+      if (job.status === 'completed') {
+        await persistCompletedStoryboardJob(job);
+        return;
+      }
+      if (job.status === 'failed') {
+        setStoryboardJobStatus('failed');
+        setStoryboardError(job.error ?? '스토리보드를 생성하지 못했습니다.');
+        return;
+      }
+      setStoryboardJobStatus(job.status);
+      await new Promise<void>((resolve) => {
+        const timeout = window.setTimeout(resolve, 1500);
+        signal.addEventListener('abort', () => {
+          window.clearTimeout(timeout);
+          resolve();
+        }, {once: true});
+      });
+    }
+  }, [persistCompletedStoryboardJob, projectId]);
+
+  const startStoryboardPolling = useCallback((jobId: string, recovering = false) => {
+    storyboardPollControllerRef.current?.abort();
+    const controller = new AbortController();
+    storyboardPollControllerRef.current = controller;
+    setStoryboardJobId(jobId);
+    setStoryboardJobProjectId(projectId);
+    setStoryboardJobStatus(recovering ? 'recovering' : 'queued');
+    void pollStoryboardJob(jobId, controller.signal).catch((error) => {
+      if (controller.signal.aborted || projectStateRef.current.id !== projectId) return;
+      if (error instanceof Error && error.name === 'StaleStoryboardJobError') {
+        setStoryboardJobStatus('stale');
+        setStoryboardError('작업 중 기획 또는 캐릭터 기준이 변경되어 이전 콘티를 적용하지 않았습니다. 현재 내용으로 다시 생성하세요.');
+        return;
+      }
+      setStoryboardJobStatus('failed');
+      setStoryboardError(error instanceof Error ? error.message : '스토리보드 작업을 복구하지 못했습니다.');
+    });
+  }, [pollStoryboardJob, projectId]);
+
+  useEffect(() => () => storyboardPollControllerRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (sampleMode || storyboardIsCurrent || !currentStoryboardInput || currentStoryboardJobId) return;
+    const controller = new AbortController();
+    void fetch(`/api/vlog/storyboard?projectId=${encodeURIComponent(projectId)}`, {cache: 'no-store', signal: controller.signal})
+      .then(async (response) => {
+        if (controller.signal.aborted || projectStateRef.current.id !== projectId) return;
+        if (response.status === 404) {
+          setStoryboardJobStatus('idle');
+          return;
+        }
+        const raw = await response.json() as unknown;
+        if (!response.ok) throw new Error('저장된 콘티 작업을 확인하지 못했습니다.');
+        const job = storyboardJobResponseSchema.parse(raw);
+        if (JSON.stringify(job.input) !== JSON.stringify(currentStoryboardInput)) {
+          setStoryboardJobStatus('idle');
+          return;
+        }
+        if (job.status === 'failed') {
+          setStoryboardJobId(job.jobId);
+          setStoryboardJobProjectId(projectId);
+          setStoryboardJobStatus('failed');
+          setStoryboardError(job.error ?? '이전 콘티 작업이 실패했습니다.');
+          return;
+        }
+        startStoryboardPolling(job.jobId, true);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || projectStateRef.current.id !== projectId) return;
+        setStoryboardJobStatus('failed');
+        setStoryboardError(error instanceof Error ? error.message : '저장된 콘티 작업을 확인하지 못했습니다.');
+      });
+    return () => controller.abort();
+  }, [currentStoryboardInput, currentStoryboardJobId, projectId, sampleMode, startStoryboardPolling, storyboardIsCurrent]);
+
+  const generateStoryboard = async () => {
+    if (!currentStoryboardInput || storyboardBusy) return;
+    setStoryboardError(null);
+    setStoryboardJobProjectId(projectId);
+    setStoryboardJobStatus('queued');
+    onNavigate('storyboard');
+    try {
+      await flushProjectChanges();
+      const response = await fetch('/api/vlog/storyboard', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(currentStoryboardInput),
+      });
+      const raw = await response.json() as unknown;
+      if (!response.ok) {
+        const error = raw && typeof raw === 'object' && 'error' in raw && typeof raw.error === 'string'
+          ? raw.error
+          : '스토리보드 작업을 저장하지 못했습니다.';
+        throw new Error(error);
+      }
+      const job = storyboardJobResponseSchema.parse(raw);
+      startStoryboardPolling(job.jobId);
     } catch (error) {
-      setStoryboardError(error instanceof Error ? error.message : '스토리보드를 생성하지 못했습니다.');
-    } finally {
-      setIsGeneratingStoryboard(false);
+      if (projectStateRef.current.id !== projectId) return;
+      setStoryboardJobStatus('failed');
+      setStoryboardError(error instanceof Error ? error.message : '스토리보드 작업을 시작하지 못했습니다.');
     }
   };
 
@@ -478,7 +621,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
               </div>
 
               {!useSampleReference ? <>
-                <div className={`mt-8 rounded-3xl border p-6 ${progress.state === 'character-ready' ? 'border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.10] to-fuchsia-500/[0.08]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-xs font-black uppercase tracking-[0.18em] ${progress.state === 'character-ready' ? 'text-emerald-200' : 'text-amber-200'}`}>전체 캐릭터 검수</p><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{allCharacterSheets.map((sheet) => <div key={sheet.id ?? sheet.name} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3"><span className="text-sm font-bold text-white">{sheet.name}</span><span className={`text-xs font-black ${isSheetStyleLocked(sheet) ? 'text-emerald-300' : 'text-amber-200'}`}>{isSheetStyleLocked(sheet) ? '✓ 이미지·화풍 확정' : sheet.referenceImageId ? '화풍 확인 필요' : '이미지 필요'}</span></div>)}</div>{progress.state !== 'character-ready' ? <div className="mt-5"><h2 className="text-xl font-black text-white">아직 전체 확정할 수 없습니다</h2><p className="mt-2 text-sm leading-6 text-gray-300">{readyCount < totalCount ? `기준 이미지가 없는 캐릭터 ${totalCount - readyCount}명을 먼저 준비하세요.` : `프로젝트 화풍과 일치하지 않는 캐릭터 ${totalCount - styleLockedCount}명을 다시 만들거나 새 이미지로 교체하세요.`}</p></div> : storyboard ? <div className="mt-5 flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-emerald-200">✓ 모든 캐릭터를 직접 확인했습니다</p><h2 className="mt-2 text-2xl font-black text-white">{storyboard.cuts.length}컷 스토리 콘티 검수</h2></div><button type="button" onClick={() => onNavigate('storyboard')} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white">스토리 콘티 검수 →</button></div> : <div className="mt-5 flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-emerald-200">✓ 모든 캐릭터의 이미지와 화풍을 확인했습니다</p><h2 className="mt-2 text-2xl font-black text-white">이 기준으로 스토리 콘티를 만듭니다</h2><p className="mt-1 text-sm text-gray-300">다음 화면에서 컷별 화면·행동·카메라·대사를 직접 검수할 수 있습니다.</p></div><button type="button" disabled={isGeneratingStoryboard} onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white disabled:opacity-50">{isGeneratingStoryboard ? '스토리 콘티 생성 중…' : '전체 확정 · 스토리 콘티 생성 →'}</button></div>}</div>
+                <div className={`mt-8 rounded-3xl border p-6 ${progress.state === 'character-ready' ? 'border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.10] to-fuchsia-500/[0.08]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-xs font-black uppercase tracking-[0.18em] ${progress.state === 'character-ready' ? 'text-emerald-200' : 'text-amber-200'}`}>전체 캐릭터 검수</p><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{allCharacterSheets.map((sheet) => <div key={sheet.id ?? sheet.name} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-4 py-3"><span className="text-sm font-bold text-white">{sheet.name}</span><span className={`text-xs font-black ${isSheetStyleLocked(sheet) ? 'text-emerald-300' : 'text-amber-200'}`}>{isSheetStyleLocked(sheet) ? '✓ 이미지·화풍 확정' : sheet.referenceImageId ? '화풍 확인 필요' : '이미지 필요'}</span></div>)}</div>{progress.state !== 'character-ready' ? <div className="mt-5"><h2 className="text-xl font-black text-white">아직 전체 확정할 수 없습니다</h2><p className="mt-2 text-sm leading-6 text-gray-300">{readyCount < totalCount ? `기준 이미지가 없는 캐릭터 ${totalCount - readyCount}명을 먼저 준비하세요.` : `프로젝트 화풍과 일치하지 않는 캐릭터 ${totalCount - styleLockedCount}명을 다시 만들거나 새 이미지로 교체하세요.`}</p></div> : storyboard ? <div className="mt-5 flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-emerald-200">✓ 모든 캐릭터를 직접 확인했습니다</p><h2 className="mt-2 text-2xl font-black text-white">{storyboard.cuts.length}컷 스토리 콘티 검수</h2></div><button type="button" onClick={() => onNavigate('storyboard')} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white">스토리 콘티 검수 →</button></div> : <div className="mt-5 flex flex-wrap items-center justify-between gap-5"><div><p className="text-sm font-black text-emerald-200">✓ 모든 캐릭터의 이미지와 화풍을 확인했습니다</p><h2 className="mt-2 text-2xl font-black text-white">이 기준으로 스토리 콘티를 만듭니다</h2><p className="mt-1 text-sm text-gray-300">다음 화면에서 컷별 화면·행동·카메라·대사를 직접 검수할 수 있습니다.</p></div><button type="button" disabled={storyboardBusy} onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-6 py-3.5 text-sm font-black text-white disabled:opacity-50">{storyboardBusy ? '스토리 콘티 생성 중…' : '전체 확정 · 스토리 콘티 생성 →'}</button></div>}</div>
               </> : null}
             </>
           )}
@@ -497,7 +640,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           <h1 className="mt-2 text-3xl font-black text-white">장면의 흐름을 검수합니다</h1>
           <p className="mt-2 text-sm text-gray-400">이미지가 없는 실제 컷에는 빈 상태를 표시합니다. 샘플 이미지는 승인 해시에 포함되지 않습니다.</p>
           <DecisionPath items={['콘티 생성', '컷·샷 직접 검수', '필요한 컷 수정', '현재 버전 콘티 전체 승인']}/>
-          {isGeneratingStoryboard ? <div role="status" aria-live="polite" className="mt-8 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.07] p-10 text-center"><span className="h-12 w-12 animate-pulse rounded-full border-4 border-fuchsia-300 border-t-transparent"/><p className="mt-6 text-xl font-black text-white">스토리 콘티를 구성하고 있습니다</p><p className="mt-2 max-w-xl text-sm leading-6 text-gray-300">확정한 기획과 캐릭터 기준으로 컷 순서, 화면, 행동, 카메라, 대사를 나누고 있습니다. 완료되면 이 화면에 바로 나타납니다.</p></div> : storyboardError && !cuts.length ? <div className="mt-8"><EmptyState title="스토리보드를 만들지 못했습니다" description={storyboardError} action={<div className="flex flex-wrap justify-center gap-3"><button type="button" onClick={() => onNavigate('reference')} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-black text-white">기준 시트 확인</button><button type="button" onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white">스토리보드 다시 생성</button></div>}/></div> : !cuts.length ? <div className="mt-8">{progress.state === 'character-ready' ? <div className="rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/[0.08] p-8 text-center"><h2 className="text-2xl font-black text-white">기준 이미지 검수가 끝났습니다</h2><p className="mt-3 text-sm leading-6 text-gray-400">확정한 캐릭터 이미지와 프로젝트 화풍을 입력으로 스토리 콘티를 만듭니다. 생성 후 컷별 화면·행동·카메라·대사를 직접 수정하고 승인할 수 있습니다.</p><button type="button" onClick={() => void generateStoryboard()} className="mt-5 rounded-xl bg-fuchsia-500 px-6 py-3 text-sm font-black text-white">스토리 콘티 생성</button></div> : <div className="rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-8 text-center"><h2 className="text-2xl font-black text-white">캐릭터 검수가 아직 끝나지 않았습니다</h2><p className="mt-3 text-sm leading-6 text-gray-300">{progress.state === 'style-review-needed' ? `프로젝트 화풍과 일치하지 않는 캐릭터 ${Math.max(0, characterCount - styleConfirmedCharacterCount)}명이 남았습니다.` : `기준 이미지가 없는 캐릭터 ${Math.max(0, characterCount - readyCharacterCount)}명이 남았습니다.`}</p><p className="mt-1 text-xs text-gray-500">기준 시트에서 이미지를 직접 확인하고 확정해야 스토리 콘티를 만들 수 있습니다.</p><button type="button" onClick={() => onNavigate('reference')} className="mt-5 rounded-xl bg-amber-300 px-6 py-3 text-sm font-black text-black">기준 시트로 돌아가기</button></div>}</div> : displayedStoryboard ? <><div className={`mt-8 rounded-3xl border p-5 ${storyboard ? 'border-emerald-400/25 bg-emerald-400/[0.07]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${storyboard ? 'text-emerald-200' : 'text-amber-100'}`}>{storyboard ? `✓ ${storyboard.cuts.length}개 컷의 스토리 콘티가 준비됐습니다` : '샘플 검토 모드 · 실제 프로젝트 데이터와 분리'}</p><p className="mt-2 text-sm text-gray-300">전체 흐름을 먼저 확인한 뒤 컷을 선택해 START→END, 카메라, 행동, 대사와 SFX를 샷 단위로 검수하세요.</p></div><StoryboardStudio storyboard={displayedStoryboard} characterSheets={storyboard ? allCharacterSheets : []} reviewOnly={!storyboard}/></> : null}
+          {storyboardBusy ? <div role="status" aria-live="polite" className="mt-8 flex min-h-80 flex-col items-center justify-center rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.07] p-10 text-center"><span className="h-12 w-12 animate-pulse rounded-full border-4 border-fuchsia-300 border-t-transparent"/><p className="mt-6 text-xl font-black text-white">스토리 콘티를 구성하고 있습니다</p><p className="mt-2 max-w-xl text-sm leading-6 text-gray-300">작업 상태는 안전하게 저장됩니다. 이 화면을 닫거나 새로고침해도 같은 프로젝트에서 진행 상태와 결과를 복구합니다.</p></div> : currentStoryboardError && !cuts.length ? <div className="mt-8"><EmptyState title="스토리보드를 만들지 못했습니다" description={currentStoryboardError} action={<div className="flex flex-wrap justify-center gap-3"><button type="button" onClick={() => onNavigate('reference')} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-black text-white">기준 시트 확인</button><button type="button" onClick={() => void generateStoryboard()} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white">스토리보드 다시 시도</button></div>}/></div> : !cuts.length ? <div className="mt-8">{progress.state === 'character-ready' ? <div className="rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/[0.08] p-8 text-center"><h2 className="text-2xl font-black text-white">기준 이미지 검수가 끝났습니다</h2><p className="mt-3 text-sm leading-6 text-gray-400">확정한 캐릭터 이미지와 프로젝트 화풍을 입력으로 스토리 콘티를 만듭니다. 생성 후 컷별 화면·행동·카메라·대사를 직접 수정하고 승인할 수 있습니다.</p><button type="button" onClick={() => void generateStoryboard()} className="mt-5 rounded-xl bg-fuchsia-500 px-6 py-3 text-sm font-black text-white">스토리 콘티 생성</button></div> : <div className="rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-8 text-center"><h2 className="text-2xl font-black text-white">캐릭터 검수가 아직 끝나지 않았습니다</h2><p className="mt-3 text-sm leading-6 text-gray-300">{progress.state === 'style-review-needed' ? `프로젝트 화풍과 일치하지 않는 캐릭터 ${Math.max(0, characterCount - styleConfirmedCharacterCount)}명이 남았습니다.` : `기준 이미지가 없는 캐릭터 ${Math.max(0, characterCount - readyCharacterCount)}명이 남았습니다.`}</p><p className="mt-1 text-xs text-gray-500">기준 시트에서 이미지를 직접 확인하고 확정해야 스토리 콘티를 만들 수 있습니다.</p><button type="button" onClick={() => onNavigate('reference')} className="mt-5 rounded-xl bg-amber-300 px-6 py-3 text-sm font-black text-black">기준 시트로 돌아가기</button></div>}</div> : displayedStoryboard ? <><div className={`mt-8 rounded-3xl border p-5 ${storyboard ? 'border-emerald-400/25 bg-emerald-400/[0.07]' : 'border-amber-400/25 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${storyboard ? 'text-emerald-200' : 'text-amber-100'}`}>{storyboard ? `✓ ${storyboard.cuts.length}개 컷의 스토리 콘티가 준비됐습니다` : '샘플 검토 모드 · 실제 프로젝트 데이터와 분리'}</p><p className="mt-2 text-sm text-gray-300">전체 흐름을 먼저 확인한 뒤 컷을 선택해 START→END, 카메라, 행동, 대사와 SFX를 샷 단위로 검수하세요.</p></div><StoryboardStudio storyboard={displayedStoryboard} characterSheets={storyboard ? allCharacterSheets : []} reviewOnly={!storyboard}/></> : null}
         </div>
       </section>
     );

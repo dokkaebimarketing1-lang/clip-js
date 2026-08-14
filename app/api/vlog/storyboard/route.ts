@@ -1,17 +1,54 @@
 import {NextResponse} from 'next/server';
 import {z} from 'zod';
-import {getConfiguredPlanningProvider} from '@/app/lib/generation/planning-runtime.server';
-import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
-import {characterSheetSchema, interviewBriefSchema, storyboardSchema, styleBibleSchema} from '@/app/lib/workflow/schema';
-import {sha256} from '@/app/lib/workflow/hash';
-import {validateCharacterStyleLineage} from '@/app/lib/workflow/style-lineage';
+import {getStoryboardJobRepository} from '@/app/lib/storyboard-jobs/runtime.server';
+import {assertStoryboardInputReady, StoryboardInputNotReadyError, runStoryboardJob} from '@/app/lib/storyboard-jobs/storyboard-job-runner.server';
+import {storyboardJobInputSchema, type StoryboardJobRecord} from '@/app/lib/storyboard-jobs/storyboard-job-schema';
+
+export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 const MAX_BODY_BYTES = 64 * 1024;
+const JOB_ID_PATTERN = /^sj_[a-f0-9]{64}$/;
 
-const assertSameOrigin = (request: Request) => {
+export const assertLocalSingleUserDeployment = (
+  request: Request,
+  config: {nodeEnv?: string; localMode?: string} = {
+    nodeEnv: process.env.NODE_ENV,
+    localMode: process.env.CLIPJS_STORYBOARD_LOCAL_SINGLE_USER,
+  },
+) => {
+  const hosts = [
+    new URL(request.url).host,
+    request.headers.get('host'),
+    ...(request.headers.get('x-forwarded-host')?.split(',') ?? []),
+  ].map((value) => value?.trim()).filter((value): value is string => Boolean(value));
+  const isLoopback = (host: string) => {
+    try {
+      return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(`http://${host}`).hostname.toLowerCase());
+    } catch {
+      return false;
+    }
+  };
+  if (hosts.length === 0 || !hosts.every(isLoopback)) {
+    throw new Error('Storyboard jobs are available only in local single-user mode.');
+  }
+  if (config.nodeEnv === 'production' && config.localMode !== 'true') {
+    throw new Error('CLIPJS_STORYBOARD_LOCAL_SINGLE_USER=true is required in production.');
+  }
+};
+
+const assertPostOrigin = (request: Request) => {
   const origin = request.headers.get('origin');
   const fetchSite = request.headers.get('sec-fetch-site');
   if (fetchSite !== 'same-origin' || origin !== new URL(request.url).origin) {
+    throw new Error('Browser same-origin context is required.');
+  }
+};
+
+const assertGetOrigin = (request: Request) => {
+  const origin = request.headers.get('origin');
+  const fetchSite = request.headers.get('sec-fetch-site');
+  if (fetchSite !== 'same-origin' || (origin && origin !== new URL(request.url).origin)) {
     throw new Error('Browser same-origin context is required.');
   }
 };
@@ -26,94 +63,116 @@ const readBody = async (request: Request): Promise<unknown> => {
   return JSON.parse(text);
 };
 
-const inputSchema = z.object({
+const publicRecord = (record: StoryboardJobRecord) => ({
+  jobId: record.jobId,
+  projectId: record.projectId,
+  requestHash: record.requestHash,
+  status: record.status,
+  input: record.input,
+  attempt: record.attempt,
+  ...(record.storyboard ? {storyboard: record.storyboard} : {}),
+  ...(record.error ? {error: record.error} : {}),
+  createdAt: record.createdAt,
+  updatedAt: record.updatedAt,
+});
+
+const json = (body: unknown, init?: ResponseInit) => NextResponse.json(body, {
+  ...init,
+  headers: {...init?.headers, 'cache-control': 'no-store'},
+});
+
+const runJobSchema = z.object({
+  action: z.literal('run'),
   projectId: z.string().min(1).max(128),
-  sentence: z.string().trim().min(1).max(2000),
-  interviewBrief: interviewBriefSchema,
-  styleBible: styleBibleSchema,
-  styleBibleHash: z.string().regex(/^[a-f0-9]{64}$/),
-  characterSheets: z.array(characterSheetSchema.extend({
-    id: z.string().regex(/^CHAR\d{2}$/),
-    referenceImageId: z.string().regex(/^ga_[a-f0-9]{32}$/),
-    referenceStyleHash: z.string().regex(/^[a-f0-9]{64}$/),
-  })).min(1).max(10),
+  jobId: z.string().regex(JOB_ID_PATTERN),
 }).strict();
 
 export const POST = async (request: Request) => {
   let raw: unknown;
   try {
-    assertSameOrigin(request);
+    assertLocalSingleUserDeployment(request);
+    assertPostOrigin(request);
     raw = await readBody(request);
   } catch {
-    return NextResponse.json({error: '잘못된 요청입니다.', code: 'INVALID_REQUEST'}, {status: 400});
+    return json({error: '잘못된 요청입니다.', code: 'INVALID_REQUEST'}, {status: 400});
   }
-  const parsed = inputSchema.safeParse(raw);
+
+  const runRequest = runJobSchema.safeParse(raw);
+  if (runRequest.success) {
+    try {
+      const repository = getStoryboardJobRepository();
+      const located = await repository.get(runRequest.data.jobId);
+      if (!located || located.projectId !== runRequest.data.projectId) {
+        return json({error: '스토리보드 작업을 찾을 수 없습니다.', code: 'STORYBOARD_JOB_NOT_FOUND'}, {status: 404});
+      }
+      const record = located.status === 'queued' || located.status === 'processing'
+        ? await runStoryboardJob(located.jobId) ?? located
+        : located;
+      return json({stage: 'storyboard-job', ...publicRecord(record)});
+    } catch (error) {
+      console.error('Storyboard job execution failed.', {name: error instanceof Error ? error.name : 'UnknownError'});
+      return json({error: '스토리보드 작업을 실행하지 못했습니다.', code: 'STORYBOARD_JOB_EXECUTION_FAILED'}, {status: 503});
+    }
+  }
+
+  const parsed = storyboardJobInputSchema.safeParse(raw);
   if (!parsed.success) {
-    return NextResponse.json({
+    return json({
       error: '모든 캐릭터 기준 이미지를 준비한 뒤 스토리보드를 생성하세요.',
       code: 'CHARACTER_REFERENCES_REQUIRED',
     }, {status: 409});
   }
 
-  const input = parsed.data;
-  const characterIds = input.characterSheets.map((sheet) => sheet.id);
-  if (new Set(characterIds).size !== characterIds.length) {
-    return NextResponse.json({error: '캐릭터 식별자가 중복됐습니다.', code: 'DUPLICATE_CHARACTER_ID'}, {status: 409});
+  try {
+    await assertStoryboardInputReady(parsed.data);
+    const repository = getStoryboardJobRepository();
+    const result = await repository.createOrGet(parsed.data);
+    const record = result.record.status === 'failed'
+      ? await repository.requeueFailed(result.record.jobId)
+      : result.record;
+    return json({stage: 'storyboard-job', created: result.created, ...publicRecord(record)}, {
+      status: record.status === 'completed' ? 200 : 202,
+    });
+  } catch (error) {
+    if (error instanceof StoryboardInputNotReadyError) {
+      return json({error: error.message, code: error.code}, {status: 409});
+    }
+    console.error('Storyboard job enqueue failed.', {name: error instanceof Error ? error.name : 'UnknownError'});
+    return json({error: '스토리보드 작업을 저장하지 못했습니다.', code: 'STORYBOARD_JOB_STORE_FAILED'}, {status: 503});
   }
-  if (await sha256(input.styleBible) !== input.styleBibleHash
-    || !validateCharacterStyleLineage(input.characterSheets, input.styleBibleHash).valid) {
-    return NextResponse.json({error: '캐릭터 기준 이미지의 공통 스타일이 확정되지 않았습니다.', code: 'STYLE_LINEAGE_REQUIRED'}, {status: 409});
+};
+
+const querySchema = z.object({
+  projectId: z.string().min(1).max(128),
+  jobId: z.string().regex(JOB_ID_PATTERN).optional(),
+});
+
+export const GET = async (request: Request) => {
+  try {
+    assertLocalSingleUserDeployment(request);
+    assertGetOrigin(request);
+  } catch {
+    return json({error: '잘못된 요청입니다.', code: 'INVALID_REQUEST'}, {status: 400});
   }
-  const assets = await Promise.all(input.characterSheets.map((sheet) =>
-    getGeneratedAssetStore().get(sheet.referenceImageId),
-  ));
-  const ownsEveryImage = assets.every((asset, index) => {
-    const sheet = input.characterSheets[index];
-    const expectedReferences = sheet.styleReferenceImageIds ?? [];
-    const assetLineageMatches = asset?.styleLineage?.styleBibleHash === input.styleBibleHash
-      && asset.styleLineage.styleReferenceImageIds.length === expectedReferences.length
-      && asset.styleLineage.styleReferenceImageIds.every((id, referenceIndex) => id === expectedReferences[referenceIndex]);
-    return asset?.projectId === input.projectId && asset.state === 'ready' && asset.mimeType.startsWith('image/') && assetLineageMatches;
+  const url = new URL(request.url);
+  const parsed = querySchema.safeParse({
+    projectId: url.searchParams.get('projectId'),
+    jobId: url.searchParams.get('jobId') || undefined,
   });
-  if (!ownsEveryImage) {
-    return NextResponse.json({
-      error: '현재 프로젝트에 연결된 캐릭터 기준 이미지를 찾을 수 없습니다.',
-      code: 'CHARACTER_REFERENCE_NOT_FOUND',
-    }, {status: 409});
-  }
+  if (!parsed.success) return json({error: '잘못된 요청입니다.', code: 'INVALID_REQUEST'}, {status: 400});
 
   try {
-    const provider = getConfiguredPlanningProvider();
-    const lockedPlanningInput = [
-      input.sentence,
-      '[PROJECT STYLE BIBLE — IMMUTABLE FOR EVERY CHARACTER AND SHOT]',
-      JSON.stringify(input.styleBible),
-      '[CHARACTER MASTER IDENTITIES — DO NOT CHANGE DESIGN]',
-      JSON.stringify(input.characterSheets.map(({id, name, breed, palette, visualTags, referenceImageId}) => ({id, name, breed, palette, visualTags, referenceImageId}))),
-      'Every cut must preserve this exact project style and use only the listed character IDs. Change camera/action only; never reinterpret medium, realism, anatomy, lighting, palette language, or character identity.',
-    ].join('\n');
-    const plan = await provider.compose(provider.provider === 'rules' ? input.sentence : lockedPlanningInput, request.signal);
-    const storyboard = storyboardSchema.parse(plan.storyboard);
-    const validIds = new Set(input.characterSheets.map((sheet) => sheet.id));
-    if (storyboard.cuts.some((cut) => cut.characterIds?.some((id) => !validIds.has(id)))) {
-      throw new Error('Storyboard referenced an unknown character.');
+    const repository = getStoryboardJobRepository();
+    const located = parsed.data.jobId
+      ? await repository.get(parsed.data.jobId)
+      : await repository.latestForProject(parsed.data.projectId);
+    if (!located || located.projectId !== parsed.data.projectId) {
+      return json({error: '스토리보드 작업을 찾을 수 없습니다.', code: 'STORYBOARD_JOB_NOT_FOUND'}, {status: 404});
     }
-    const allCharacterIds = input.characterSheets.map((sheet) => sheet.id);
-    const linkedStoryboard = storyboardSchema.parse({
-      ...storyboard,
-      characterReferenceIds: input.characterSheets.map((sheet) => sheet.referenceImageId),
-      styleBibleHash: input.styleBibleHash,
-      cuts: storyboard.cuts.map((cut) => ({
-        ...cut,
-        characterIds: cut.characterIds?.length ? cut.characterIds : allCharacterIds,
-      })),
-    });
-    return NextResponse.json({stage: 'storyboard-ready', storyboard: linkedStoryboard});
+    const record = located;
+    return json({stage: 'storyboard-job', ...publicRecord(record)});
   } catch (error) {
-    console.error('Storyboard generation failed.', {name: error instanceof Error ? error.name : 'UnknownError'});
-    return NextResponse.json({
-      error: '스토리보드를 생성하지 못했습니다.',
-      code: 'STORYBOARD_GENERATION_FAILED',
-    }, {status: 503});
+    console.error('Storyboard job lookup failed.', {name: error instanceof Error ? error.name : 'UnknownError'});
+    return json({error: '스토리보드 작업 상태를 불러오지 못했습니다.', code: 'STORYBOARD_JOB_LOOKUP_FAILED'}, {status: 503});
   }
 };
