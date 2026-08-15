@@ -49,8 +49,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const mobileSourcesCloseRef = useRef<HTMLButtonElement | null>(null);
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
     const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
+    const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
     const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
     const [rightTab, setRightTab] = useState<'stage' | 'reference' | 'advanced' | 'props'>('stage');
+    const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
     const [characterPreviewUrls, setCharacterPreviewUrls] = useState<Record<string, string>>({});
     const characterPreviewRequestsRef = useRef(new Set<string>());
     const characterPreviewFailuresRef = useRef<Record<string, number>>({});
@@ -482,12 +484,13 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     </div>
                 </nav>
 
-                {/* 왼쪽 소스 패널 (상시 노출) */}
-                {workspaceLayout.showSources && <div id="mobile-edit-sources" className={`${mobileSourcesOpen ? 'absolute inset-y-0 left-[76px] flex' : 'hidden'} z-40 min-h-0 w-[260px] shrink-0 flex-col overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3 md:static md:flex`}>
+                {/* 왼쪽 소스 패널 */}
+                {workspaceLayout.showSources && <div id="mobile-edit-sources" className={`${mobileSourcesOpen ? 'absolute inset-y-0 left-[76px] flex' : 'hidden'} ${leftSidebarOpen ? 'md:flex' : 'md:hidden'} z-40 min-h-0 w-[260px] shrink-0 flex-col overflow-y-auto border-r border-gray-800 bg-neutral-900 p-3 md:static`}>
                     <div className="mb-3 flex gap-1 rounded-lg bg-black/30 p-1">
                         <button type="button" onClick={() => setLeftTab('media')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'media' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>미디어</button>
                         <button type="button" onClick={() => setLeftTab('text')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'text' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>텍스트</button>
-                        <button ref={mobileSourcesCloseRef} type="button" aria-label="소스 패널 닫기" onClick={() => setMobileSourcesOpen(false)} className="rounded-md px-2 text-gray-400 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:hidden">×</button>
+                        <button ref={mobileSourcesCloseRef} type="button" aria-label="사이드바 닫기" onClick={() => setMobileSourcesOpen(false)} className="rounded-md border border-white/10 bg-white/[0.04] px-2 text-gray-400 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:hidden">×</button>
+                        <button type="button" aria-label="사이드바 닫기" onClick={() => setLeftSidebarOpen(false)} className="hidden rounded-md border border-white/10 bg-white/[0.04] px-2 text-gray-400 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:inline-flex md:items-center">×</button>
                     </div>
                     {leftTab === 'media' && (
                         <div>
@@ -511,10 +514,14 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <button
                             ref={mobileSourcesTriggerRef}
                             type="button"
+                            aria-label="사이드바 열기"
                             aria-expanded={mobileSourcesOpen}
                             aria-controls="mobile-edit-sources"
-                            onClick={() => setMobileSourcesOpen(true)}
-                            className="h-7 rounded-md border border-white/10 px-2 text-[10px] font-bold text-gray-300 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:hidden"
+                            onClick={() => {
+                                setMobileSourcesOpen(true);
+                                setLeftSidebarOpen(true);
+                            }}
+                            className={`h-7 rounded-md border border-white/10 bg-white/[0.04] px-2 text-[10px] font-bold text-gray-300 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 ${leftSidebarOpen ? 'md:hidden' : ''}`}
                         >소스</button>
                         <button
                             type="button"
@@ -571,7 +578,13 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </main>
 
                 {/* 스토리보드는 자체 선택 컷 inspector를 사용한다. 다른 단계의 운영 도구는 고급 탭으로 격리한다. */}
-                {workspace !== 'storyboard' ? <aside aria-label="단계 도구" className="hidden min-h-0 w-[286px] shrink-0 flex-col border-l border-white/[0.08] bg-[#0d0f15] lg:flex 2xl:w-[320px]">
+                {workspace !== 'storyboard' && !rightSidebarOpen ? <button
+                    type="button"
+                    aria-label="사이드바 열기"
+                    onClick={() => setRightSidebarOpen(true)}
+                    className="absolute right-2 top-2 z-30 hidden h-8 items-center rounded-md border border-white/10 bg-white/[0.04] px-2 text-xs font-bold text-gray-300 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 lg:inline-flex"
+                >단계 도구</button> : null}
+                {workspace !== 'storyboard' && rightSidebarOpen ? <aside aria-label="단계 도구" className="hidden min-h-0 w-[286px] shrink-0 flex-col border-l border-white/[0.08] bg-[#0d0f15] lg:flex 2xl:w-[320px]">
                     <div className="flex shrink-0 border-b border-gray-800">
                         <button
                             type="button"
@@ -596,6 +609,12 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             onClick={() => setRightTab('props')}
                             className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 disabled:cursor-not-allowed disabled:text-gray-700 ${rightTab === 'props' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >속성</button> : null}
+                        <button
+                            type="button"
+                            aria-label="사이드바 닫기"
+                            onClick={() => setRightSidebarOpen(false)}
+                            className="m-1.5 shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-2 text-gray-400 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
+                        >×</button>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto p-4">
                         {effectiveRightTab === 'stage' ? (

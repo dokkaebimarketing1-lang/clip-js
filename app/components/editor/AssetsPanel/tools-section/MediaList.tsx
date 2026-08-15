@@ -1,12 +1,13 @@
 "use client";
 
-import { listFiles, deleteFile, useAppSelector, storeFile, getFile } from '@/app/store';
+import { deleteFile, useAppSelector, getFile } from '@/app/store';
 import { setMediaFiles, setFilesID } from '@/app/store/slices/projectSlice';
-import { MediaFile, UploadedFile } from '@/app/types';
+import type { UploadedFile } from '@/app/types';
 import { useAppDispatch } from '@/app/store';
 import AddMedia from '../AddButtons/AddMedia';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import {MediaThumbnail} from './MediaThumbnail';
 export default function MediaList() {
     const { mediaFiles, filesID } = useAppSelector((state) => state.projectState);
     const dispatch = useAppDispatch();
@@ -62,6 +63,7 @@ export default function MediaList() {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-2 flex-1 min-w-0">
                                     <AddMedia fileId={mediaFile.id} />
+                                    <MediaThumbnail file={mediaFile.file} />
                                     <span className="py-1 px-1 text-sm flex-1 truncate" title={mediaFile.file.name}>
                                         {mediaFile.file.name}
                                     </span>

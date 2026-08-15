@@ -1,5 +1,5 @@
 import { useAppSelector } from "@/app/store";
-import { setMarkerTrack, setTextElements, setMediaFiles, setTimelineZoom, setCurrentTime, setIsPlaying, setActiveElement } from "@/app/store/slices/projectSlice";
+import { setMarkerTrack, setTextElements, setMediaFiles, setTimelineZoom, setCurrentTime, setActiveElement } from "@/app/store/slices/projectSlice";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useDispatch } from "react-redux";
 import Image from "next/image";
@@ -12,7 +12,7 @@ import { throttle } from 'lodash';
 import GlobalKeyHandlerProps from "../../../components/editor/keys/GlobalKeyHandlerProps";
 import toast from "react-hot-toast";
 export const Timeline = () => {
-    const { currentTime, timelineZoom, enableMarkerTracking, activeElement, activeElementIndex, mediaFiles, textElements, duration, isPlaying } = useAppSelector((state) => state.projectState);
+    const { currentTime, timelineZoom, enableMarkerTracking, activeElement, activeElementIndex, mediaFiles, textElements, duration } = useAppSelector((state) => state.projectState);
     const dispatch = useDispatch();
     const timelineRef = useRef<HTMLDivElement>(null)
 
@@ -188,20 +188,44 @@ export const Timeline = () => {
     };
 
 
-    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!timelineRef.current) return;
+    const seekToClientX = useCallback((clientX: number) => {
+        const timeline = timelineRef.current;
+        if (!timeline) return;
 
-        dispatch(setIsPlaying(false));
-        const rect = timelineRef.current.getBoundingClientRect();
-
-        const scrollOffset = timelineRef.current.scrollLeft;
-        const offsetX = e.clientX - rect.left + scrollOffset;
-
+        const rect = timeline.getBoundingClientRect();
+        const offsetX = clientX - rect.left + timeline.scrollLeft;
         const seconds = offsetX / timelineZoom;
         const clampedTime = Math.max(0, Math.min(duration, seconds));
 
         dispatch(setCurrentTime(clampedTime));
-    };
+    }, [dispatch, duration, timelineZoom]);
+
+    const handleSeekPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.isPrimary || event.button !== 0) return;
+
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        seekToClientX(event.clientX);
+    }, [seekToClientX]);
+
+    const handleSeekPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+
+        seekToClientX(event.clientX);
+    }, [seekToClientX]);
+
+    const handleSeekPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+
+        seekToClientX(event.clientX);
+        event.currentTarget.releasePointerCapture(event.pointerId);
+    }, [seekToClientX]);
+
+    const handleSeekPointerCancel = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+
+        event.currentTarget.releasePointerCapture(event.pointerId);
+    }, []);
 
     return (
         <div className="flex w-full flex-col gap-2">
@@ -291,10 +315,17 @@ export const Timeline = () => {
             <div
                 className="relative overflow-x-auto w-full border-t border-gray-800 bg-[#1E1D21] z-10"
                 ref={timelineRef}
-                onClick={handleClick}
             >
                 {/* Timeline Header */}
-                <Header />
+                <div
+                    className="touch-none select-none"
+                    onPointerDown={handleSeekPointerDown}
+                    onPointerMove={handleSeekPointerMove}
+                    onPointerUp={handleSeekPointerUp}
+                    onPointerCancel={handleSeekPointerCancel}
+                >
+                    <Header />
+                </div>
 
                 <div className="bg-[#1E1D21]"
 
