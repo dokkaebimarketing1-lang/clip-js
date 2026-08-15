@@ -1,9 +1,11 @@
 "use client";
 
 import { useAppSelector } from '../../../store';
-import { setActiveElement, setMediaFiles, setTextElements } from '../../../store/slices/projectSlice';
-import { MediaFile } from '../../../types';
+import { setMediaFiles } from '../../../store/slices/projectSlice';
+import type { MediaFile } from '../../../types';
 import { useAppDispatch } from '../../../store';
+import toast from 'react-hot-toast';
+import { buildDetachedAudioMedia, hasDetachedAudio } from '../../../lib/editor/detach-audio';
 
 export default function MediaProperties() {
     const { mediaFiles, activeElementIndex } = useAppSelector((state) => state.projectState);
@@ -13,6 +15,20 @@ export default function MediaProperties() {
         dispatch(setMediaFiles(mediaFiles.map(media =>
             media.id === id ? { ...media, ...updates } : media
         )));
+    };
+    const onDetachAudio = () => {
+        if (mediaFile.type !== 'video') return;
+        if (hasDetachedAudio(mediaFiles, mediaFile)) {
+            toast('오디오가 이미 분리되어 있습니다.');
+            return;
+        }
+
+        const detached = buildDetachedAudioMedia(mediaFile, crypto.randomUUID());
+        dispatch(setMediaFiles([
+            ...mediaFiles.map(media => media.id === mediaFile.id ? detached.video : media),
+            detached.audio,
+        ]));
+        toast.success('오디오를 분리했습니다.');
     };
 
     if (!mediaFile) return null;
@@ -189,7 +205,16 @@ export default function MediaProperties() {
                         </div>
                     </div>
                 </div>}
-                <div >
+                <div className="space-y-2">
+                    <h4 className="font-semibold">Media Actions</h4>
+                    <button
+                        type="button"
+                        onClick={onDetachAudio}
+                        disabled={mediaFile.type !== 'video'}
+                        className="w-full rounded bg-white px-3 py-2 text-sm font-semibold text-black transition-colors hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        오디오 분리
+                    </button>
                 </div>
             </div>
         </div >
