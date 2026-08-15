@@ -1,96 +1,57 @@
-import React, { useRef, useCallback, useMemo } from "react";
-import Moveable, { OnScale, OnDrag, OnResize, OnRotate } from "react-moveable";
+import React from "react";
+import Moveable, { OnDrag, OnResize } from "react-moveable";
 import { useAppSelector } from "@/app/store";
-import { setActiveElement, setActiveElementIndex, setMediaFiles } from "@/app/store/slices/projectSlice";
-import { memo, useEffect, useState } from "react";
-import { useDispatch } from "react-redux";
+import { setMediaFiles } from "@/app/store/slices/projectSlice";
 import Image from "next/image";
-import Header from "../Header";
-import { MediaFile } from "@/app/types";
-import { debounce, throttle } from "lodash";
-
-const MINIMUM_TIMELINE_DURATION = 0.1;
+import type { MediaFile } from "@/app/types";
+import {
+    applyDragPosition,
+    applyResizeWidth,
+    applyWestResizePosition,
+    calculateEastResize,
+    calculateTimelineDrag,
+    calculateTrimmedStartTime,
+    calculateWestResize,
+    useThrottledTimelineElementUpdate,
+    useTimelineElementRefs,
+    useTimelineElementSelection,
+} from "./timeline-element-logic";
 
 export default function VideoTimeline() {
-    const targetRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const { mediaFiles, activeElement, activeElementIndex, timelineZoom } = useAppSelector((state) => state.projectState);
-    const dispatch = useDispatch();
-    const moveableRef = useRef<Record<string, Moveable | null>>({});
-
-    // this affect the performance cause of too much re-renders
-
-    // const onUpdateMedia = (id: string, updates: Partial<MediaFile>) => {
-    //     dispatch(setMediaFiles(mediaFiles.map(media =>
-    //         media.id === id ? { ...media, ...updates } : media
-    //     )));
-    // };
-
-    // TODO: this is a hack to prevent the mediaFiles from being updated too often while dragging or resizing
-    const mediaFilesRef = useRef(mediaFiles);
-    useEffect(() => {
-        mediaFilesRef.current = mediaFiles;
-    }, [mediaFiles]);
-
-    const onUpdateMedia = useMemo(() =>
-        throttle((id: string, updates: Partial<MediaFile>) => {
-            const currentFiles = mediaFilesRef.current;
-            const updated = currentFiles.map(media =>
-                media.id === id ? { ...media, ...updates } : media
-            );
-            dispatch(setMediaFiles(updated));
-        }, 100), [dispatch]
-    );
-
-    const handleClick = (element: string, index: number | string) => {
-        if (element === 'media') {
-            dispatch(setActiveElement('media') as any);
-            // TODO: cause we pass id when media to find the right index i will change this later (this happens cause each timeline pass its index not index from mediaFiles array)
-            const actualIndex = mediaFiles.findIndex(clip => clip.id === index as unknown as string);
-            dispatch(setActiveElementIndex(actualIndex));
-        }
-    };
+    const onUpdateMedia = useThrottledTimelineElementUpdate(mediaFiles, setMediaFiles);
+    const selectElement = useTimelineElementSelection('media', mediaFiles);
+    const { getTarget, setMoveableRef, setTargetRef } = useTimelineElementRefs(mediaFiles, timelineZoom);
 
     const handleDrag = (clip: MediaFile, target: HTMLElement, left: number) => {
-        // no negative left
-        const constrainedLeft = Math.max(left, 0);
-        const newPositionStart = constrainedLeft / timelineZoom;
+        const drag = calculateTimelineDrag(clip.positionStart, left, timelineZoom);
         onUpdateMedia(clip.id, {
-            positionStart: newPositionStart,
-            positionEnd: (newPositionStart - clip.positionStart) + clip.positionEnd,
-            endTime: Math.max((newPositionStart - clip.positionStart) + clip.endTime, clip.endTime)
+            positionStart: drag.positionStart,
+            positionEnd: drag.positionDelta + clip.positionEnd,
+            endTime: Math.max(drag.positionDelta + clip.endTime, clip.endTime)
         })
 
-        target.style.left = `${constrainedLeft}px`;
+        applyDragPosition(target, drag.constrainedLeft);
     };
 
     const handleRightResize = (clip: MediaFile, target: HTMLElement, width: number) => {
-        const newPositionEnd = width / timelineZoom;
+        const resize = calculateEastResize(clip.positionStart, width, timelineZoom);
 
         onUpdateMedia(clip.id, {
-            positionEnd: clip.positionStart + newPositionEnd,
-            endTime: Math.max(clip.positionStart + newPositionEnd, clip.endTime)
+            positionEnd: resize.positionEnd,
+            endTime: Math.max(resize.positionEnd, clip.endTime)
         })
     };
     const handleLeftResize = (clip: MediaFile, target: HTMLElement, width: number) => {
-        const resizedDuration = width / timelineZoom;
-        const maximumPositionStart = Math.max(clip.positionEnd - MINIMUM_TIMELINE_DURATION, 0);
-        const constrainedLeft = Math.min(Math.max(clip.positionEnd - resizedDuration, 0), maximumPositionStart);
-        const trimDelta = constrainedLeft - clip.positionStart;
+        const resize = calculateWestResize(clip.positionStart, clip.positionEnd, width, timelineZoom);
 
         onUpdateMedia(clip.id, {
-            positionStart: constrainedLeft,
-            startTime: Math.max(clip.startTime + trimDelta, 0),
+            positionStart: resize.positionStart,
+            startTime: calculateTrimmedStartTime(clip.startTime, resize.trimDelta),
         })
 
-        target.style.left = `${constrainedLeft * timelineZoom}px`;
-        target.style.width = `${(clip.positionEnd - constrainedLeft) * timelineZoom}px`;
+        applyWestResizePosition(target, resize);
     };
-
-    useEffect(() => {
-        for (const clip of mediaFiles) {
-            moveableRef.current[clip.id]?.updateRect();
-        }
-    }, [timelineZoom]);
 
     return (
         <div >
@@ -100,12 +61,8 @@ export default function VideoTimeline() {
                     <div key={clip.id}>
                         <div
                             key={clip.id}
-                            ref={(el: HTMLDivElement | null) => {
-                                if (el) {
-                                    targetRefs.current[clip.id] = el;
-                                }
-                            }}
-                            onClick={() => handleClick('media', clip.id)}
+                            ref={(el: HTMLDivElement | null) => setTargetRef(clip.id, el)}
+                            onClick={() => selectElement(clip.id)}
                             className={`absolute border border-gray-500 border-opacity-50 rounded-md top-2 h-12 rounded bg-[#27272A] text-white text-sm flex items-center justify-center cursor-pointer ${activeElement === 'media' && mediaFiles[activeElementIndex].id === clip.id ? 'bg-[#3F3F46] border-blue-500' : ''}`}
                             style={{
                                 left: `${clip.positionStart * timelineZoom}px`,
@@ -125,12 +82,8 @@ export default function VideoTimeline() {
 
                         </div>
                         <Moveable
-                            ref={(el: Moveable | null) => {
-                                if (el) {
-                                    moveableRef.current[clip.id] = el;
-                                }
-                            }}
-                            target={targetRefs.current[clip.id] || null}
+                            ref={(el: Moveable | null) => setMoveableRef(clip.id, el)}
+                            target={getTarget(clip.id)}
                             container={null}
                             renderDirections={activeElement === 'media' && mediaFiles[activeElementIndex].id === clip.id ? ['w', 'e'] : []}
                             draggable={true}
@@ -146,7 +99,7 @@ export default function VideoTimeline() {
                                 delta, dist,
                                 transform,
                             }: OnDrag) => {
-                                handleClick('media', clip.id)
+                                selectElement(clip.id)
                                 handleDrag(clip, target as HTMLElement, left);
                             }}
                             onDragEnd={({ target, isDrag, clientX, clientY }) => {
@@ -162,14 +115,16 @@ export default function VideoTimeline() {
                                 delta, direction,
                             }: OnResize) => {
                                 if (direction[0] === 1) {
-                                    handleClick('media', clip.id)
-                                    delta[0] && (target!.style.width = `${width}px`);
-                                    handleRightResize(clip, target as HTMLElement, width);
+                                    selectElement(clip.id)
+                                    const resizeTarget = target as HTMLElement;
+                                    applyResizeWidth(resizeTarget, width, delta[0]);
+                                    handleRightResize(clip, resizeTarget, width);
                                 }
                                 else if (direction[0] === -1) {
-                                    handleClick('media', clip.id)
-                                    delta[0] && (target!.style.width = `${width}px`);
-                                    handleLeftResize(clip, target as HTMLElement, width);
+                                    selectElement(clip.id)
+                                    const resizeTarget = target as HTMLElement;
+                                    applyResizeWidth(resizeTarget, width, delta[0]);
+                                    handleLeftResize(clip, resizeTarget, width);
                                 }
                             }}
                             onResizeEnd={({ target, isDrag, clientX, clientY }) => {

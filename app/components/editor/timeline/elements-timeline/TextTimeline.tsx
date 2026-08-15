@@ -1,93 +1,53 @@
-import React, { useRef, useCallback, useMemo } from "react";
-import Moveable, { OnScale, OnDrag, OnResize, OnRotate } from "react-moveable";
+import React from "react";
+import Moveable, { OnDrag, OnResize } from "react-moveable";
 import { useAppSelector } from "@/app/store";
-import { setActiveElement, setActiveElementIndex, setTextElements } from "@/app/store/slices/projectSlice";
-import { memo, useEffect, useState } from "react";
-import { useDispatch } from "react-redux";
+import { setTextElements } from "@/app/store/slices/projectSlice";
 import Image from "next/image";
-import Header from "../Header";
-import { MediaFile, TextElement } from "@/app/types";
-import { debounce, throttle } from "lodash";
-
-const MINIMUM_TIMELINE_DURATION = 0.1;
+import type { TextElement } from "@/app/types";
+import {
+    applyDragPosition,
+    applyResizeWidth,
+    applyWestResizePosition,
+    calculateEastResize,
+    calculateTimelineDrag,
+    calculateWestResize,
+    useThrottledTimelineElementUpdate,
+    useTimelineElementRefs,
+    useTimelineElementSelection,
+} from "./timeline-element-logic";
 
 export default function TextTimeline() {
-    const targetRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const { textElements, activeElement, activeElementIndex, timelineZoom } = useAppSelector((state) => state.projectState);
-    const dispatch = useDispatch();
-    const moveableRef = useRef<Record<string, Moveable | null>>({});
-
-
-    // this affect the performance cause of too much re-renders
-
-    // const onUpdateMedia = (id: string, updates: Partial<MediaFile>) => {
-    //     dispatch(setMediaFiles(mediaFiles.map(media =>
-    //         media.id === id ? { ...media, ...updates } : media
-    //     )));
-    // };
-
-    // TODO: this is a hack to prevent the mediaFiles from being updated too often while dragging or resizing
-    const textElementsRef = useRef(textElements);
-    useEffect(() => {
-        textElementsRef.current = textElements;
-    }, [textElements]);
-
-    const onUpdateText = useMemo(() =>
-        throttle((id: string, updates: Partial<TextElement>) => {
-            const currentFiles = textElementsRef.current;
-            const updated = currentFiles.map(text =>
-                text.id === id ? { ...text, ...updates } : text
-            );
-            dispatch(setTextElements(updated));
-        }, 100), [dispatch]
-    );
-
-    const handleClick = (element: string, index: number | string) => {
-        if (element === 'text') {
-            dispatch(setActiveElement('text') as any);
-            // TODO: find better way to do this
-            const actualIndex = textElements.findIndex(clip => clip.id === index as unknown as string);
-            dispatch(setActiveElementIndex(actualIndex));
-        }
-    };
+    const onUpdateText = useThrottledTimelineElementUpdate(textElements, setTextElements);
+    const selectElement = useTimelineElementSelection('text', textElements);
+    const { getTarget, setMoveableRef, setTargetRef } = useTimelineElementRefs(textElements, timelineZoom);
 
     const handleDrag = (clip: TextElement, target: HTMLElement, left: number) => {
-        // no negative left
-        const constrainedLeft = Math.max(left, 0);
-        const newPositionStart = constrainedLeft / timelineZoom;
+        const drag = calculateTimelineDrag(clip.positionStart, left, timelineZoom);
         onUpdateText(clip.id, {
-            positionStart: newPositionStart,
-            positionEnd: (newPositionStart - clip.positionStart) + clip.positionEnd,
+            positionStart: drag.positionStart,
+            positionEnd: drag.positionDelta + clip.positionEnd,
         })
 
-        target.style.left = `${constrainedLeft}px`;
+        applyDragPosition(target, drag.constrainedLeft);
     };
 
     const handleResize = (clip: TextElement, target: HTMLElement, width: number) => {
-        const newPositionEnd = width / timelineZoom;
+        const resize = calculateEastResize(clip.positionStart, width, timelineZoom);
 
         onUpdateText(clip.id, {
-            positionEnd: clip.positionStart + newPositionEnd,
+            positionEnd: resize.positionEnd,
         })
     };
     const handleLeftResize = (clip: TextElement, target: HTMLElement, width: number) => {
-        const resizedDuration = width / timelineZoom;
-        const maximumPositionStart = Math.max(clip.positionEnd - MINIMUM_TIMELINE_DURATION, 0);
-        const constrainedLeft = Math.min(Math.max(clip.positionEnd - resizedDuration, 0), maximumPositionStart);
+        const resize = calculateWestResize(clip.positionStart, clip.positionEnd, width, timelineZoom);
 
         onUpdateText(clip.id, {
-            positionStart: constrainedLeft,
+            positionStart: resize.positionStart,
         })
 
-        target.style.left = `${constrainedLeft * timelineZoom}px`;
-        target.style.width = `${(clip.positionEnd - constrainedLeft) * timelineZoom}px`;
+        applyWestResizePosition(target, resize);
     };
-
-    useEffect(() => {
-        for (const clip of textElements) {
-            moveableRef.current[clip.id]?.updateRect();
-        }
-    }, [timelineZoom]);
 
     return (
         <div >
@@ -95,12 +55,8 @@ export default function TextTimeline() {
                 <div key={clip.id} className="bg-green-500">
                     <div
                         key={clip.id}
-                        ref={(el: HTMLDivElement | null) => {
-                            if (el) {
-                                targetRefs.current[clip.id] = el;
-                            }
-                        }}
-                        onClick={() => handleClick('text', clip.id)}
+                        ref={(el: HTMLDivElement | null) => setTargetRef(clip.id, el)}
+                        onClick={() => selectElement(clip.id)}
                         className={`absolute border border-gray-500 border-opacity-50 rounded-md top-2 h-12 rounded bg-[#27272A] text-white text-sm flex items-center justify-center cursor-pointer ${activeElement === 'text' && textElements[activeElementIndex].id === clip.id ? 'bg-[#3F3F46] border-blue-500' : ''}`}
                         style={{
                             left: `${clip.positionStart * timelineZoom}px`,
@@ -121,12 +77,8 @@ export default function TextTimeline() {
                     </div>
 
                     <Moveable
-                        ref={(el: Moveable | null) => {
-                            if (el) {
-                                moveableRef.current[clip.id] = el;
-                            }
-                        }}
-                        target={targetRefs.current[clip.id] || null}
+                        ref={(el: Moveable | null) => setMoveableRef(clip.id, el)}
+                        target={getTarget(clip.id)}
                         container={null}
                         renderDirections={activeElement === 'text' && textElements[activeElementIndex] && textElements[activeElementIndex].id === clip.id ? ['w', 'e'] : []}
                         draggable={true}
@@ -142,7 +94,7 @@ export default function TextTimeline() {
                             delta, dist,
                             transform,
                         }: OnDrag) => {
-                            handleClick('text', clip.id)
+                            selectElement(clip.id)
                             handleDrag(clip, target as HTMLElement, left);
                         }}
                         onDragEnd={({ target, isDrag, clientX, clientY }) => {
@@ -158,15 +110,17 @@ export default function TextTimeline() {
                             delta, direction,
                         }: OnResize) => {
                             if (direction[0] === 1) {
-                                handleClick('text', clip.id)
-                                delta[0] && (target!.style.width = `${width}px`);
-                                handleResize(clip, target as HTMLElement, width);
+                                selectElement(clip.id)
+                                const resizeTarget = target as HTMLElement;
+                                applyResizeWidth(resizeTarget, width, delta[0]);
+                                handleResize(clip, resizeTarget, width);
 
                             }
                             else if (direction[0] === -1) {
-                                handleClick('text', clip.id)
-                                delta[0] && (target!.style.width = `${width}px`);
-                                handleLeftResize(clip, target as HTMLElement, width);
+                                selectElement(clip.id)
+                                const resizeTarget = target as HTMLElement;
+                                applyResizeWidth(resizeTarget, width, delta[0]);
+                                handleLeftResize(clip, resizeTarget, width);
                             }
                         }}
                         onResizeEnd={({ target, isDrag, clientX, clientY }) => {
