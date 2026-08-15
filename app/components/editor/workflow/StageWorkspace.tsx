@@ -11,6 +11,7 @@ import {
   setWorkflow,
 } from '@/app/store/slices/projectSlice';
 import {StoryboardStudio, TakeStudio} from './ProductionStudio';
+import PlanningInterview from './PlanningInterview';
 import {
   characterSheetSchema,
   interviewBriefSchema,
@@ -597,52 +598,32 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   if (workspace === 'interview') {
     const planningApproved = workflow.planningStatus === 'approved';
     return (
-      <section className="h-full overflow-y-auto bg-[#0c0b10] p-6 lg:p-10">
+      <section className="h-full overflow-y-auto bg-[#0c0b10] p-3 sm:p-6 lg:p-10">
         <div className="mx-auto flex min-h-full max-w-5xl flex-col">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between sm:gap-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-300">1 · 아이디어 입력</p>
-              <h1 className="mt-2 text-3xl font-black text-white text-balance">어떤 영상을 만들고 싶으세요?</h1>
-              <p className="mt-2 text-sm leading-6 text-gray-400">한 문장으로 시작하면 AI가 브리프와 출연 캐릭터 시트를 구성합니다.</p>
+              <h1 className="mt-2 break-keep text-2xl font-black text-white text-balance sm:text-3xl">어떤 영상을 만들고 싶으세요?</h1>
+              <p className="mt-2 break-keep text-sm leading-6 text-gray-400">AI 제작 매니저와 세 가지를 정하면 브리프와 출연 캐릭터 시트를 구성합니다.</p>
             </div>
             {!sampleMode && !interviewBrief ? <button type="button" onClick={onEnableSample} className="shrink-0 rounded-xl border border-white/15 px-4 py-2 text-sm font-bold text-gray-200 hover:border-fuchsia-400/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">샘플 프로젝트 보기</button> : null}
           </div>
 
           <div className="mt-10 flex-1 space-y-5">
-            {isComposing ? (
-              <div className="max-w-3xl overflow-hidden rounded-3xl border border-fuchsia-400/30 bg-fuchsia-500/[0.08] p-7 shadow-[0_0_60px_rgba(217,70,239,0.10)]" aria-live="polite">
-                <div className="flex items-center gap-3"><span className="h-3 w-3 animate-pulse rounded-full bg-fuchsia-400"/><span className="text-sm font-black text-fuchsia-200">요청을 받았습니다 · AI 기획 작업 중</span></div>
-                <h2 className="mt-5 text-2xl font-black text-white">브리프와 출연 캐릭터 시트를 구성하고 있어요</h2>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">{['영상 브리프 분석', '출연 캐릭터 분리', '캐릭터 시트 작성'].map((label, index) => <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4"><div className="text-xs font-black text-fuchsia-300">0{index + 1}</div><div className="mt-2 text-sm font-bold text-gray-200">{label}</div></div>)}</div>
-                <p className="mt-5 text-xs text-gray-400">제출한 문장: “{sentence.trim()}”</p>
-              </div>
-            ) : interviewBrief ? (
+            {interviewBrief && !showRecompose && !isComposing ? (
               <div className="max-w-4xl rounded-3xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/[0.10] via-[#17151d] to-fuchsia-500/[0.08] p-7 shadow-[0_0_70px_rgba(52,211,153,0.10)]">
                 <div className="flex flex-wrap items-center justify-between gap-3"><div className={`flex items-center gap-2 text-sm font-black ${planningApproved ? 'text-emerald-200' : 'text-amber-200'}`}><span className={`grid h-7 w-7 place-items-center rounded-full text-sm text-black ${planningApproved ? 'bg-emerald-400' : 'bg-amber-300'}`}>{planningApproved ? '✓' : '!'}</span>{planningApproved ? '내가 확정한 기획입니다' : 'AI가 만든 기획 초안입니다'}</div><div className="flex gap-2 text-[11px] font-bold text-gray-300"><span className="rounded-full bg-white/10 px-3 py-1.5">브리프 생성</span><span className="rounded-full bg-white/10 px-3 py-1.5">캐릭터 설정 생성</span><span className={`rounded-full px-3 py-1.5 ${planningApproved ? 'bg-emerald-400/10 text-emerald-200' : 'bg-amber-400/10 text-amber-200'}`}>{planningApproved ? '기획 확정' : '내 검수 필요'}</span></div></div>
                 {isEditingBrief && briefDraft ? <div className="mt-6 rounded-2xl border border-fuchsia-400/25 bg-black/20 p-5"><div className="grid gap-4 sm:grid-cols-2"><BriefField label="영상의 주제" value={briefDraft.subject} onChange={(subject) => setBriefDraft({...briefDraft, subject})}/><BriefField label="분위기" value={briefDraft.tone} onChange={(tone) => setBriefDraft({...briefDraft, tone})}/></div><div className="mt-4"><BriefField label="장면에서 일어나는 일" value={briefDraft.action} onChange={(action) => setBriefDraft({...briefDraft, action})} multiline/></div><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="block"><span className="text-xs font-black text-gray-400">영상 길이</span><select value={briefDraft.durationSeconds} onChange={(event) => setBriefDraft({...briefDraft, durationSeconds: Number(event.target.value) as 20 | 30})} className="mt-2 w-full rounded-xl border border-white/10 bg-[#141218] px-4 py-3 text-sm text-white"><option value={20}>20초</option><option value={30}>30초</option></select></label><BriefField label="핵심 대사" value={briefDraft.greetingLine} onChange={(greetingLine) => setBriefDraft({...briefDraft, greetingLine})}/></div><div className="mt-4"><BriefField label="추가 요청" value={briefDraft.extraNotes ?? ''} onChange={(extraNotes) => setBriefDraft({...briefDraft, extraNotes})} multiline/></div><p className="mt-4 text-xs leading-5 text-amber-200">저장하면 현재 스토리보드와 이후 승인은 취소되며, 수정한 기획을 다시 확인해야 합니다.</p><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => { setBriefDraft(interviewBrief); setIsEditingBrief(false); setComposeError(null); }} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-black text-white">취소</button><button type="button" onClick={saveBriefDraft} className="rounded-xl bg-fuchsia-500 px-4 py-2.5 text-sm font-black text-white">수정 내용 저장</button></div></div> : <><p className="mt-7 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">제작 브리프</p>
                 <div className="mt-3 flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-3xl font-black text-white">{interviewBrief.subject}</h2><p className="mt-3 max-w-2xl text-base leading-7 text-gray-300">{interviewBrief.action}</p></div><button type="button" onClick={() => { setBriefDraft(interviewBrief); setIsEditingBrief(true); }} className="rounded-xl border border-fuchsia-400/30 px-4 py-2.5 text-sm font-black text-fuchsia-100">브리프 직접 수정</button></div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl bg-black/20 p-4"><div className="text-xs text-gray-500">길이</div><div className="mt-1 text-lg font-black text-white">{interviewBrief.durationSeconds}초</div></div><div className="rounded-2xl bg-black/20 p-4"><div className="text-xs text-gray-500">분위기</div><div className="mt-1 text-sm font-bold text-white">{interviewBrief.tone}</div></div><div className="rounded-2xl bg-black/20 p-4"><div className="text-xs text-gray-500">핵심 대사</div><div className="mt-1 text-sm font-bold text-white">{interviewBrief.greetingLine || '대사 없음'}</div></div></div>{interviewBrief.extraNotes ? <div className="mt-3 rounded-2xl bg-black/20 p-4"><p className="text-xs text-gray-500">추가 요청</p><p className="mt-2 text-sm leading-6 text-gray-300">{interviewBrief.extraNotes}</p></div> : null}</>}
-                <div className={`mt-7 rounded-2xl border p-5 ${planningApproved ? 'border-fuchsia-400/25 bg-fuchsia-500/[0.08]' : 'border-amber-400/25 bg-amber-400/[0.07]'}`}><p className="text-sm font-black text-white">{planningApproved ? '다음으로 캐릭터 기준을 만드세요' : '이 내용으로 영상을 만들지 직접 결정하세요'}</p><p className="mt-1 text-sm text-gray-400">{planningApproved ? '확정한 캐릭터 설정을 기준으로 실제 이미지를 선택하고 만듭니다.' : '주제·행동·길이·분위기·대사를 확인하세요. 마음에 들지 않으면 새 문장으로 다시 만들 수 있습니다.'}</p>{planningApproved ? <button type="button" onClick={() => onNavigate('reference')} className="mt-4 rounded-xl bg-fuchsia-500 px-5 py-3 text-sm font-black text-white hover:bg-fuchsia-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300">다음: 캐릭터 기준 만들기 →</button> : <div className="mt-4 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => { setSentence(''); setShowRecompose(true); }} className="rounded-xl border border-white/15 px-5 py-3 text-sm font-black text-white">내용 바꿔서 다시 만들기</button><button type="button" onClick={() => dispatch(setPlanningStatus('approved'))} className="rounded-xl bg-emerald-400 px-5 py-3 text-sm font-black text-black">검수 완료 · 이 기획 확정</button></div>}</div>
+                <div className={`mt-7 rounded-2xl border p-5 ${planningApproved ? 'border-fuchsia-400/25 bg-fuchsia-500/[0.08]' : 'border-amber-400/25 bg-amber-400/[0.07]'}`}><p className="text-sm font-black text-white">{planningApproved ? '다음으로 캐릭터 기준을 만드세요' : '이 내용으로 영상을 만들지 직접 결정하세요'}</p><p className="mt-1 text-sm text-gray-400">{planningApproved ? '확정한 캐릭터 설정을 기준으로 실제 이미지를 선택하고 만듭니다.' : '주제·행동·길이·분위기·대사를 확인하세요. 마음에 들지 않으면 새 문장으로 다시 만들 수 있습니다.'}</p>{planningApproved ? <button type="button" onClick={() => onNavigate('reference')} className="mt-4 rounded-xl bg-fuchsia-500 px-5 py-3 text-sm font-black text-white hover:bg-fuchsia-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300">다음: 캐릭터 기준 만들기 →</button> : <div className="mt-4 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => { setSentence(''); setComposeError(null); setShowRecompose(true); }} className="rounded-xl border border-white/15 px-5 py-3 text-sm font-black text-white">내용 바꿔서 다시 만들기</button><button type="button" onClick={() => dispatch(setPlanningStatus('approved'))} className="rounded-xl bg-emerald-400 px-5 py-3 text-sm font-black text-black">검수 완료 · 이 기획 확정</button></div>}</div>
               </div>
             ) : (
-              <div className="max-w-3xl rounded-3xl border border-white/10 bg-white/[0.035] p-6">
-                <p className="text-sm leading-6 text-gray-300">예: “따뜻한 오후의 거실에서 크림색 시바견 루이가 카메라를 바라보는 20초 브랜드 필름을 만들어줘.”</p>
-              </div>
+              <PlanningInterview sentence={sentence} isComposing={isComposing} composeError={composeError} onSentenceChange={setSentence} onSubmit={compose}/>
             )}
           </div>
 
-          {!interviewBrief || isComposing || showRecompose ? (
-            <form onSubmit={compose} className="sticky bottom-0 mt-8 rounded-3xl border border-white/15 bg-[#17151d]/95 p-3 shadow-2xl backdrop-blur">
-              <label htmlFor="video-concept" className="sr-only">영상 콘셉트</label>
-              <textarea id="video-concept" name="videoConcept" value={sentence} onChange={(event) => setSentence(event.target.value)} rows={3} placeholder="만들고 싶은 영상을 설명해 주세요…" className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 text-base leading-6 text-white placeholder:text-gray-500 focus-visible:outline-none" disabled={isComposing}/>
-              <div className="flex items-center justify-between gap-4 px-2 pb-1">
-                <p aria-live="polite" className={`text-xs ${composeError ? 'text-red-300' : 'text-gray-500'}`}>{composeError ?? (isComposing ? '요청 제출 완료 · AI가 기획 산출물을 만들고 있습니다…' : '입력한 문장은 프로젝트 기획 데이터로 저장됩니다.')}</p>
-                <button type="submit" disabled={!sentence.trim() || isComposing} className="rounded-xl bg-fuchsia-500 px-5 py-2.5 text-sm font-black text-white hover:bg-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300">{isComposing ? '기획 작업 중…' : '이 내용으로 기획 만들기 →'}</button>
-              </div>
-            </form>
-          ) : (
-            <button type="button" onClick={() => { setSentence(''); setShowRecompose(true); }} className="mt-5 self-start text-xs font-bold text-gray-500 underline decoration-gray-700 underline-offset-4 hover:text-gray-300">새 문장으로 기획 다시 만들기</button>
-          )}
+          {interviewBrief && !showRecompose && !isComposing ? <button type="button" onClick={() => { setSentence(''); setComposeError(null); setShowRecompose(true); }} className="mt-5 self-start text-xs font-bold text-gray-500 underline decoration-gray-700 underline-offset-4 hover:text-gray-300">새 인터뷰로 기획 다시 만들기</button> : null}
         </div>
       </section>
     );
