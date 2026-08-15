@@ -11,6 +11,7 @@ import {toast} from 'react-hot-toast';
 import {createDefaultWorkflow} from '@/app/lib/workflow/schema';
 import {deriveProjectCardProgress, type ProjectCardProgress} from '@/app/lib/editor/project-card-progress';
 import {ProjectImportButton} from './ProjectImportButton';
+import {SampleProjectButton} from './SampleProjectButton';
 
 const dateFormatter = new Intl.DateTimeFormat('ko-KR', {month: 'short', day: 'numeric'});
 
@@ -167,6 +168,7 @@ export default function Projects() {
                         <p className="mt-5 max-w-xl text-sm leading-7 text-gray-400 sm:text-base">기획부터 캐릭터, 콘티, 생성, 편집까지 프로젝트마다 결정과 승인 상태를 이어서 관리하세요.</p>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
+                        <SampleProjectButton disabled={isLoading} createProjectState={createProjectState} />
                         <ProjectImportButton disabled={isLoading} />
                         <button
                             type="button"
