@@ -33,6 +33,7 @@ import {
 } from '@/app/lib/project/project-save-coordinator';
 import type {ProjectState} from '@/app/types';
 import {ProjectExportButton} from './ProjectExportButton';
+import UndoRedoKeyHandler from '@/app/components/editor/keys/UndoRedoKeyHandler';
 export default function Project({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const dispatch = useAppDispatch();
@@ -404,6 +405,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
 
     return (
         <div className="flex h-screen select-none flex-col overflow-hidden bg-[#090a0f] text-gray-100">
+            <UndoRedoKeyHandler />
             {!sampleMode && saveStatus.state === 'error' && (
                 <div role="alert" className="z-[100] flex items-center justify-between gap-4 border-b border-red-500 bg-red-950 px-4 py-2 text-sm text-white">
                     <span>자동 저장 실패: {saveStatus.error ?? '프로젝트를 저장하지 못했습니다.'} 편집 내용은 아직 이 브라우저에만 있습니다.</span>

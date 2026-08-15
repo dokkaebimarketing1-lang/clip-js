@@ -7,6 +7,7 @@ import projectsReducer from './slices/projectsSlice';
 import toast from 'react-hot-toast';
 import type {ProjectState} from '../types';
 import {parseProjectState} from '@/app/lib/workflow/project-file';
+import {createProjectHistoryMiddleware} from './project-history';
 
 // IndexedDB schema version is intentionally independent from projectSchemaVersion.
 const CLIPJS_DB_VERSION = 3;
@@ -302,7 +303,7 @@ export const store = configureStore({
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
             serializableCheck: false,
-        }),
+        }).concat(createProjectHistoryMiddleware()),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

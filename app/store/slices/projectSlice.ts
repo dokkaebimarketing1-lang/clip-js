@@ -14,6 +14,19 @@ import type {CreativeApprovalCommand} from '@/app/lib/workflow/creative-approval
 import type {StoryboardInstallCommand} from '@/app/lib/workflow/storyboard-apply';
 import {isPlanningRequestCurrent, type PlanningInstallCommand} from '@/app/lib/workflow/planning-apply';
 
+export const PROJECT_HISTORY_LIMIT = 50;
+
+type RecordProjectHistoryPayload = {
+    snapshot: ProjectState;
+    replaceLatest: boolean;
+};
+
+const snapshotWithoutHistory = (state: ProjectState): ProjectState => ({
+    ...state,
+    history: [],
+    future: [],
+});
+
 export const initialState: ProjectState = {
     projectSchemaVersion: 3,
     revision: 0,
@@ -212,6 +225,48 @@ const projectStateSlice = createSlice({
         setMarkerTrack: (state, action: PayloadAction<boolean>) => {
             state.enableMarkerTracking = action.payload;
         },
+        recordProjectHistory: (state, action: PayloadAction<RecordProjectHistoryPayload>) => {
+            const snapshot = snapshotWithoutHistory(action.payload.snapshot);
+            if (action.payload.replaceLatest && state.history.length > 0) {
+                state.history[state.history.length - 1] = snapshot;
+            } else {
+                state.history.push(snapshot);
+                if (state.history.length > PROJECT_HISTORY_LIMIT) state.history.splice(0, state.history.length - PROJECT_HISTORY_LIMIT);
+            }
+            state.future = [];
+        },
+        undo: (state) => {
+            const previous = state.history[state.history.length - 1];
+            if (!previous) return;
+            const current = snapshotWithoutHistory({...state, history: [], future: []});
+            return {
+                ...state,
+                projectName: previous.projectName,
+                mediaFiles: previous.mediaFiles,
+                textElements: previous.textElements,
+                duration: previous.duration,
+                exportSettings: previous.exportSettings,
+                workflow: previous.workflow,
+                history: state.history.slice(0, -1),
+                future: [...state.future, current].slice(-PROJECT_HISTORY_LIMIT),
+            };
+        },
+        redo: (state) => {
+            const next = state.future[state.future.length - 1];
+            if (!next) return;
+            const current = snapshotWithoutHistory({...state, history: [], future: []});
+            return {
+                ...state,
+                projectName: next.projectName,
+                mediaFiles: next.mediaFiles,
+                textElements: next.textElements,
+                duration: next.duration,
+                exportSettings: next.exportSettings,
+                workflow: next.workflow,
+                history: [...state.history, current].slice(-PROJECT_HISTORY_LIMIT),
+                future: state.future.slice(0, -1),
+            };
+        },
         // Special reducer for rehydrating state from IndexedDB
         rehydrate: (state, action: PayloadAction<ProjectState>) => {
             const workflow = action.payload.workflow ?? createDefaultWorkflow();
@@ -239,10 +294,12 @@ const projectStateSlice = createSlice({
                 revision: Number.isSafeInteger(action.payload.revision) && action.payload.revision >= 0 ? action.payload.revision : 0,
                 workflow: normalizedWorkflow,
                 duration,
+                history: [],
+                future: [],
             };
         },
         createNewProject: () => {
-            return { ...initialState };
+            return { ...initialState, history: [], future: [] };
         },
     },
 });
@@ -272,6 +329,9 @@ export const {
     setActiveElement,
     setActiveElementIndex,
     setTimelineZoom,
+    recordProjectHistory,
+    undo,
+    redo,
     rehydrate,
     createNewProject,
 } = projectStateSlice.actions;
