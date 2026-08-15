@@ -23,7 +23,7 @@ There are also other various TODOS across the project (search with TODO)
 	- [x] split with s
 	- [x] duplicate with d
 	- [x] delete with del
-	- [ ] ctrl + z (to undo)
+	- [x] ctrl + z (to undo)
 - [x] make most of the text on the page be select-none **(ui)**
 - [x] containerize the project with docker, so it can be self-hosted easily.
 
@@ -32,18 +32,18 @@ There are also other various TODOS across the project (search with TODO)
 - [ ] default project to test the project without having to upload media
 - [ ] some sample clips for people to play with.
 - [ ] add screen shot or gif in the landing page to show it off
-- [ ] handle left resize in timeline elements
+- [x] handle left resize in timeline elements
 - [ ] add crop, positioning to elements with react-moveable
-- [ ] drag the marker play head
-- [ ] Functionality to export and import the project in a specific format
+- [x] drag the marker play head
+- [x] Functionality to export and import the project in a specific format
 - [ ] functionality to separate audio from vids
 - [ ] add playback speed for vids and audio
-- [ ] add close option to each sidebars **(ui)**
+- [x] add close option to each sidebars **(ui)**
 - [ ] responsive for phones **(ui)**
 - [ ] Refactor timeline components cause it has a lot of repetitive code.
 - [ ] add elements as shapes blur effects.
 - [ ] more effects for text
 - [ ] PWA Mode: So users can edit offline.
 - [ ] insert elements in timeline with https://www.npmjs.com/package/react-moveable (already used in timelines) **(ui)**
-- [ ] thumbnail for listed vids and imgs **(ui)**
+- [x] thumbnail for listed vids and imgs **(ui)**
 - [ ] add option to use gpu with WebGL or WebGpu library like https://github.com/diffusionstudio/core
