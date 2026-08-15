@@ -8,6 +8,26 @@ export type MediaSource =
     | {kind: 'managed'; assetId: string}
     | {kind: 'external-unverified'; url: string};
 
+/**
+ * Visual transform relative to an element's existing layout rectangle.
+ * x/y are composition-normalized offsets (1 = full canvas width/height),
+ * rotation is clockwise degrees, and scale is a uniform center-origin factor.
+ */
+export interface ElementTransform {
+    x: number;
+    y: number;
+    rotation: number;
+    scale: number;
+}
+
+/** Normalized visible source rectangle; left + width and top + height are at most 1. */
+export interface NormalizedCrop {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+}
+
 export interface UploadedFile {
     id: string;
     file: File;
@@ -39,9 +59,10 @@ export interface MediaFile {
     height?: number;
     rotation?: number;
     opacity?: number;
+    transform?: ElementTransform;
 
     // Effects
-    crop?: { x: number; y: number; width: number; height: number };
+    crop?: NormalizedCrop;
 
     // Workflow provenance. Remote URLs are persisted for deterministic
     // Remotion rendering; `src` remains a browser-only object URL.
@@ -83,6 +104,7 @@ export interface TextElement {
     // Effects
     opacity?: number;                // Transparency (0 to 1)
     rotation?: number;               // Rotation in degrees
+    transform?: ElementTransform;
     fadeInDuration?: number;        // Seconds to fade in
     fadeOutDuration?: number;       // Seconds to fade out
     animation?: 'slide-in' | 'zoom' | 'bounce' | 'none'; // Optional animation

@@ -1,9 +1,10 @@
 import { Player, PlayerRef } from "@remotion/player";
 import {ProjectComposition} from "@/remotion/ProjectComposition";
 import { useAppSelector } from "@/app/store";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { setIsPlaying } from "@/app/store/slices/projectSlice";
 import { useDispatch } from "react-redux";
+import {ElementTransformOverlay} from "./ElementTransformOverlay";
 
 export const PreviewPlayer = () => {
     const projectState = useAppSelector((state) => state.projectState);
@@ -13,6 +14,7 @@ export const PreviewPlayer = () => {
     const height = Number.isFinite(projectState.resolution?.height) && projectState.resolution.height > 0 ? projectState.resolution.height : 1080;
     const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 1 / fps;
     const playerRef = useRef<PlayerRef>(null);
+    const [container, setContainer] = useState<HTMLDivElement | null>(null);
     const dispatch = useDispatch();
 
     // update frame when current time with marker
@@ -57,18 +59,21 @@ export const PreviewPlayer = () => {
     }, [isMuted]);
 
     return (
-        <Player
-            ref={playerRef}
-            component={ProjectComposition}
-            inputProps={{project: projectState}}
-            durationInFrames={Math.max(2, Math.ceil(safeDuration * fps))}
-            compositionWidth={width}
-            compositionHeight={height}
-            fps={fps}
-            style={{ width: "100%", height: "100%" }}
-            controls
-            clickToPlay={false}
-            acknowledgeRemotionLicense
-        />
+        <div ref={setContainer} className="relative h-full w-full">
+            <Player
+                ref={playerRef}
+                component={ProjectComposition}
+                inputProps={{project: projectState}}
+                durationInFrames={Math.max(2, Math.ceil(safeDuration * fps))}
+                compositionWidth={width}
+                compositionHeight={height}
+                fps={fps}
+                style={{ width: "100%", height: "100%" }}
+                controls
+                clickToPlay={false}
+                acknowledgeRemotionLicense
+            />
+            <ElementTransformOverlay container={container} />
+        </div>
     )
 };

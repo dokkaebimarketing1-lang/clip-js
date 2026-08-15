@@ -23,11 +23,22 @@ const portableProject = () => {
     volume: 100,
     zIndex: 1,
     opacity: 100,
+    transform: {x: 0.125, y: -0.25, rotation: 15, scale: 1.2},
+    crop: {left: 0.1, top: 0.2, width: 0.7, height: 0.6},
     provider: 'byteplus',
     source: {kind: 'generated', generatedAssetId: 'generated-asset-1'},
     generatedAssetId: 'generated-asset-1',
     remoteUrl: '/api/projects/portable-project/assets/generated-asset-1?token=secret',
     src: '/api/projects/portable-project/assets/generated-asset-1?token=secret',
+  }];
+  project.textElements = [{
+    id: 'title',
+    text: 'Title',
+    positionStart: 0,
+    positionEnd: 2,
+    x: 120,
+    y: 80,
+    transform: {x: -0.05, y: 0.1, rotation: -8, scale: 0.9},
   }];
   return project;
 };
@@ -40,8 +51,27 @@ describe('portable project documents', () => {
 
     expect(restored.id).toBe('portable-project');
     expect(restored.mediaFiles[0].source).toEqual({kind: 'generated', generatedAssetId: 'generated-asset-1'});
+    expect(restored.mediaFiles[0].transform).toEqual({x: 0.125, y: -0.25, rotation: 15, scale: 1.2});
+    expect(restored.mediaFiles[0].crop).toEqual({left: 0.1, top: 0.2, width: 0.7, height: 0.6});
+    expect(restored.textElements[0].transform).toEqual({x: -0.05, y: 0.1, rotation: -8, scale: 0.9});
     expect(restored.mediaFiles[0].src).toBeUndefined();
     expect(JSON.stringify(serialized)).not.toContain('token=secret');
+  });
+
+  it('rejects crop rectangles outside normalized media bounds', () => {
+    const serialized = serializeProject(portableProject());
+    const invalid = {
+      ...serialized,
+      project: {
+        ...serialized.project,
+        mediaFiles: serialized.project.mediaFiles.map((media) => ({
+          ...media,
+          crop: {left: 0.7, top: 0.2, width: 0.5, height: 0.6},
+        })),
+      },
+    };
+
+    expect(() => parseProjectDocumentJson(JSON.stringify(invalid))).toThrowError(ProjectImportError);
   });
 
   it('rejects invalid JSON before project validation', () => {

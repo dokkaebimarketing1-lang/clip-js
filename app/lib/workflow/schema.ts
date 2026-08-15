@@ -4,6 +4,27 @@ import {buildDefaultSeedanceMasterSettings, seedanceMasterSettingsSchema} from '
 export * from './production-schema';
 export * from './seedance-master';
 
+export const elementTransformSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  rotation: z.number().finite(),
+  scale: z.number().finite().positive(),
+}).strict();
+
+export const normalizedCropSchema = z.object({
+  left: z.number().finite().min(0).max(1),
+  top: z.number().finite().min(0).max(1),
+  width: z.number().finite().positive().max(1),
+  height: z.number().finite().positive().max(1),
+}).strict().superRefine((crop, context) => {
+  if (crop.left + crop.width > 1) {
+    context.addIssue({code: z.ZodIssueCode.custom, path: ['width'], message: 'Crop must stay within horizontal media bounds.'});
+  }
+  if (crop.top + crop.height > 1) {
+    context.addIssue({code: z.ZodIssueCode.custom, path: ['height'], message: 'Crop must stay within vertical media bounds.'});
+  }
+});
+
 export const storyboardShotSchema = z.object({
   id: z.string().min(1),
   startSeconds: z.number().nonnegative(),

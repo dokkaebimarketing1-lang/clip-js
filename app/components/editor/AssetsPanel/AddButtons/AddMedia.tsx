@@ -39,7 +39,6 @@ export default function AddMedia({ fileId }: { fileId: string }) {
                 height: 1080,
                 rotation: 0,
                 opacity: 100,
-                crop: { x: 0, y: 0, width: 1920, height: 1080 },
                 playbackSpeed: 1,
                 volume: 100,
                 type: categorizeFile(file.type),

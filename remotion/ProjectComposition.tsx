@@ -23,6 +23,7 @@ import type {EffectSpec, TransitionSpec} from '../app/lib/workflow/schema';
 import {activeEffectsAt, buildRemotionEffects} from './effects';
 import {isOfficialTransition} from '../app/lib/workflow/transition-catalog';
 import {CaptionContent} from './captions';
+import {mediaTransformCss, mediaVisualStyle, textVisualStyle, type CompositionSize} from './element-styles';
 
 export interface ProjectCompositionProps extends Record<string, unknown> {
   project: ProjectState;
@@ -47,20 +48,11 @@ const mediaSource = (media: MediaFile): string => {
   return source.startsWith('/') ? staticFile(source.slice(1)) : source;
 };
 
-const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly EffectSpec[]}> = ({media, fps, effects}) => {
+const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly EffectSpec[]; composition: CompositionSize}> = ({media, fps, effects, composition}) => {
   const frame = useCurrentFrame();
   const from = Math.max(0, Math.round(media.positionStart * fps));
   const durationInFrames = Math.max(1, Math.round((media.positionEnd - media.positionStart) * fps));
-  const commonStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: media.x ?? 0,
-    top: media.y ?? 0,
-    width: media.width ?? '100%',
-    height: media.height ?? '100%',
-    opacity: media.opacity === undefined ? 1 : media.opacity / 100,
-    zIndex: media.zIndex,
-    transform: `rotate(${media.rotation ?? 0}deg)`,
-  };
+  const commonStyle = mediaVisualStyle(media, composition);
   const source = mediaSource(media);
   if (!source) return null;
   const remotionEffects = buildRemotionEffects(activeEffectsAt(effects, media.id, frame / fps));
@@ -68,6 +60,8 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
     <Sequence from={from} durationInFrames={durationInFrames} layout="none" name={media.fileName}>
       {media.type === 'video' ? (
         <Video
+          data-editor-element-id={media.id}
+          data-editor-element-type="media"
           src={source}
           trimBefore={Math.max(0, Math.round(media.startTime * fps))}
           trimAfter={Math.max(1, Math.round(media.endTime * fps))}
@@ -78,7 +72,7 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
           style={commonStyle}
         />
       ) : media.type === 'image' ? (
-        <Img src={source} effects={remotionEffects} style={{...commonStyle, objectFit: 'cover'}} />
+        <Img data-editor-element-id={media.id} data-editor-element-type="media" src={source} effects={remotionEffects} style={{...commonStyle, objectFit: 'cover'}} />
       ) : media.type === 'audio' ? (
         <Audio
           src={source}
@@ -92,39 +86,35 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
   );
 };
 
-const TextLayer: React.FC<{item: TextElement; fps: number}> = ({item, fps}) => (
+const TextLayer: React.FC<{item: TextElement; fps: number; composition: CompositionSize}> = ({item, fps, composition}) => (
   <Sequence
     from={Math.round(item.positionStart * fps)}
     durationInFrames={Math.max(1, Math.round((item.positionEnd - item.positionStart) * fps))}
     layout="none"
   >
-    <div style={{position: 'absolute', left: item.x, top: item.y, width: item.width ?? 1200, zIndex: item.zIndex, fontFamily: item.font ?? 'Arial', fontSize: item.fontSize ?? 64, color: item.color ?? '#fff', backgroundColor: item.backgroundColor ?? 'transparent', textAlign: item.align ?? 'center', opacity: (item.opacity ?? 100) / 100, whiteSpace: 'pre-wrap'}}>
+    <div data-editor-element-id={item.id} data-editor-element-type="text" style={textVisualStyle(item, composition)}>
       {item.text}
     </div>
   </Sequence>
 );
 
-const TransitionAsset: React.FC<{media: MediaFile; fps: number; trimStart: number; style: React.CSSProperties; effects: EffectDescriptor<unknown>[]}> = ({media, fps, trimStart, style, effects}) => {
+const TransitionAsset: React.FC<{media: MediaFile; fps: number; trimStart: number; style: React.CSSProperties; effects: EffectDescriptor<unknown>[]; composition: CompositionSize}> = ({media, fps, trimStart, style, effects, composition}) => {
   const source = mediaSource(media);
   if (!source || media.type === 'audio') return null;
-  const base: React.CSSProperties = {
-    position: 'absolute', left: media.x ?? 0, top: media.y ?? 0,
-    width: media.width ?? '100%', height: media.height ?? '100%',
-    ...style,
-  };
+  const base = {...mediaVisualStyle(media, composition), ...style};
   return media.type === 'image'
     ? <Img src={source} effects={effects} style={{...base, objectFit: 'cover'}} />
     : <Video src={source} trimBefore={Math.max(0, Math.round(trimStart * fps))} playbackRate={media.playbackSpeed || 1} muted effects={effects} objectFit="cover" style={base} />;
 };
 
-const TransitionPairContent: React.FC<{transition: TransitionSpec; source: MediaFile; target: MediaFile; fps: number; durationInFrames: number; timelineStartSeconds: number; effects: readonly EffectSpec[]}> = ({transition, source, target, fps, durationInFrames, timelineStartSeconds, effects}) => {
+const TransitionPairContent: React.FC<{transition: TransitionSpec; source: MediaFile; target: MediaFile; fps: number; durationInFrames: number; timelineStartSeconds: number; effects: readonly EffectSpec[]; composition: CompositionSize}> = ({transition, source, target, fps, durationInFrames, timelineStartSeconds, effects, composition}) => {
   const frame = useCurrentFrame();
   const absoluteSeconds = timelineStartSeconds + frame / fps;
   const sourceEffects = buildRemotionEffects(activeEffectsAt(effects, source.id, absoluteSeconds));
   const targetEffects = buildRemotionEffects(activeEffectsAt(effects, target.id, absoluteSeconds));
   const progress = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 1], {extrapolateRight: 'clamp'});
   const peak = Math.sin(progress * Math.PI);
-  const rotation = (media: MediaFile) => `rotate(${media.rotation ?? 0}deg)`;
+  const rotation = (media: MediaFile) => mediaTransformCss(media, composition);
   const sourceOpacity = (source.opacity ?? 100) / 100;
   const targetOpacity = (target.opacity ?? 100) / 100;
   const transitionZIndex = Math.max(source.zIndex ?? 0, target.zIndex ?? 0) + 1;
@@ -162,15 +152,15 @@ const TransitionPairContent: React.FC<{transition: TransitionSpec; source: Media
         <TransitionSeries>
           <TransitionSeries.Sequence durationInFrames={durationInFrames}>
             <AbsoluteFill>
-              <Sequence durationInFrames={halfFrames} layout="none"><TransitionAsset media={source} fps={fps} trimStart={sourceTrim} style={sourceRotation} effects={sourceEffects} /></Sequence>
-              <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={source} fps={fps} trimStart={sourceLastFrame} style={sourceRotation} effects={sourceEffects} /></Freeze></Sequence>
+              <Sequence durationInFrames={halfFrames} layout="none"><TransitionAsset media={source} fps={fps} trimStart={sourceTrim} style={sourceRotation} effects={sourceEffects} composition={composition} /></Sequence>
+              <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={source} fps={fps} trimStart={sourceLastFrame} style={sourceRotation} effects={sourceEffects} composition={composition} /></Freeze></Sequence>
             </AbsoluteFill>
           </TransitionSeries.Sequence>
           <TransitionSeries.Transition presentation={officialPresentation} timing={linearTiming({durationInFrames})} />
           <TransitionSeries.Sequence durationInFrames={durationInFrames}>
             <AbsoluteFill>
-              <Sequence durationInFrames={halfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetRotation} effects={targetEffects} /></Freeze></Sequence>
-              <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetRotation} effects={targetEffects} /></Sequence>
+              <Sequence durationInFrames={halfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetRotation} effects={targetEffects} composition={composition} /></Freeze></Sequence>
+              <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetRotation} effects={targetEffects} composition={composition} /></Sequence>
             </AbsoluteFill>
           </TransitionSeries.Sequence>
         </TransitionSeries>
@@ -179,10 +169,10 @@ const TransitionPairContent: React.FC<{transition: TransitionSpec; source: Media
   }
   return (
     <AbsoluteFill style={{pointerEvents: 'none', zIndex: transitionZIndex}}>
-      <Sequence durationInFrames={halfFrames} layout="none"><TransitionAsset media={source} fps={fps} trimStart={sourceTrim} style={sourceStyle} effects={sourceEffects} /></Sequence>
-      <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={source} fps={fps} trimStart={sourceLastFrame} style={sourceStyle} effects={sourceEffects} /></Freeze></Sequence>
-      <Sequence durationInFrames={halfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetStyle} effects={targetEffects} /></Freeze></Sequence>
-      <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetStyle} effects={targetEffects} /></Sequence>
+      <Sequence durationInFrames={halfFrames} layout="none"><TransitionAsset media={source} fps={fps} trimStart={sourceTrim} style={sourceStyle} effects={sourceEffects} composition={composition} /></Sequence>
+      <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={source} fps={fps} trimStart={sourceLastFrame} style={sourceStyle} effects={sourceEffects} composition={composition} /></Freeze></Sequence>
+      <Sequence durationInFrames={halfFrames} layout="none"><Freeze frame={0}><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetStyle} effects={targetEffects} composition={composition} /></Freeze></Sequence>
+      <Sequence from={halfFrames} durationInFrames={secondHalfFrames} layout="none"><TransitionAsset media={target} fps={fps} trimStart={target.startTime} style={targetStyle} effects={targetEffects} composition={composition} /></Sequence>
       {transition.type === 'flash' && <AbsoluteFill style={{backgroundColor: '#fff', opacity: peak}} />}
     </AbsoluteFill>
   );
@@ -196,10 +186,11 @@ export const ProjectComposition: React.FC<ProjectCompositionProps> = ({project})
       .catch((error) => cancelRender(error));
   }, [fontHandle]);
   const fps = project.fps || 30;
+  const composition = project.resolution;
   return (
     <AbsoluteFill style={{backgroundColor: '#000', overflow: 'hidden'}}>
-      {[...project.mediaFiles].filter((media) => media.includeInMerge !== false).sort((a, b) => a.zIndex - b.zIndex).map((media) => <MediaLayer key={media.id} media={media} fps={fps} effects={project.workflow.effects} />)}
-      {project.textElements.filter((item) => item.includeInMerge !== false).map((item) => <TextLayer key={item.id} item={item} fps={fps} />)}
+      {[...project.mediaFiles].filter((media) => media.includeInMerge !== false).sort((a, b) => a.zIndex - b.zIndex).map((media) => <MediaLayer key={media.id} media={media} fps={fps} effects={project.workflow.effects} composition={composition} />)}
+      {project.textElements.filter((item) => item.includeInMerge !== false).map((item) => <TextLayer key={item.id} item={item} fps={fps} composition={composition} />)}
       {project.exportSettings.includeSubtitles && project.workflow.captions.map((cue) => {
         const durationInFrames = Math.max(1, Math.round((cue.endSeconds - cue.startSeconds) * fps));
         return <Sequence key={cue.id} from={Math.round(cue.startSeconds * fps)} durationInFrames={durationInFrames} layout="none"><CaptionContent cue={cue} durationInFrames={durationInFrames} /></Sequence>;
@@ -211,7 +202,7 @@ export const ProjectComposition: React.FC<ProjectCompositionProps> = ({project})
         const durationInFrames = Math.max(1, Math.round(transition.durationSeconds * fps));
         const boundary = Math.min(source.positionEnd, target.positionStart || source.positionEnd);
         const from = Math.max(0, Math.round((boundary - transition.durationSeconds / 2) * fps));
-        return <Sequence key={transition.id} from={from} durationInFrames={durationInFrames} layout="none"><TransitionPairContent transition={transition} source={source} target={target} fps={fps} durationInFrames={durationInFrames} timelineStartSeconds={from / fps} effects={project.workflow.effects} /></Sequence>;
+        return <Sequence key={transition.id} from={from} durationInFrames={durationInFrames} layout="none"><TransitionPairContent transition={transition} source={source} target={target} fps={fps} durationInFrames={durationInFrames} timelineStartSeconds={from / fps} effects={project.workflow.effects} composition={composition} /></Sequence>;
       })}
     </AbsoluteFill>
   );

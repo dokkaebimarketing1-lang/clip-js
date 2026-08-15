@@ -1,6 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Img, Sequence } from "remotion";
 import { MediaFile } from "@/app/types";
+import {cropToClipPath} from "@/app/lib/editor/element-geometry";
 
 const REMOTION_SAFE_FRAME = 0;
 
@@ -37,13 +38,6 @@ export const ImageSequenceItem: React.FC<ImageSequenceItemProps> = ({ item, opti
         fps
     );
 
-    const crop = item.crop || {
-        x: 0,
-        y: 0,
-        width: item.width,
-        height: item.height
-    };
-
     return (
         <Sequence
             key={item.id}
@@ -58,14 +52,15 @@ export const ImageSequenceItem: React.FC<ImageSequenceItemProps> = ({ item, opti
                     pointerEvents: "auto",
                     top: item.y,
                     left: item.x,
-                    width: crop.width || "100%",
-                    height: crop.height || "auto",
+                    width: item.width || "100%",
+                    height: item.height || "auto",
                     // transform: item?.transform || "none",
                     opacity:
                         item?.opacity !== undefined
                             ? item.opacity / 100
                             : 1,
                     overflow: "hidden",
+                    clipPath: cropToClipPath(item.crop),
                 }}
             >
                 <div
@@ -80,8 +75,8 @@ export const ImageSequenceItem: React.FC<ImageSequenceItemProps> = ({ item, opti
                     <Img
                         style={{
                             pointerEvents: "none",
-                            top: -crop.y || 0,
-                            left: -crop.x || 0,
+                            top: 0,
+                            left: 0,
                             width: item.width || "100%",
                             height: item.height || "auto",
                             position: "absolute",

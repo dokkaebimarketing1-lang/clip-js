@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import type {ProjectState} from '@/app/types';
 import {initialState} from '@/app/store/slices/projectSlice';
-import {workflowStateSchema} from './schema';
+import {elementTransformSchema, normalizedCropSchema, workflowStateSchema} from './schema';
 import {invalidateForCreativeChange} from './approval';
 
 export const PROJECT_FILE_VERSION = 3 as const;
@@ -39,6 +39,8 @@ const mediaFileBaseSchema = z.object({
   volume: z.number().finite().min(0).max(100),
   zIndex: z.number().finite(),
   opacity: z.number().finite().min(0).max(100),
+  transform: elementTransformSchema.optional(),
+  crop: normalizedCropSchema.optional(),
   src: z.string().max(4096).optional(),
   remoteUrl: z.string().max(4096).optional(),
   provider: z.enum(['local', 'higgsfield', 'byteplus']).optional(),
@@ -57,6 +59,7 @@ const textElementSchema = z.object({
   text: z.string().max(5000),
   positionStart: z.number().finite().nonnegative(),
   positionEnd: z.number().finite().positive(),
+  transform: elementTransformSchema.optional(),
 }).passthrough().refine((text) => text.positionEnd > text.positionStart, 'Text range must have positive duration.');
 
 const projectStateV3Schema = z.object({

@@ -160,6 +160,26 @@ describe('project document undo history', () => {
     expect(store.getState().projectState.mediaFiles).toEqual([]);
   });
 
+  it('undoes a coalesced visual transform and crop gesture', () => {
+    const original = media('clip');
+    const project = {...structuredClone(initialState), mediaFiles: [original]};
+    const {store, advance} = createHistoryStore(project);
+    store.dispatch(setMediaFiles([{
+      ...original,
+      transform: {x: 0.1, y: -0.2, rotation: 12, scale: 1.1},
+    }]));
+    advance(100);
+    store.dispatch(setMediaFiles([{
+      ...original,
+      transform: {x: 0.2, y: -0.1, rotation: 24, scale: 1.25},
+      crop: {left: 0.1, top: 0.2, width: 0.7, height: 0.6},
+    }]));
+
+    expect(store.getState().projectState.history).toHaveLength(1);
+    store.dispatch(undo());
+    expect(store.getState().projectState.mediaFiles).toEqual([original]);
+  });
+
   it('starts a new undo step after the coalescing window', () => {
     const {store, advance} = createHistoryStore();
     store.dispatch(setMediaFiles([media('clip', 1)]));
