@@ -75,7 +75,7 @@ export default function StudioConceptPage() {
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <div className={styles.brandMark}><Sparkles size={15} strokeWidth={2.4}/></div>
-          <span>ClipJS</span>
+          <span>함께봄 Ai영상제작소</span>
           <span className={styles.conceptPill}>스튜디오 콘셉트</span>
         </div>
         <nav className={styles.stageNav} aria-label="목업 화면 전환">
@@ -173,7 +173,7 @@ function ChatStage({message, setMessage, onNext}: {message: string; setMessage: 
         <div className={styles.aiMessage}>
           <div className={styles.aiAvatar}><Sparkles size={15}/></div>
           <div className={styles.messageBody}>
-            <div className={styles.messageMeta}>ClipJS 제작 매니저 <span>DeepSeek V4 Flash</span></div>
+            <div className={styles.messageMeta}>함께봄 Ai영상제작소 제작 매니저 <span>DeepSeek V4 Flash</span></div>
             <p>좋아요. 루이가 등장하는 따뜻한 브랜드 영상으로 이해했어요.</p>
             <p className={styles.questionText}>이 영상을 본 사람들이 가장 먼저 기억했으면 하는 것은 무엇인가요?</p>
             <div className={styles.quickReplies}><button>루이의 사랑스러운 표정</button><button>함께봄의 따뜻한 이미지</button><button>직접 입력할게요</button></div>

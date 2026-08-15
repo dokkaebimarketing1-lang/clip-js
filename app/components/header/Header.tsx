@@ -18,9 +18,9 @@ export default function Header() {
     return (
         <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[#08090d]/85 backdrop-blur-xl">
             <div className="mx-auto flex h-16 max-w-7xl items-center gap-8 px-5 sm:px-8">
-                <Link href="/" className="group flex items-center gap-3" aria-label="ClipJS 홈">
-                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-sm font-black text-white shadow-[0_0_28px_rgba(217,70,239,.25)] transition-transform group-hover:scale-105">C</span>
-                    <span className="text-[15px] font-black tracking-[-0.03em] text-white">ClipJS</span>
+                <Link href="/" className="group flex items-center gap-3" aria-label="함께봄 Ai영상제작소 홈">
+                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-sm font-black text-white shadow-[0_0_28px_rgba(217,70,239,.25)] transition-transform group-hover:scale-105">봄</span>
+                    <span className="text-[15px] font-black tracking-[-0.03em] text-white">함께봄 Ai영상제작소</span>
                     <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-bold tracking-[0.14em] text-gray-500 sm:inline">AI STUDIO</span>
                 </Link>
 

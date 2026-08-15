@@ -19,8 +19,8 @@ const geistMono = Roboto_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'ClipJS · AI 영상 제작 스튜디오',
-    template: '%s · ClipJS',
+    default: '함께봄 Ai영상제작소',
+    template: '%s · 함께봄 Ai영상제작소',
   },
   description: '기획부터 캐릭터, 콘티, 생성, 편집까지 한 흐름으로 완성하는 AI 영상 제작 스튜디오',
 }

@@ -14,7 +14,7 @@ export default function AboutPage() {
       <section className="relative mx-auto max-w-5xl px-5 pb-16 pt-24 text-center sm:px-8 sm:pt-32">
         <p className="text-[11px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Built by Hamkkebom</p>
         <h1 className="mx-auto mt-5 max-w-4xl text-balance text-4xl font-black leading-tight tracking-[-0.04em] text-white sm:text-5xl">사람이 결정할 수 있는<br />AI 영상 제작 도구를 만듭니다.</h1>
-        <p className="mx-auto mt-7 max-w-2xl text-base leading-8 text-gray-400 sm:text-lg">ClipJS는 함께봄 주식회사가 만드는 AI 영상 제작 스튜디오입니다. 빠른 생성보다 제작자가 결과를 이해하고, 비교하고, 자신의 손으로 확정할 수 있는 흐름을 우선합니다.</p>
+        <p className="mx-auto mt-7 max-w-2xl text-base leading-8 text-gray-400 sm:text-lg">함께봄 Ai영상제작소는 함께봄 주식회사가 만드는 AI 영상 제작 스튜디오입니다. 빠른 생성보다 제작자가 결과를 이해하고, 비교하고, 자신의 손으로 확정할 수 있는 흐름을 우선합니다.</p>
         <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/projects" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-black text-gray-950 hover:bg-fuchsia-50">프로젝트 시작하기 <FiArrowRight aria-hidden="true" /></Link><a href="https://aikkumhub.com" target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-6 text-sm font-bold text-gray-200 hover:bg-white/[0.07]">AI꿈 Hub <FiExternalLink aria-hidden="true" /></a></div>
       </section>
 

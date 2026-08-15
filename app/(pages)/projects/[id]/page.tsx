@@ -195,7 +195,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
             } catch (error) {
                 console.error('Failed to load project:', error);
                 if (!cancelled) setLoadError(error instanceof Error && error.message === 'PROJECT_LOAD_TIMEOUT'
-                    ? '프로젝트 저장소 응답이 12초 안에 끝나지 않았습니다. 다른 ClipJS 탭을 닫고 다시 시도해 주세요.'
+                    ? '프로젝트 저장소 응답이 12초 안에 끝나지 않았습니다. 다른 함께봄 Ai영상제작소 탭을 닫고 다시 시도해 주세요.'
                     : '프로젝트 저장소를 읽지 못했습니다. 데이터 보호를 위해 편집기를 열지 않았습니다.');
             } finally {
                 if (loadTimeout !== undefined) window.clearTimeout(loadTimeout);
@@ -381,8 +381,8 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
             {/* 상단바: 로고/프로젝트명 + CTA + 저장상태 */}
             <header className="flex h-14 shrink-0 items-center gap-4 border-b border-white/[0.08] bg-[#0c0d12]/95 px-4 shadow-[0_1px_0_rgba(255,255,255,.02)] backdrop-blur-xl">
                 <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-xs font-black text-white shadow-[0_0_24px_rgba(217,70,239,.22)]">C</span>
-                    <span className="hidden text-sm font-black tracking-[-0.03em] text-white sm:inline">ClipJS</span>
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-xs font-black text-white shadow-[0_0_24px_rgba(217,70,239,.22)]">봄</span>
+                    <span className="hidden text-sm font-black tracking-[-0.03em] text-white sm:inline">함께봄 Ai영상제작소</span>
                     <span className="h-4 w-px shrink-0 bg-white/10" aria-hidden="true" />
                     <div className="min-w-0">{sampleMode ? <span className="block truncate text-sm font-black text-amber-200">샘플 프로젝트 · 읽기 전용</span> : <ProjectName />}</div>
                 </div>

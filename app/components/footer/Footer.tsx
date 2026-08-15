@@ -12,7 +12,7 @@ export default function Footer() {
     <footer className="border-t border-white/[0.07] bg-[#08090d]">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-7 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <div className="flex items-center gap-3">
-          <span className="font-black text-gray-300">ClipJS</span>
+          <span className="font-black text-gray-300">함께봄 Ai영상제작소</span>
           <span className="h-3 w-px bg-white/10" aria-hidden="true" />
           <span>함께봄 주식회사</span>
         </div>
