@@ -98,13 +98,13 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     if (!/^CHAR\d{2}$/.test(characterId) || !UUID.test(attemptId) || !/^[a-f0-9]{64}$/.test(styleBibleHash) || styleReferenceImageIds.length > 14
       || body.confirmCreditCost !== 1 || prompt.length < 10 || prompt.length > 4000) throw new Error('Explicit 1-credit approval, character identity, style lineage, and a valid prompt are required.');
     const workerMode = isCharacterImageWorkerMode();
-    const assetStore = getGeneratedAssetStore();
-    const referenceAssets = await Promise.all(styleReferenceImageIds.map((id) => workerMode ? getCharacterImageBlobAsset(id) : assetStore.get(id)));
+    const localAssetStore = workerMode ? undefined : getGeneratedAssetStore();
+    const referenceAssets = await Promise.all(styleReferenceImageIds.map((id) => workerMode ? getCharacterImageBlobAsset(id) : localAssetStore!.get(id)));
     if (referenceAssets.some((asset) => !asset || asset.projectId !== projectId || asset.state !== 'ready' || !asset.mimeType.startsWith('image/')
       || asset.styleLineage?.styleBibleHash !== styleBibleHash)) {
       throw new Error('Style reference image is unavailable, has different lineage, or belongs to another project.');
     }
-    const projectAssets = workerMode ? await listCharacterImageBlobAssets(projectId) : await assetStore.listProject(projectId);
+    const projectAssets = workerMode ? await listCharacterImageBlobAssets(projectId) : await localAssetStore!.listProject(projectId);
     const anchors = projectAssets.filter((asset) => asset.state === 'ready' && asset.mimeType.startsWith('image/')
       && asset.styleLineage?.styleBibleHash === styleBibleHash && asset.styleLineage.styleReferenceImageIds.length === 0);
     if (anchors.length > 0 && !anchors.some((anchor) => styleReferenceImageIds.includes(anchor.id))) {
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
       ? {paths: [] as string[], cleanup: () => undefined}
       : stageHiggsfieldImageReferences(referenceAssets.map((asset) => ({
         assetId: asset!.id,
-        sourcePath: assetStore.resolveLocalPath(asset!.id),
+        sourcePath: localAssetStore!.resolveLocalPath(asset!.id),
         mimeType: asset!.mimeType,
       })));
     let claim;

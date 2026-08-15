@@ -14,6 +14,9 @@ const createCapability = vi.fn(() => 'preview-token');
 const getAsset = vi.fn();
 const listProject = vi.fn();
 const resolveLocalPath = vi.fn((id: string) => `C:\\clipjs\\${id}.bin`);
+const getGeneratedAssetStore = vi.fn(() => ({kind: 'test-store', get: getAsset, listProject, resolveLocalPath}));
+const getBlobAsset = vi.fn();
+const listBlobAssets = vi.fn();
 const styleBibleHash = 'a'.repeat(64);
 const attemptId = '11111111-1111-4111-8111-111111111111';
 const submissionDirectories: string[] = [];
@@ -21,11 +24,12 @@ const repositoryFaults = vi.hoisted(() => ({failReceipt: false}));
 const workerRuntime = vi.hoisted(() => ({
   enabled: false,
   repository: {
+    claim: vi.fn(),
     findByAttempt: vi.fn(),
     recordProviderReceipt: vi.fn(),
     markFailed: vi.fn(),
   },
-  queue: {get: vi.fn(), update: vi.fn(), recoverReceipt: vi.fn()},
+  queue: {get: vi.fn(), update: vi.fn(), recoverReceipt: vi.fn(), enqueue: vi.fn()},
 }));
 vi.mock('@/app/lib/higgsfield/character-image-runtime.server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/app/lib/higgsfield/character-image-runtime.server')>();
@@ -45,7 +49,11 @@ vi.mock('@/app/lib/higgsfield/generate.server', () => ({
 }));
 vi.mock('@/app/lib/assets/secure-higgsfield-image-ingest.server', () => ({ingestHiggsfieldCharacterImage: ingest}));
 vi.mock('@/app/lib/assets/asset-capability.server', () => ({createAssetCapability: createCapability}));
-vi.mock('@/app/lib/generation/runtime.server', () => ({getGeneratedAssetStore: () => ({kind: 'test-store', get: getAsset, listProject, resolveLocalPath})}));
+vi.mock('@/app/lib/generation/runtime.server', () => ({getGeneratedAssetStore}));
+vi.mock('@/app/lib/assets/character-image-blob-store.server', () => ({
+  getCharacterImageBlobAsset: getBlobAsset,
+  listCharacterImageBlobAssets: listBlobAssets,
+}));
 vi.mock('@/app/lib/higgsfield/character-image-submission-repository.server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/app/lib/higgsfield/character-image-submission-repository.server')>();
   return {
@@ -73,12 +81,18 @@ beforeEach(() => {
   authorizeApproval.mockReturnValue(undefined);
   repositoryFaults.failReceipt = false;
   workerRuntime.enabled = false;
+  workerRuntime.repository.claim.mockReset();
   workerRuntime.repository.findByAttempt.mockReset();
   workerRuntime.repository.recordProviderReceipt.mockReset();
   workerRuntime.repository.markFailed.mockReset();
   workerRuntime.queue.get.mockReset();
   workerRuntime.queue.update.mockReset();
   workerRuntime.queue.recoverReceipt.mockReset();
+  workerRuntime.queue.enqueue.mockReset();
+  getGeneratedAssetStore.mockImplementation(() => ({kind: 'test-store', get: getAsset, listProject, resolveLocalPath}));
+  getBlobAsset.mockReset();
+  listBlobAssets.mockReset();
+  listBlobAssets.mockResolvedValue([]);
   vi.stubEnv('CLIPJS_HIGGSFIELD_CHARACTER_IMAGE_SUBMIT_ENABLED', 'true');
   const submissionDirectory = mkdtempSync(join(tmpdir(), 'clipjs-character-image-route-claims-'));
   submissionDirectories.push(submissionDirectory);
@@ -162,6 +176,28 @@ describe('project character image generation route', () => {
     const {POST} = await import('./route');
     const response = await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 0}), context);
     expect(response.status).toBe(400);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('does not initialize the local filesystem asset store for a production worker submission', async () => {
+    workerRuntime.enabled = true;
+    workerRuntime.repository.claim.mockResolvedValue({
+      created: true,
+      record: {status: 'submitting'},
+    });
+    getGeneratedAssetStore.mockImplementation(() => { throw new Error("ENOENT: mkdir '/var/task/.clipjs-runtime/assets/objects'"); });
+    const {POST} = await import('./route');
+
+    const response = await POST(makePost({prompt: 'a valid bootstrap character prompt', confirmCreditCost: 1}), context);
+
+    expect(response.status).toBe(202);
+    expect(getGeneratedAssetStore).not.toHaveBeenCalled();
+    expect(workerRuntime.queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      characterId: 'CHAR01',
+      styleReferenceImageIds: [],
+      expectedCredits: 1,
+    }));
     expect(submit).not.toHaveBeenCalled();
   });
 
