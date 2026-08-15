@@ -81,6 +81,7 @@ const editableProjectFingerprint = (project: ProjectState) => ({
     return fingerprint;
   }),
   textElements: project.textElements,
+  shapes: project.shapes,
   duration: project.duration,
   resolution: project.resolution,
   fps: project.fps,
@@ -92,8 +93,9 @@ const editableProjectFingerprint = (project: ProjectState) => ({
 const finalizeAgentChange = (project: ProjectState, summary: string): {project: ProjectState; summary: string} => {
   const mediaEnd = project.mediaFiles.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
   const textEnd = project.textElements.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
+  const shapeEnd = project.shapes.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
   const captionEnd = project.workflow.captions.reduce((maximum, item) => Math.max(maximum, item.endSeconds), 0);
-  project.duration = Math.max(mediaEnd, textEnd, captionEnd);
+  project.duration = Math.max(mediaEnd, textEnd, shapeEnd, captionEnd);
   return {project, summary};
 };
 

@@ -18,12 +18,13 @@ import {crosswarp} from '@remotion/transitions/crosswarp';
 import {dissolve} from '@remotion/transitions/dissolve';
 import {ripple} from '@remotion/transitions/ripple';
 import type {EffectDescriptor} from 'remotion';
-import type {MediaFile, ProjectState, TextElement} from '../app/types';
+import type {MediaFile, ProjectState, ShapeElement, TextElement} from '../app/types';
 import type {EffectSpec, TransitionSpec} from '../app/lib/workflow/schema';
 import {activeEffectsAt, buildRemotionEffects} from './effects';
 import {isOfficialTransition} from '../app/lib/workflow/transition-catalog';
 import {CaptionContent} from './captions';
 import {mediaTransformCss, mediaVisualStyle, textVisualStyle, type CompositionSize} from './element-styles';
+import {shapeVisualStyle} from '../app/lib/editor/shape-style';
 
 export interface ProjectCompositionProps extends Record<string, unknown> {
   project: ProjectState;
@@ -95,6 +96,16 @@ const TextLayer: React.FC<{item: TextElement; fps: number; composition: Composit
     <div data-editor-element-id={item.id} data-editor-element-type="text" style={textVisualStyle(item, composition)}>
       {item.text}
     </div>
+  </Sequence>
+);
+
+const ShapeLayer: React.FC<{item: ShapeElement; fps: number; composition: CompositionSize}> = ({item, fps, composition}) => (
+  <Sequence
+    from={Math.round(item.positionStart * fps)}
+    durationInFrames={Math.max(1, Math.round((item.positionEnd - item.positionStart) * fps))}
+    layout="none"
+  >
+    <div data-editor-element-id={item.id} data-editor-element-type="shape" style={shapeVisualStyle(item, composition)} />
   </Sequence>
 );
 
@@ -191,6 +202,7 @@ export const ProjectComposition: React.FC<ProjectCompositionProps> = ({project})
     <AbsoluteFill style={{backgroundColor: '#000', overflow: 'hidden'}}>
       {[...project.mediaFiles].filter((media) => media.includeInMerge !== false).sort((a, b) => a.zIndex - b.zIndex).map((media) => <MediaLayer key={media.id} media={media} fps={fps} effects={project.workflow.effects} composition={composition} />)}
       {project.textElements.filter((item) => item.includeInMerge !== false).map((item) => <TextLayer key={item.id} item={item} fps={fps} composition={composition} />)}
+      {project.shapes.map((item) => <ShapeLayer key={item.id} item={item} fps={fps} composition={composition} />)}
       {project.exportSettings.includeSubtitles && project.workflow.captions.map((cue) => {
         const durationInFrames = Math.max(1, Math.round((cue.endSeconds - cue.startSeconds) * fps));
         return <Sequence key={cue.id} from={Math.round(cue.startSeconds * fps)} durationInFrames={durationInFrames} layout="none"><CaptionContent cue={cue} durationInFrames={durationInFrames} /></Sequence>;

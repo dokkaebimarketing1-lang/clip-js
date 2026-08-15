@@ -42,6 +42,7 @@ export const renderInputSnapshot = (project: ProjectState): unknown => ({
   projectId: project.id,
   mediaFiles: renderableMedia(project),
   textElements: project.textElements,
+  shapes: project.shapes,
   duration: project.duration,
   resolution: project.resolution,
   fps: project.fps,

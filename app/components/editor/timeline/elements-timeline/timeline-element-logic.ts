@@ -18,7 +18,7 @@ type TimelinePosition = TimelineElementIdentity & {
   readonly positionEnd: number;
 };
 
-type TimelineElementKind = Extract<ActiveElement, 'media' | 'text'>;
+type TimelineElementKind = Extract<ActiveElement, 'media' | 'text' | 'shape'>;
 type TimelineElementActionCreator<T> = (elements: T[]) => PayloadAction<T[]>;
 type TimelineElementUpdater<T> = (id: string, updates: Partial<T>) => void;
 

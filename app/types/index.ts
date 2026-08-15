@@ -113,6 +113,22 @@ export interface TextElement {
     visible?: boolean;              // Internal flag for rendering logic
 }
 
+export interface ShapeElement {
+    id: string;
+    type: 'rect' | 'circle' | 'line';
+    positionStart: number;
+    positionEnd: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+    opacity: number;
+    zIndex: number;
+    transform?: ElementTransform;
+    rotation?: number;
+}
+
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'mov';
 
@@ -125,7 +141,7 @@ export interface ExportConfig {
     includeSubtitles: boolean; // TODO: add this as an option
 }
 
-export type ActiveElement = 'media' | 'text' | 'workflow' | 'export';
+export type ActiveElement = 'media' | 'text' | 'shape' | 'workflow' | 'export';
 
 
 export interface ProjectState {
@@ -134,6 +150,7 @@ export interface ProjectState {
     id: string;
     mediaFiles: MediaFile[];
     textElements: TextElement[];
+    shapes: ShapeElement[];
     filesID?: string[],
     currentTime: number;
     isPlaying: boolean;

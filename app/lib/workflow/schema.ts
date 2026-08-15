@@ -11,6 +11,22 @@ export const elementTransformSchema = z.object({
   scale: z.number().finite().positive(),
 }).strict();
 
+export const shapeElementSchema = z.object({
+  id: z.string().min(1).max(128),
+  type: z.enum(['rect', 'circle', 'line']),
+  positionStart: z.number().finite().nonnegative(),
+  positionEnd: z.number().finite().positive(),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  color: z.string().min(1).max(128),
+  opacity: z.number().finite().min(0).max(100),
+  zIndex: z.number().finite(),
+  transform: elementTransformSchema.optional(),
+  rotation: z.number().finite().optional(),
+}).strict().refine((shape) => shape.positionEnd > shape.positionStart, 'Shape range must have positive duration.');
+
 export const normalizedCropSchema = z.object({
   left: z.number().finite().min(0).max(1),
   top: z.number().finite().min(0).max(1),

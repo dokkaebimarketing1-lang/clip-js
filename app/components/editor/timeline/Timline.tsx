@@ -1,5 +1,5 @@
 import { useAppSelector } from "@/app/store";
-import { setMarkerTrack, setTextElements, setMediaFiles, setTimelineZoom, setCurrentTime, setActiveElement } from "@/app/store/slices/projectSlice";
+import { setMarkerTrack, setTextElements, setMediaFiles, setShapes, setTimelineZoom, setCurrentTime, setActiveElement } from "@/app/store/slices/projectSlice";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useDispatch } from "react-redux";
 import Image from "next/image";
@@ -8,11 +8,12 @@ import VideoTimeline from "./elements-timeline/VideoTimeline";
 import ImageTimeline from "./elements-timeline/ImageTimeline";
 import AudioTimeline from "./elements-timeline/AudioTimline";
 import TextTimeline from "./elements-timeline/TextTimeline";
+import ShapeTimeline from "./elements-timeline/ShapeTimeline";
 import { throttle } from 'lodash';
 import GlobalKeyHandlerProps from "../../../components/editor/keys/GlobalKeyHandlerProps";
 import toast from "react-hot-toast";
 export const Timeline = () => {
-    const { currentTime, timelineZoom, enableMarkerTracking, activeElement, activeElementIndex, mediaFiles, textElements, duration } = useAppSelector((state) => state.projectState);
+    const { currentTime, timelineZoom, enableMarkerTracking, activeElement, activeElementIndex, mediaFiles, textElements, shapes, duration } = useAppSelector((state) => state.projectState);
     const dispatch = useDispatch();
     const timelineRef = useRef<HTMLDivElement>(null)
 
@@ -109,6 +110,31 @@ export const Timeline = () => {
             };
 
             elements.splice(activeElementIndex, 1, firstPart, secondPart);
+        } else if (activeElement === 'shape') {
+            elements = [...shapes];
+            element = elements[activeElementIndex];
+            setElements = setShapes;
+
+            if (!element) {
+                toast.error('선택한 요소가 없습니다.');
+                return;
+            }
+
+            const { positionStart, positionEnd } = element;
+            if (currentTime <= positionStart || currentTime >= positionEnd) {
+                toast.error('재생 위치가 선택한 요소 밖에 있습니다.');
+                return;
+            }
+
+            elements.splice(activeElementIndex, 1, {
+                ...element,
+                id: crypto.randomUUID(),
+                positionEnd: currentTime,
+            }, {
+                ...element,
+                id: crypto.randomUUID(),
+                positionStart: currentTime,
+            });
         }
 
         if (elements && setElements) {
@@ -131,6 +157,10 @@ export const Timeline = () => {
             elements = [...textElements];
             element = elements[activeElementIndex];
             setElements = setTextElements;
+        } else if (activeElement === 'shape') {
+            elements = [...shapes];
+            element = elements[activeElementIndex];
+            setElements = setShapes;
         }
 
         if (!element) {
@@ -168,6 +198,10 @@ export const Timeline = () => {
             elements = [...textElements];
             element = elements[activeElementIndex];
             setElements = setTextElements;
+        } else if (activeElement === 'shape') {
+            elements = [...shapes];
+            element = elements[activeElementIndex];
+            setElements = setShapes;
         }
 
         if (!element) {
@@ -357,6 +391,10 @@ export const Timeline = () => {
 
                         <div className="relative h-8 z-10">
                             <TextTimeline />
+                        </div>
+
+                        <div className="relative h-8 z-10">
+                            <ShapeTimeline />
                         </div>
 
                     </div>

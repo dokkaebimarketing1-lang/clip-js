@@ -33,7 +33,7 @@ const projectFixture = (manifest: ProductionManifest): ProjectState => ({
   projectSchemaVersion: 3,
   revision: 0,
   id: 'project-1', projectName: 'Project', createdAt: '2026-01-01T00:00:00.000Z', lastModified: '2026-01-01T00:00:00.000Z',
-  mediaFiles: [], textElements: [], currentTime: 0, isPlaying: false, isMuted: false, duration: 20, zoomLevel: 1,
+  mediaFiles: [], textElements: [], shapes: [], currentTime: 0, isPlaying: false, isMuted: false, duration: 20, zoomLevel: 1,
   timelineZoom: 100, enableMarkerTracking: true, activeSection: 'workflow', activeElement: null, activeElementIndex: 0,
   resolution: {width: 1920, height: 1080}, fps: 30, aspectRatio: '16:9', history: [], future: [],
   exportSettings: {resolution: '1080p', quality: 'high', speed: 'fastest', fps: 30, format: 'mp4', includeSubtitles: true},
@@ -82,5 +82,9 @@ describe('approval v3 boundaries', () => {
       id: 'caption-1', text: '정확한 자막', startSeconds: 0, endSeconds: 2, kind: 'dialogue', preset: 'dialogue-clean',
       position: 'bottom', intensity: 0.5, accentColor: '#ffd43b', fontFamily: 'Noto Sans KR Variable', wordTimings: [], emphasis: [], safeArea: true,
     }]}})).resolves.not.toBe(hash);
+    await expect(computeRenderInputHash({...base, shapes: [{
+      id: 'shape-1', type: 'rect', positionStart: 0, positionEnd: 2, x: 0, y: 0,
+      width: 100, height: 100, color: '#ffffff', opacity: 100, zIndex: 1,
+    }]})).resolves.not.toBe(hash);
   });
 });

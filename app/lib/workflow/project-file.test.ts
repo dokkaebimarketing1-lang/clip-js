@@ -40,6 +40,20 @@ const portableProject = () => {
     y: 80,
     transform: {x: -0.05, y: 0.1, rotation: -8, scale: 0.9},
   }];
+  project.shapes = [{
+    id: 'title-accent',
+    type: 'line',
+    positionStart: 0,
+    positionEnd: 2,
+    x: 120,
+    y: 320,
+    width: 400,
+    height: 6,
+    color: '#d946ef',
+    opacity: 90,
+    zIndex: 2,
+    transform: {x: 0.05, y: 0, rotation: 4, scale: 1},
+  }];
   return project;
 };
 
@@ -54,6 +68,7 @@ describe('portable project documents', () => {
     expect(restored.mediaFiles[0].transform).toEqual({x: 0.125, y: -0.25, rotation: 15, scale: 1.2});
     expect(restored.mediaFiles[0].crop).toEqual({left: 0.1, top: 0.2, width: 0.7, height: 0.6});
     expect(restored.textElements[0].transform).toEqual({x: -0.05, y: 0.1, rotation: -8, scale: 0.9});
+    expect(restored.shapes[0].transform).toEqual({x: 0.05, y: 0, rotation: 4, scale: 1});
     expect(restored.mediaFiles[0].src).toBeUndefined();
     expect(JSON.stringify(serialized)).not.toContain('token=secret');
   });
@@ -127,6 +142,7 @@ describe('portable project documents', () => {
 
     expect(restored.projectSchemaVersion).toBe(3);
     expect(restored.revision).toBe(0);
+    expect(restored.shapes).toEqual([]);
     expect(restored.mediaFiles[0].source).toEqual({kind: 'indexeddb', fileId: 'legacy-file'});
   });
 });

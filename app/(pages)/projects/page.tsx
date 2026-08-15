@@ -24,6 +24,7 @@ const createProjectState = (name: string): ProjectState => ({
     lastModified: new Date().toISOString(),
     mediaFiles: [],
     textElements: [],
+    shapes: [],
     currentTime: 0,
     isPlaying: false,
     isMuted: false,

@@ -1,6 +1,6 @@
 import {configureStore} from '@reduxjs/toolkit';
 import {describe, expect, it} from 'vitest';
-import type {MediaFile, ProjectState, TextElement} from '@/app/types';
+import type {MediaFile, ProjectState, ShapeElement, TextElement} from '@/app/types';
 import {createDefaultWorkflow} from '@/app/lib/workflow/schema';
 import {createProjectHistoryMiddleware, PROJECT_HISTORY_LIMIT} from '../project-history';
 import projectReducer, {
@@ -18,6 +18,7 @@ import projectReducer, {
   setMarkerTrack,
   setMediaFiles,
   setProjectName,
+  setShapes,
   setTextElements,
   setTimelineZoom,
   setWorkflow,
@@ -48,6 +49,20 @@ const text = (id: string): TextElement => ({
   positionEnd: 2,
   x: 0,
   y: 0,
+});
+
+const shape = (id: string): ShapeElement => ({
+  id,
+  type: 'rect',
+  positionStart: 0,
+  positionEnd: 2,
+  x: 0,
+  y: 0,
+  width: 100,
+  height: 100,
+  color: '#ffffff',
+  opacity: 100,
+  zIndex: 0,
 });
 
 const createHistoryStore = (project: ProjectState = structuredClone(initialState)) => {
@@ -103,6 +118,17 @@ describe('project document undo history', () => {
     store.dispatch(redo());
     expect(store.getState().projectState.mediaFiles).toEqual([media('clip')]);
     expect(store.getState().projectState.future).toEqual([]);
+  });
+
+  it('records shape edits and restores them through undo and redo', () => {
+    const {store} = createHistoryStore();
+    store.dispatch(setShapes([shape('accent')]));
+
+    store.dispatch(undo());
+    expect(store.getState().projectState.shapes).toEqual([]);
+
+    store.dispatch(redo());
+    expect(store.getState().projectState.shapes).toEqual([shape('accent')]);
   });
 
   it('clears redo history when a new edit follows undo', () => {

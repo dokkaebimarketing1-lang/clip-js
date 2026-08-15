@@ -13,6 +13,7 @@ const defaultProject: ProjectState = {
   lastModified: '1970-01-01T00:00:00.000Z',
   mediaFiles: [],
   textElements: [],
+  shapes: [],
   currentTime: 0,
   isPlaying: false,
   isMuted: false,

@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import type {ProjectState} from '@/app/types';
 import {initialState} from '@/app/store/slices/projectSlice';
-import {elementTransformSchema, normalizedCropSchema, workflowStateSchema} from './schema';
+import {elementTransformSchema, normalizedCropSchema, shapeElementSchema, workflowStateSchema} from './schema';
 import {invalidateForCreativeChange} from './approval';
 
 export const PROJECT_FILE_VERSION = 3 as const;
@@ -75,6 +75,7 @@ const projectStateV3Schema = z.object({
   resolution: z.object({width: z.number().int().positive(), height: z.number().int().positive()}).optional(),
   mediaFiles: z.array(mediaFileSchema).max(500),
   textElements: z.array(textElementSchema).max(1000),
+  shapes: z.array(shapeElementSchema).max(1000).default([]),
   workflow: workflowStateSchema,
 }).passthrough().superRefine((project, ctx) => {
   const mediaIds = new Set<string>();
@@ -208,6 +209,7 @@ export const parseProjectState = (input: unknown): ProjectState => {
     0,
     ...mediaFiles.map((media) => media.positionEnd),
     ...project.textElements.map((text) => text.positionEnd),
+    ...project.shapes.map((shape) => shape.positionEnd),
     ...workflow.captions.map((cue) => cue.endSeconds),
   );
   return {

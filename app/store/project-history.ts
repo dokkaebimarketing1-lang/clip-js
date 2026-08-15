@@ -13,6 +13,7 @@ import {
   setProjectName,
   setQuality,
   setResolution,
+  setShapes,
   setSpeed,
   setTextElements,
   setWorkflow,
@@ -25,6 +26,7 @@ const HISTORY_COALESCE_MS = 800;
 const isUndoableProjectAction = isAnyOf(
   setMediaFiles,
   setTextElements,
+  setShapes,
   setWorkflow,
   setProjectName,
   setExportSettings,

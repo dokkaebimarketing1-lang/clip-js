@@ -6,12 +6,14 @@ import { setCurrentProject, updateProject } from "../../../store/slices/projects
 import { rehydrate } from '../../../store/slices/projectSlice';
 import AddText from '../../../components/editor/AssetsPanel/tools-section/AddText';
 import AddMedia from '../../../components/editor/AssetsPanel/AddButtons/UploadMedia';
+import AddShape from '../../../components/editor/AssetsPanel/AddButtons/AddShape';
 import MediaList from '../../../components/editor/AssetsPanel/tools-section/MediaList';
 import { useRouter, useSearchParams } from 'next/navigation';
 import HomeButton from "../../../components/editor/AssetsPanel/SidebarButtons/HomeButton";
 
 import MediaProperties from "../../../components/editor/PropertiesSection/MediaProperties";
 import TextProperties from "../../../components/editor/PropertiesSection/TextProperties";
+import ShapeProperties from "../../../components/editor/PropertiesSection/ShapeProperties";
 import { Timeline } from "../../../components/editor/timeline/Timline";
 import { PreviewPlayer } from "../../../components/editor/player/remotion/Player";
 import { MediaFile } from "@/app/types";
@@ -48,7 +50,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const mobileSourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
     const mobileSourcesCloseRef = useRef<HTMLButtonElement | null>(null);
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
-    const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
+    const [leftTab, setLeftTab] = useState<'media' | 'text' | 'shape'>('media');
     const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
     const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
     const [rightTab, setRightTab] = useState<'stage' | 'reference' | 'advanced' | 'props'>('stage');
@@ -489,6 +491,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <div className="mb-3 flex gap-1 rounded-lg bg-black/30 p-1">
                         <button type="button" onClick={() => setLeftTab('media')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'media' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>미디어</button>
                         <button type="button" onClick={() => setLeftTab('text')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'text' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>텍스트</button>
+                        <button type="button" onClick={() => setLeftTab('shape')} className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold ${leftTab === 'shape' ? 'bg-fuchsia-500/20 text-fuchsia-300' : 'text-gray-500'}`}>도형</button>
                         <button ref={mobileSourcesCloseRef} type="button" aria-label="사이드바 닫기" onClick={() => setMobileSourcesOpen(false)} className="rounded-md border border-white/10 bg-white/[0.04] px-2 text-gray-400 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:hidden">×</button>
                         <button type="button" aria-label="사이드바 닫기" onClick={() => setLeftSidebarOpen(false)} className="hidden rounded-md border border-white/10 bg-white/[0.04] px-2 text-gray-400 hover:border-fuchsia-400/40 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 md:inline-flex md:items-center">×</button>
                     </div>
@@ -503,6 +506,12 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <div>
                             <h2 className="mb-3 text-sm font-semibold text-gray-200">텍스트</h2>
                             {!sampleMode ? <AddText /> : <p className="rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs leading-5 text-amber-100">샘플 모드에서는 텍스트를 추가하거나 변경할 수 없습니다.</p>}
+                        </div>
+                    )}
+                    {leftTab === 'shape' && (
+                        <div>
+                            <h2 className="mb-3 text-sm font-semibold text-gray-200">도형</h2>
+                            {!sampleMode ? <AddShape /> : <p className="rounded-xl border border-amber-400/20 bg-amber-400/[0.07] p-3 text-xs leading-5 text-amber-100">샘플 모드에서는 도형을 추가하거나 변경할 수 없습니다.</p>}
                         </div>
                     )}
 
@@ -637,7 +646,8 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                             <div className="space-y-4">
                                 {activeElement === 'media' && <div><h2 className="mb-3 text-sm font-semibold text-gray-200">미디어 속성</h2><MediaProperties /></div>}
                                 {activeElement === 'text' && <div><h2 className="mb-3 text-sm font-semibold text-gray-200">텍스트 속성</h2><TextProperties /></div>}
-                                {!activeElement && <p className="text-sm leading-6 text-gray-500">타임라인에서 미디어나 텍스트를 선택하면 속성이 표시됩니다.</p>}
+                                {activeElement === 'shape' && <div><h2 className="mb-3 text-sm font-semibold text-gray-200">도형 속성</h2><ShapeProperties /></div>}
+                                {!activeElement && <p className="text-sm leading-6 text-gray-500">타임라인에서 미디어, 텍스트 또는 도형을 선택하면 속성이 표시됩니다.</p>}
                             </div>
                         )}
                     </div>

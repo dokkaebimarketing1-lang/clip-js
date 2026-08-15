@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { TextElement, MediaFile, ActiveElement, ExportConfig } from '../../types';
+import { TextElement, MediaFile, ActiveElement, ExportConfig, ShapeElement } from '../../types';
 import { ProjectState } from '../../types';
 import {createDefaultWorkflow, type WorkflowState, workflowStateSchema} from '@/app/lib/workflow/schema';
 import {
@@ -36,6 +36,7 @@ export const initialState: ProjectState = {
     lastModified: new Date().toISOString(),
     mediaFiles: [],
     textElements: [],
+    shapes: [],
     currentTime: 0,
     isPlaying: false,
     isMuted: false,
@@ -65,11 +66,13 @@ export const initialState: ProjectState = {
 const calculateTotalDuration = (
     mediaFiles: MediaFile[],
     textElements: TextElement[],
+    shapes: ShapeElement[],
     captionEnd = 0
 ): number => {
     const mediaDurations = mediaFiles.map(v => v.positionEnd);
     const textDurations = textElements.map(v => v.positionEnd);
-    return Math.max(0, captionEnd, ...mediaDurations, ...textDurations);
+    const shapeDurations = shapes.map(v => v.positionEnd);
+    return Math.max(0, captionEnd, ...mediaDurations, ...textDurations, ...shapeDurations);
 };
 
 const projectStateSlice = createSlice({
@@ -87,7 +90,7 @@ const projectStateSlice = createSlice({
             if (changed) state.workflow.releaseApproval = invalidateApproval(state.workflow.releaseApproval);
             // Calculate duration based on the last video's end time
             const captionEnd = state.workflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
-            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, captionEnd);
+            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, state.shapes, captionEnd);
         },
         setProjectName: (state, action: PayloadAction<string>) => {
             state.projectName = action.payload;
@@ -106,7 +109,13 @@ const projectStateSlice = createSlice({
             state.textElements = action.payload;
             state.workflow.releaseApproval = invalidateApproval(state.workflow.releaseApproval);
             const captionEnd = state.workflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
-            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, captionEnd);
+            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, state.shapes, captionEnd);
+        },
+        setShapes: (state, action: PayloadAction<ShapeElement[]>) => {
+            state.shapes = action.payload;
+            state.workflow.releaseApproval = invalidateApproval(state.workflow.releaseApproval);
+            const captionEnd = state.workflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
+            state.duration = calculateTotalDuration(state.mediaFiles, state.textElements, state.shapes, captionEnd);
         },
         setCurrentTime: (state, action: PayloadAction<number>) => {
             state.currentTime = action.payload;
@@ -152,8 +161,9 @@ const projectStateSlice = createSlice({
                         : nextWorkflow;
             const mediaEnd = state.mediaFiles.reduce((maximum, item) => Math.max(maximum, item.positionEnd), 0);
             const textEnd = state.textElements.reduce((max, item) => Math.max(max, item.positionEnd), 0);
+            const shapeEnd = state.shapes.reduce((max, item) => Math.max(max, item.positionEnd), 0);
             const captionEnd = nextWorkflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0);
-            state.duration = Math.max(mediaEnd, textEnd, captionEnd);
+            state.duration = Math.max(mediaEnd, textEnd, shapeEnd, captionEnd);
         },
         setPlanningStatus: (state, action: PayloadAction<'draft' | 'approved'>) => {
             state.workflow.planningStatus = action.payload;
@@ -244,6 +254,7 @@ const projectStateSlice = createSlice({
                 projectName: previous.projectName,
                 mediaFiles: previous.mediaFiles,
                 textElements: previous.textElements,
+                shapes: previous.shapes,
                 duration: previous.duration,
                 exportSettings: previous.exportSettings,
                 workflow: previous.workflow,
@@ -260,6 +271,7 @@ const projectStateSlice = createSlice({
                 projectName: next.projectName,
                 mediaFiles: next.mediaFiles,
                 textElements: next.textElements,
+                shapes: next.shapes,
                 duration: next.duration,
                 exportSettings: next.exportSettings,
                 workflow: next.workflow,
@@ -285,6 +297,7 @@ const projectStateSlice = createSlice({
             const duration = calculateTotalDuration(
                 action.payload.mediaFiles ?? [],
                 action.payload.textElements ?? [],
+                action.payload.shapes ?? [],
                 normalizedWorkflow.captions.reduce((max, cue) => Math.max(max, cue.endSeconds), 0),
             );
             return {
@@ -293,6 +306,7 @@ const projectStateSlice = createSlice({
                 projectSchemaVersion: 3,
                 revision: Number.isSafeInteger(action.payload.revision) && action.payload.revision >= 0 ? action.payload.revision : 0,
                 workflow: normalizedWorkflow,
+                shapes: action.payload.shapes ?? [],
                 duration,
                 history: [],
                 future: [],
@@ -307,6 +321,7 @@ const projectStateSlice = createSlice({
 export const {
     setMediaFiles,
     setTextElements,
+    setShapes,
     setCurrentTime,
     setProjectName,
     setIsPlaying,
