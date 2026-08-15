@@ -1,9 +1,19 @@
 "use client";
 
 import { useAppSelector } from '../../../store';
-import { setActiveElement, setTextElements } from '../../../store/slices/projectSlice';
-import { TextElement } from '../../../types';
+import { setTextElements } from '../../../store/slices/projectSlice';
+import type { TextElement } from '../../../types';
 import { useAppDispatch } from '../../../store';
+
+const TEXT_ANIMATION_OPTIONS = [
+    { value: 'none', label: '없음' },
+    { value: 'slide-in', label: '슬라이드 인' },
+    { value: 'zoom', label: '확대' },
+    { value: 'bounce', label: '바운스' },
+    { value: 'typewriter', label: '타자 효과' },
+    { value: 'shake', label: '흔들림' },
+    { value: 'glow', label: '빛나는 효과' },
+] as const satisfies ReadonlyArray<{ value: NonNullable<TextElement['animation']>; label: string }>;
 
 export default function TextProperties() {
     const { textElements, activeElementIndex } = useAppSelector((state) => state.projectState);
@@ -149,6 +159,22 @@ export default function TextProperties() {
                                 onChange={(e) => onUpdateText(textElement.id, { opacity: Number(e.target.value) })}
                                 className="w-full bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:border-white-500"
                             />
+                        </div>
+                        <div>
+                            <label htmlFor="text-animation" className="block text-sm">애니메이션</label>
+                            <select
+                                id="text-animation"
+                                value={textElement.animation ?? 'none'}
+                                onChange={(event) => {
+                                    const animation = TEXT_ANIMATION_OPTIONS.find((option) => option.value === event.target.value)?.value;
+                                    if (animation) onUpdateText(textElement.id, { animation });
+                                }}
+                                className="w-full p-2 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:ring-2 focus:ring-white-500 focus:border-white-500"
+                            >
+                                {TEXT_ANIMATION_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                 </div>

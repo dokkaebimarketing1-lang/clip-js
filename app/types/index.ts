@@ -107,7 +107,7 @@ export interface TextElement {
     transform?: ElementTransform;
     fadeInDuration?: number;        // Seconds to fade in
     fadeOutDuration?: number;       // Seconds to fade out
-    animation?: 'slide-in' | 'zoom' | 'bounce' | 'none'; // Optional animation
+    animation?: 'slide-in' | 'zoom' | 'bounce' | 'typewriter' | 'shake' | 'glow' | 'none'; // Optional animation
 
     // Runtime only (not persisted)
     visible?: boolean;              // Internal flag for rendering logic

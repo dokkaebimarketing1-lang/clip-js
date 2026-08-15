@@ -23,7 +23,7 @@ import type {EffectSpec, TransitionSpec} from '../app/lib/workflow/schema';
 import {activeEffectsAt, buildRemotionEffects} from './effects';
 import {isOfficialTransition} from '../app/lib/workflow/transition-catalog';
 import {CaptionContent} from './captions';
-import {mediaTransformCss, mediaVisualStyle, textVisualStyle, type CompositionSize} from './element-styles';
+import {mediaTransformCss, mediaVisualStyle, textAnimationStyle, textVisualStyle, type CompositionSize} from './element-styles';
 import {shapeVisualStyle} from '../app/lib/editor/shape-style';
 
 export interface ProjectCompositionProps extends Record<string, unknown> {
@@ -87,15 +87,26 @@ const MediaLayer: React.FC<{media: MediaFile; fps: number; effects: readonly Eff
   );
 };
 
+const TextLayerContent: React.FC<{item: TextElement; fps: number; composition: CompositionSize}> = ({item, fps, composition}) => {
+  const frame = useCurrentFrame();
+  return (
+    <div
+      data-editor-element-id={item.id}
+      data-editor-element-type="text"
+      style={{...textVisualStyle(item, composition), ...textAnimationStyle(item, frame, fps, composition)}}
+    >
+      {item.text}
+    </div>
+  );
+};
+
 const TextLayer: React.FC<{item: TextElement; fps: number; composition: CompositionSize}> = ({item, fps, composition}) => (
   <Sequence
     from={Math.round(item.positionStart * fps)}
     durationInFrames={Math.max(1, Math.round((item.positionEnd - item.positionStart) * fps))}
     layout="none"
   >
-    <div data-editor-element-id={item.id} data-editor-element-type="text" style={textVisualStyle(item, composition)}>
-      {item.text}
-    </div>
+    <TextLayerContent item={item} fps={fps} composition={composition} />
   </Sequence>
 );
 

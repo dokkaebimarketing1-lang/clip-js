@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {MediaFile, TextElement} from '@/app/types';
-import {mediaVisualStyle, textVisualStyle} from '@/remotion/element-styles';
+import {mediaVisualStyle, textAnimationStyle, textVisualStyle} from '@/remotion/element-styles';
 
 const media: MediaFile = {
   id: 'media',
@@ -53,5 +53,33 @@ describe('Remotion element style mapping', () => {
     }, {width: 1920, height: 1080});
 
     expect(style).toMatchObject({left: 100, top: 200, transform: 'translate(-96px, 108px) rotate(-8deg) scale(0.9)'});
+  });
+
+  it('maps legacy text entrance animations during their first second', () => {
+    const composition = {width: 1920, height: 1080};
+
+    expect(textAnimationStyle({...text, animation: 'slide-in'}, 0, 30, composition).transform).toBe('translateX(-1920px)');
+    expect(textAnimationStyle({...text, animation: 'zoom'}, 0, 30, composition).transform).toBe('scale(0.5)');
+    expect(textAnimationStyle({...text, animation: 'bounce'}, 7.5, 30, composition).transform).toBe('translateY(-50px)');
+    expect(textAnimationStyle({...text, animation: 'slide-in'}, 30, 30, composition)).toEqual({});
+  });
+
+  it('reveals typewriter text by clipping its width over one second', () => {
+    const composition = {width: 1920, height: 1080};
+
+    expect(textAnimationStyle({...text, animation: 'typewriter'}, 0, 30, composition).clipPath).toBe('inset(0 100% 0 0)');
+    expect(textAnimationStyle({...text, animation: 'typewriter'}, 15, 30, composition).clipPath).toBe('inset(0 50% 0 0)');
+    expect(textAnimationStyle({...text, animation: 'typewriter'}, 30, 30, composition)).toEqual({});
+  });
+
+  it('produces deterministic frame-based shake and glow styles', () => {
+    const composition = {width: 1920, height: 1080};
+    const shakingText = {...text, animation: 'shake'} as const;
+    const glowingText = {...text, animation: 'glow'} as const;
+
+    expect(textAnimationStyle(shakingText, 4, 30, composition)).toEqual(textAnimationStyle(shakingText, 4, 30, composition));
+    expect(textAnimationStyle(shakingText, 4, 30, composition).transform).toMatch(/^translate\(-?\d+(?:\.\d+)?px, -?\d+(?:\.\d+)?px\)$/);
+    expect(textAnimationStyle(glowingText, 0, 30, composition)).toEqual(textAnimationStyle(glowingText, 0, 30, composition));
+    expect(textAnimationStyle(glowingText, 5, 30, composition).textShadow).not.toBe(textAnimationStyle(glowingText, 0, 30, composition).textShadow);
   });
 });
