@@ -4,7 +4,6 @@ import { getFile, useAppDispatch, useAppSelector } from "../../../../store";
 import { setMediaFiles } from "../../../../store/slices/projectSlice";
 import { storeFile } from "../../../../store";
 import { categorizeFile } from "../../../../utils/utils";
-import Image from 'next/image';
 import toast from 'react-hot-toast';
 
 export default function AddMedia({ fileId }: { fileId: string }) {
@@ -12,6 +11,11 @@ export default function AddMedia({ fileId }: { fileId: string }) {
     const dispatch = useAppDispatch();
 
     const handleFileChange = async () => {
+        if (mediaFiles.some((media) => media.fileId === fileId)) {
+            toast('이미 타임라인에 추가된 미디어입니다.');
+            return;
+        }
+
         const updatedMedia = [...mediaFiles];
 
         const file = await getFile(fileId);
@@ -50,24 +54,15 @@ export default function AddMedia({ fileId }: { fileId: string }) {
     };
 
     return (
-        <div
-        >
-            <label
-                className="cursor-pointer rounded-full bg-white border border-solid border-transparent transition-colors flex flex-col items-center justify-center text-gray-800 hover:bg-[#ccc] dark:hover:bg-[#ccc] font-medium sm:text-base py-2 px-2"
+        <div>
+            <button
+                type="button"
+                aria-label="미디어 타임라인에 추가"
+                className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-base font-semibold text-gray-300 transition-colors hover:border-fuchsia-500 hover:bg-fuchsia-500/10 hover:text-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500"
+                onClick={handleFileChange}
             >
-                <Image
-                    alt="미디어 추가"
-                    className="Black"
-                    height={12}
-                    width={12}
-                    src="https://www.svgrepo.com/show/513803/add.svg"
-                />
-                {/* <span className="text-xs">Add Media</span> */}
-                <button
-                    onClick={handleFileChange}
-                >
-                </button>
-            </label>
+                <span aria-hidden="true">+</span>
+            </button>
         </div>
     );
 }
