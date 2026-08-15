@@ -1,10 +1,12 @@
 # Agent API
 
-Preview and render requests require `Authorization: Bearer $CLIPJS_AGENT_TOKEN`. Apply and storyboard approval require the separate owner-only `x-clipjs-approval-token: $CLIPJS_APPROVAL_TOKEN` header.
+Preview requests require `Authorization: Bearer $CLIPJS_AGENT_TOKEN`. Render requests require both that bearer token and the separate owner-only `x-clipjs-approval-token: $CLIPJS_APPROVAL_TOKEN` header. Apply and storyboard approval require the owner token.
 
 ## Preview a change
 
 `POST /api/agent/commands/preview`
+
+The URL below is an example. Its hostname must be included in the deployment's `CLIPJS_MEDIA_HOSTS` allowlist before legacy external media can render.
 
 ```json
 {
@@ -23,7 +25,7 @@ Preview and render requests require `Authorization: Bearer $CLIPJS_AGENT_TOKEN`.
 
 Supported mutation commands:
 
-- `import_clip` — Higgsfield video or audio/SFX with cut/shot provenance
+- `import_clip` — legacy external HTTPS video or audio/SFX with cut/shot provenance
 - `trim_clip`
 - `set_playback_speed`
 - `add_transition`
@@ -102,8 +104,8 @@ The apply endpoint recomputes the token and rejects stale or modified previews. 
 - the exact production manifest hash was not explicitly approved;
 - the approval was not server-signed with the owner-only approval secret;
 - the storyboard or production manifest changed after approval;
-- an asset has no persistent HTTPS `remoteUrl`;
-- a URL is local/private, outside `CLIPJS_MEDIA_HOSTS`, or DNS resolves to a private network;
-- the production API token is absent or invalid.
+- a media item is neither a matching server-owned generated/managed asset nor legacy external media with a persistent HTTPS `remoteUrl`;
+- a legacy external URL is local/private, outside `CLIPJS_MEDIA_HOSTS`, or DNS resolves to a private network;
+- the agent bearer token or owner approval token is absent or invalid.
 
-A successful response returns `{renderId, downloadUrl}`. Download URLs use strict UUID filenames plus a 10-minute HMAC signature. Rendering is capped at 4K, 60fps, one hour, 500 media items, 1,000 text items, 5,000 captions, 100,000 caption words, 500 transitions, and 1,000 effects.
+A successful enqueue returns HTTP 202 with `{jobId, status, statusUrl, reused}`. Polling `statusUrl` with the agent bearer token returns `downloadUrl` after the job succeeds. Render downloads use a UUID-shaped `.mp4` filename and an HMAC-SHA-256 token that expires after 10 minutes by default. Rendering is capped at 1920×1080, 60fps, 180 seconds, 500 media items, 1,000 text items, 5,000 captions, 100,000 caption words, 500 transitions, 1,000 effects, and 13,000 combined production assets, continuity locks, shot specs, and takes.

@@ -137,6 +137,7 @@ CLIPJS_GENERATION_PROVIDER=disabled
 BYTEPLUS_GENERATION_SUBMIT_ENABLED=false
 BYTEPLUS_ARK_API_KEY=
 BYTEPLUS_RESULT_HOSTS=
+CLIPJS_MEDIA_HOSTS=cdn.example.com
 ```
 
 Start the web app and workers in separate processes on the same self-hosted machine:
@@ -162,7 +163,7 @@ This filesystem repository is supported only for a single self-hosted host. Do n
 
 ## Browser preview and render assets
 
-Generated and managed asset preview uses a short-lived project/asset capability URL with `HEAD`, byte ranges, `Content-Length` and `ETag`. Capability URLs are runtime-only and are never persisted in IndexedDB or project exports. Use **Stage referenced local media** to promote browser-local TTS, ambience, SFX, BGM and app UI files before ReleaseApproval. The Remotion worker resolves server-owned asset IDs directly to verified local bytes; it does not reuse a browser capability URL.
+Generated and managed asset preview uses a short-lived project/asset capability URL with `HEAD`, byte ranges, `Content-Length` and `ETag`. Capability URLs are runtime-only and are never persisted in IndexedDB or project exports. Use **Stage referenced local media** to promote browser-local TTS, ambience, SFX, BGM and app UI files before ReleaseApproval. For server-owned generated and managed assets, the Remotion worker verifies project ownership, asset kind and SHA-256, then stages the asset store's local bytes without reusing a browser capability URL. Legacy external media instead requires a persistent HTTPS `remoteUrl` allowed by `CLIPJS_MEDIA_HOSTS`; the worker downloads and verifies it before rendering.
 
 Legacy Higgsfield assets remain readable for migration. The Higgsfield paid route rejects BytePlus-scoped authorization and is not the default generation path.
 
