@@ -4,6 +4,7 @@ import {createAssetCapability} from '@/app/lib/assets/asset-capability.server';
 import {getCharacterImageBlobAsset, ingestCharacterImageBlob} from '@/app/lib/assets/character-image-blob-store.server';
 import {getCharacterImageSubmissionRepository} from '@/app/lib/higgsfield/character-image-runtime.server';
 import {createCharacterImageWorkerQueue} from '@/app/lib/higgsfield/character-image-worker-queue.server';
+import {HIGGSFIELD_WORKER_UPLOAD_MAX_BYTES} from '@/app/lib/higgsfield/result-policy';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     if (action === 'complete') {
       if (!UUID.test(providerJobId) || submission.providerJobId !== providerJobId) throw new Error('Provider receipt mismatch.');
       const file = form.get('file');
-      if (!(file instanceof File) || file.size > 25 * 1024 * 1024) throw new Error('Generated image file is missing or too large.');
+      if (!(file instanceof File) || file.size > HIGGSFIELD_WORKER_UPLOAD_MAX_BYTES) throw new Error('Generated image file is missing or too large.');
       const bytes = new Uint8Array(await file.arrayBuffer());
       const asset = await ingestCharacterImageBlob({
         projectId: submission.projectId,

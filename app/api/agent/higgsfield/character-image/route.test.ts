@@ -1,10 +1,12 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {NextRequest} from 'next/server';
+import {HIGGSFIELD_WORKER_UPLOAD_MAX_BYTES} from '@/app/lib/higgsfield/result-policy';
 
-const {authorize, createCapability, getBlobAsset, queue, repository} = vi.hoisted(() => ({
+const {authorize, createCapability, getBlobAsset, ingestBlob, queue, repository} = vi.hoisted(() => ({
   authorize: vi.fn(),
   createCapability: vi.fn(() => 'capability-token'),
   getBlobAsset: vi.fn(),
+  ingestBlob: vi.fn(),
   queue: {
     claim: vi.fn(),
     get: vi.fn(),
@@ -25,7 +27,7 @@ vi.mock('@/app/lib/security/api-auth', () => ({authorizeAgentRequest: authorize}
 vi.mock('@/app/lib/assets/asset-capability.server', () => ({createAssetCapability: createCapability}));
 vi.mock('@/app/lib/assets/character-image-blob-store.server', () => ({
   getCharacterImageBlobAsset: getBlobAsset,
-  ingestCharacterImageBlob: vi.fn(),
+  ingestCharacterImageBlob: ingestBlob,
 }));
 vi.mock('@/app/lib/higgsfield/character-image-runtime.server', () => ({getCharacterImageSubmissionRepository: () => repository}));
 vi.mock('@/app/lib/higgsfield/character-image-worker-queue.server', () => ({createCharacterImageWorkerQueue: () => queue}));
@@ -123,5 +125,22 @@ describe('Higgsfield character-image agent route', () => {
     expect(await response.json()).toMatchObject({receiptAlreadyRecorded: true});
     expect(repository.markUncertain).not.toHaveBeenCalled();
     expect(queue.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects an image above the Vercel multipart upload budget before Blob ingest', async () => {
+    repository.get.mockResolvedValueOnce({...job, status: 'queued', providerJobId});
+    const form = new FormData();
+    form.set('action', 'complete');
+    form.set('requestKey', requestKey);
+    form.set('providerJobId', providerJobId);
+    form.set('file', new File([new Uint8Array(HIGGSFIELD_WORKER_UPLOAD_MAX_BYTES + 1)], 'result.png', {type: 'image/png'}));
+    const {POST} = await import('./route');
+
+    const response = await POST(new NextRequest('https://clip-js-three.vercel.app/api/agent/higgsfield/character-image', {
+      method: 'POST', headers: {authorization: 'Bearer test'}, body: form,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(ingestBlob).not.toHaveBeenCalled();
   });
 });

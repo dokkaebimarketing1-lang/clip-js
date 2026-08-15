@@ -3,6 +3,7 @@ import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {downloadHiggsfieldProviderImage} from '../app/lib/higgsfield/provider-result-download';
+import {prepareHiggsfieldImageUpload} from '../app/lib/higgsfield/provider-result-upload';
 
 const baseUrl = (process.env.CLIPJS_WORKER_BASE_URL || 'https://clip-js-three.vercel.app').replace(/\/$/, '');
 const token = process.env.CLIPJS_AGENT_TOKEN || '';
@@ -131,7 +132,8 @@ const processJob = async (payload: {job: Record<string, unknown>; referenceUrls:
       if (currentStatus === 'completed') {
         const url = resultUrl(current);
         if (!url) throw new Error('Completed Higgsfield job has no result URL.');
-        const {bytes, type} = await downloadHiggsfieldProviderImage(url);
+        const downloaded = await downloadHiggsfieldProviderImage(url);
+        const {bytes, type} = await prepareHiggsfieldImageUpload(downloaded.bytes, downloaded.type);
         await update({action: 'complete', requestKey, providerJobId, file: new Blob([bytes], {type})});
         return;
       }
