@@ -25,13 +25,26 @@ export const POST = async (request: Request) => {
     return NextResponse.json({error: 'sentence required'}, {status: 400});
   }
 
+  let planningProvider: ReturnType<typeof getConfiguredPlanningProvider>;
+  try {
+    planningProvider = getConfiguredPlanningProvider();
+  } catch (error) {
+    console.error('VLOG planning provider is not configured.', error);
+    return NextResponse.json({
+      error: '기획 AI 연결이 준비되지 않았습니다. 관리자에게 배포 환경 설정을 확인해 달라고 요청해 주세요.',
+      code: 'PLANNING_PROVIDER_UNAVAILABLE',
+    }, {status: 503});
+  }
+
   let plan;
-  const planningProvider = getConfiguredPlanningProvider();
   try {
     plan = await planningProvider.compose(sentence, request.signal);
   } catch (error) {
     console.error('VLOG planning failed.', error);
-    return NextResponse.json({error: 'planning provider unavailable'}, {status: 503});
+    return NextResponse.json({
+      error: '기획 AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      code: 'PLANNING_PROVIDER_FAILED',
+    }, {status: 503});
   }
   const brief = plan.interviewBrief;
   const styleBible = styleBibleSchema.parse(plan.styleBible);

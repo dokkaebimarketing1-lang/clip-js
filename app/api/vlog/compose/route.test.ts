@@ -16,6 +16,16 @@ const post = (sentence: unknown) =>
   }));
 
 describe('VLOG compose 라우트 (8단계 통합)', () => {
+  it('기획 provider 설정이 없으면 구조화된 한국어 오류를 반환한다', async () => {
+    vi.stubEnv('CLIPJS_PLANNING_PROVIDER', '');
+    const res = await post('햄버트 20초 단편 영화');
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({
+      error: '기획 AI 연결이 준비되지 않았습니다. 관리자에게 배포 환경 설정을 확인해 달라고 요청해 주세요.',
+      code: 'PLANNING_PROVIDER_UNAVAILABLE',
+    });
+  });
+
   it('빈 문장이면 400', async () => {
     const res = await post('');
     expect(res.status).toBe(400);

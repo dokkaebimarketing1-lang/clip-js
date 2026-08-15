@@ -206,7 +206,15 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
         body: JSON.stringify({sentence: input}),
         signal: controller.signal,
       });
-      const payload = await response.json() as Record<string, unknown>;
+      const responseText = await response.text();
+      let payload: Record<string, unknown> = {};
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText) as Record<string, unknown>;
+        } catch {
+          if (response.ok) throw new Error('기획 AI가 올바른 응답을 보내지 않았습니다. 잠시 후 다시 시도해 주세요.');
+        }
+      }
       if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'AI 기획을 완료하지 못했습니다.');
       const parsedSheets = Array.isArray(payload.characterSheets)
         ? payload.characterSheets.map((sheet) => characterSheetSchema.parse(sheet))
