@@ -7,6 +7,8 @@ import { useAppDispatch } from '../../../store';
 import toast from 'react-hot-toast';
 import { buildDetachedAudioMedia, hasDetachedAudio } from '../../../lib/editor/detach-audio';
 
+const PLAYBACK_SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
+
 export default function MediaProperties() {
     const { mediaFiles, activeElementIndex } = useAppSelector((state) => state.projectState);
     const mediaFile = mediaFiles[activeElementIndex];
@@ -186,22 +188,23 @@ export default function MediaProperties() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm">재생 속도</label>
-                            <input
-                                type="number"
-                                min="0.1"
-                                max="4"
-                                step="0.1"
+                            <label htmlFor="media-playback-speed" className="block text-sm">재생 속도</label>
+                            <select
+                                id="media-playback-speed"
                                 value={mediaFile.playbackSpeed || 1}
                                 onChange={(e) => {
-                                    const playbackSpeed = Math.min(4, Math.max(0.1, Number(e.target.value)));
+                                    const playbackSpeed = Number(e.target.value);
                                     onUpdateMedia(mediaFile.id, {
                                         playbackSpeed,
                                         positionEnd: mediaFile.positionStart + (mediaFile.endTime - mediaFile.startTime) / playbackSpeed,
                                     });
                                 }}
                                 className="w-full p-2 bg-darkSurfacePrimary border border-white border-opacity-10 shadow-md text-white rounded focus:outline-none focus:ring-2 focus:ring-white-500 focus:border-white-500"
-                            />
+                            >
+                                {PLAYBACK_SPEED_OPTIONS.map((speed) => (
+                                    <option key={speed} value={speed}>{speed}x</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                 </div>}
