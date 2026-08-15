@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     assertSameOrigin(request);
     ({projectId} = await context.params);
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(projectId)) throw new Error('Invalid project ID.');
-    if (process.env.CLIPJS_HIGGSFIELD_TEMP_SUBMIT_ENABLED !== 'true') {
+    if (process.env.CLIPJS_HIGGSFIELD_CHARACTER_IMAGE_SUBMIT_ENABLED !== 'true') {
       return NextResponse.json({error: 'Higgsfield image generation is disabled.', code: 'PROVIDER_DISABLED'}, {status: 410});
     }
     const body = await readLimitedJson(request) as Record<string, unknown>;

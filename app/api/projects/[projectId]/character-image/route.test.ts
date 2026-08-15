@@ -49,7 +49,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   repositoryFaults.failReceipt = false;
-  vi.stubEnv('CLIPJS_HIGGSFIELD_TEMP_SUBMIT_ENABLED', 'true');
+  vi.stubEnv('CLIPJS_HIGGSFIELD_CHARACTER_IMAGE_SUBMIT_ENABLED', 'true');
   const submissionDirectory = mkdtempSync(join(tmpdir(), 'clipjs-character-image-route-claims-'));
   submissionDirectories.push(submissionDirectory);
   vi.stubEnv('CLIPJS_CHARACTER_IMAGE_REPOSITORY_DIR', submissionDirectory);
@@ -130,8 +130,7 @@ describe('project character image generation route', () => {
       POST(makePost({prompt: 'a concurrent approved character prompt', confirmCreditCost: 1}), context),
       POST(makePost({prompt: 'a concurrent approved character prompt', confirmCreditCost: 1}), context),
     ]);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce());
     releaseProvider(['4e97908e-4b6d-413a-96e8-d64c560267bc']);
     const [first, second] = await pending;
     expect([first.status, second.status].sort((a, b) => a - b)).toEqual([202, 409]);
