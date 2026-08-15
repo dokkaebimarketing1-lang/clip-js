@@ -408,7 +408,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     }
 
     return (
-        <div className="flex h-screen select-none flex-col overflow-hidden bg-[#090a0f] text-gray-100">
+        <div className="flex h-[100dvh] select-none flex-col overflow-hidden bg-[#090a0f] text-gray-100">
             <UndoRedoKeyHandler />
             {!sampleMode && saveStatus.state === 'error' && (
                 <div role="alert" className="z-[100] flex items-center justify-between gap-4 border-b border-red-500 bg-red-950 px-4 py-2 text-sm text-white">
@@ -442,7 +442,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 text-xs font-black text-white shadow-[0_0_24px_rgba(217,70,239,.22)]">봄</span>
                     <span className="hidden text-sm font-black tracking-[-0.03em] text-white sm:inline">함께봄 Ai영상제작소</span>
                     <span className="h-4 w-px shrink-0 bg-white/10" aria-hidden="true" />
-                    <div className="min-w-0">{sampleMode ? <span className="block truncate text-sm font-black text-amber-200">샘플 프로젝트 · 읽기 전용</span> : <ProjectName />}</div>
+                    <div className="min-w-0">{sampleMode ? <span className="block truncate text-sm font-black text-amber-200"><span className="sm:hidden">샘플 · 읽기 전용</span><span className="hidden sm:inline">샘플 프로젝트 · 읽기 전용</span></span> : <ProjectName />}</div>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                     <ProjectExportButton project={projectState} disabled={isLoading || projectState.id !== id} />

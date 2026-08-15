@@ -38,14 +38,14 @@ export default function EditFlowGate({project, sampleMode}: EditFlowGateProps) {
     <div className={`shrink-0 border-b px-5 py-3 ${tone}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className={`text-sm font-black ${titleTone}`}>
+          <p className={`break-keep text-sm font-black ${titleTone}`}>
             {sampleMode
               ? 'UI 체험용 편집 화면 · 현재 프로젝트 진행 상태와 무관'
               : approvedTakeCount
                 ? `승인 생성본 ${approvedTakeCount}개를 배치할 수 있습니다`
                 : '먼저 생성·검수에서 사용할 생성본을 승인하세요'}
           </p>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 break-keep text-xs text-gray-400">
             {sampleMode
               ? '샘플 미디어와 타임라인은 최종 출력 승인·렌더 대상에 포함되지 않습니다.'
               : approvedTakeCount

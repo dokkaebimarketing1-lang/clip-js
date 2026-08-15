@@ -65,4 +65,4 @@ ClipJS is a focused production control room: dark, compact, and calm enough for 
 
 - Target WCAG 2.2 AA, full keyboard reachability, visible fuchsia focus rings, stable image dimensions, and text labels for every status.
 - External reference links disclose a new tab through accessible text/title and use safe `rel` attributes.
-- Accepted debt: the pre-existing editor shell uses `h-screen`; this task does not change shell sizing because the sidebar width and surrounding layout are explicitly out of scope.
+- The editor shell uses `100dvh` so mobile browser chrome cannot create a trapped or clipped viewport; internal workspace and sidebar bodies remain the named scroll owners.

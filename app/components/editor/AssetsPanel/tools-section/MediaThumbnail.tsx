@@ -62,7 +62,7 @@ export function MediaThumbnail({file}: MediaThumbnailProps) {
         let previewUrl: string | undefined;
         const controller = new AbortController();
 
-        const usePreview = (previewFile: File) => {
+        const publishPreview = (previewFile: File) => {
             const objectUrl = URL.createObjectURL(previewFile);
             if (disposed) {
                 URL.revokeObjectURL(objectUrl);
@@ -74,9 +74,9 @@ export function MediaThumbnail({file}: MediaThumbnailProps) {
         };
 
         if (mediaType === "image") {
-            usePreview(file);
+            publishPreview(file);
         } else {
-            void extractThumbnail(file, controller.signal).then(usePreview, () => {
+            void extractThumbnail(file, controller.signal).then(publishPreview, () => {
                 if (!disposed) setPreview({status: "failed"});
             });
         }

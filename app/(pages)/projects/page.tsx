@@ -165,8 +165,8 @@ export default function Projects() {
                 <header className="flex flex-col gap-8 border-b border-white/[0.08] pb-10 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
                         <p className="clip-eyebrow">Production workspace</p>
-                        <h1 className="clip-title mt-4 text-4xl font-black text-white sm:text-5xl">무엇을 만들지 정하면,<br className="hidden sm:block" /> 제작 흐름은 함께봄 Ai영상제작소가 정리합니다.</h1>
-                        <p className="mt-5 max-w-xl text-sm leading-7 text-gray-400 sm:text-base">기획부터 캐릭터, 콘티, 생성, 편집까지 프로젝트마다 결정과 승인 상태를 이어서 관리하세요.</p>
+                        <h1 className="clip-title mt-4 break-keep text-4xl font-black text-white sm:text-5xl">무엇을 만들지 정하면,<br className="hidden sm:block" /> 제작 흐름은 함께봄 Ai영상제작소가 정리합니다.</h1>
+                        <p className="mt-5 max-w-xl break-keep text-pretty text-sm leading-7 text-gray-400 sm:text-base">기획부터 캐릭터, 콘티, 생성, 편집까지 프로젝트마다 결정과 승인 상태를 이어서 관리하세요.</p>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
                         <SampleProjectButton disabled={isLoading} createProjectState={createProjectState} />
