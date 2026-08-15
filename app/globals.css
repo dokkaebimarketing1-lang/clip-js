@@ -7,6 +7,7 @@
     --clip-bg: #08090d;
     --clip-surface: #11131a;
     --clip-surface-raised: #171a23;
+    --clip-reference-surface: #17151d;
     --clip-line: rgba(255, 255, 255, 0.09);
     --clip-line-strong: rgba(255, 255, 255, 0.15);
     --clip-text: #f6f7fb;

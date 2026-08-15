@@ -21,6 +21,7 @@ import WorkflowPanel from "@/app/components/editor/workflow/WorkflowPanel";
 import PipelineCanvas from "@/app/components/editor/workflow/PipelineCanvas";
 import StageWorkspace from "@/app/components/editor/workflow/StageWorkspace";
 import StageInspector from "@/app/components/editor/workflow/StageInspector";
+import ReferencePanel from "@/app/components/editor/workflow/ReferencePanel";
 import EditFlowGate from "@/app/components/editor/workflow/EditFlowGate";
 import {MockMediaList, MockPreviewPlayer} from '@/app/components/editor/workflow/MockMediaWorkspace';
 import {deriveGenerationCtaState, type GenerationCtaTarget} from "@/app/lib/workflow/generation-cta";
@@ -47,7 +48,10 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const [saveStatus, setSaveStatus] = useState<ProjectSaveStatus>({state: 'saved', savedRevision: 0, pendingRevision: 0});
     const [leftTab, setLeftTab] = useState<'media' | 'text'>('media');
     const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
-    const [rightTab, setRightTab] = useState<'stage' | 'advanced' | 'props'>('stage');
+    const [rightTab, setRightTab] = useState<'stage' | 'reference' | 'advanced' | 'props'>('stage');
+    const [characterPreviewUrls, setCharacterPreviewUrls] = useState<Record<string, string>>({});
+    const characterPreviewRequestsRef = useRef(new Set<string>());
+    const characterPreviewFailuresRef = useRef<Record<string, number>>({});
     const [centerTab, setCenterTab] = useState<'pipeline' | 'preview'>('preview');
     const [workspace, setWorkspace] = useState<ProjectWorkspaceId>('interview');
     const [hasSubmittedGeneration, setHasSubmittedGeneration] = useState(false);
@@ -60,6 +64,53 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
     const searchParams = useSearchParams();
     const sampleMode = searchParams.get('sample') === '1';
     const effectiveRightTab = sampleMode ? 'stage' : rightTab;
+
+    useEffect(() => {
+        if (sampleMode) return;
+        const characterSheets = projectState.workflow.characterSheets ?? [];
+        const pending = characterSheets.filter((sheet) => {
+            const characterId = sheet.id ?? sheet.name;
+            return sheet.referenceImageId
+                && !characterPreviewUrls[characterId]
+                && !characterPreviewRequestsRef.current.has(characterId)
+                && (characterPreviewFailuresRef.current[characterId] ?? 0) < 2;
+        });
+        if (pending.length === 0) return;
+        let cancelled = false;
+        void Promise.all(pending.map(async (sheet) => {
+            const characterId = sheet.id ?? sheet.name;
+            const referenceImageId = sheet.referenceImageId;
+            if (!referenceImageId) return [characterId, undefined] as const;
+            characterPreviewRequestsRef.current.add(characterId);
+            try {
+                const response = await fetch(`/api/projects/${encodeURIComponent(projectState.id)}/assets/${encodeURIComponent(referenceImageId)}/ui-capability`, {method: 'POST'});
+                const payload = response.ok ? await response.json() as {url?: string} : undefined;
+                if (!payload?.url) characterPreviewFailuresRef.current[characterId] = (characterPreviewFailuresRef.current[characterId] ?? 0) + 1;
+                return [characterId, payload?.url] as const;
+            } catch (error) {
+                if (!(error instanceof Error)) throw error;
+                characterPreviewFailuresRef.current[characterId] = (characterPreviewFailuresRef.current[characterId] ?? 0) + 1;
+                return [characterId, undefined] as const;
+            } finally {
+                characterPreviewRequestsRef.current.delete(characterId);
+            }
+        })).then((entries) => {
+            if (cancelled) return;
+            const resolvedEntries = entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1]));
+            if (resolvedEntries.length > 0) setCharacterPreviewUrls((current) => ({...current, ...Object.fromEntries(resolvedEntries)}));
+        });
+        return () => { cancelled = true; };
+    }, [characterPreviewUrls, projectState.id, projectState.workflow.characterSheets, sampleMode]);
+
+    const handleCharacterPreviewError = (characterId: string) => {
+        characterPreviewFailuresRef.current[characterId] = (characterPreviewFailuresRef.current[characterId] ?? 0) + 1;
+        setCharacterPreviewUrls((current) => {
+            if (!current[characterId]) return current;
+            const next = {...current};
+            delete next[characterId];
+            return next;
+        });
+    };
 
     useEffect(() => {
         if (!mobileSourcesOpen) return;
@@ -526,6 +577,12 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                         <button
                             type="button"
                             disabled={sampleMode}
+                            onClick={() => setRightTab('reference')}
+                            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 disabled:cursor-not-allowed disabled:text-gray-700 ${effectiveRightTab === 'reference' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
+                        >레퍼런스</button>
+                        <button
+                            type="button"
+                            disabled={sampleMode}
                             onClick={() => setRightTab('advanced')}
                             className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fuchsia-400 disabled:cursor-not-allowed disabled:text-gray-700 ${effectiveRightTab === 'advanced' ? 'border-b-2 border-fuchsia-500 text-fuchsia-300' : 'text-gray-400 hover:text-gray-200'}`}
                         >{sampleMode ? '실행 잠금' : workspace === 'generation' ? '생성 실행' : '고급'}</button>
@@ -544,6 +601,12 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                                 sampleMode={sampleMode}
                                 hasSubmittedGeneration={hasSubmittedGeneration}
                                 onOpenAdvanced={() => setRightTab('advanced')}
+                            />
+                        ) : effectiveRightTab === 'reference' ? (
+                            <ReferencePanel
+                                workflow={projectState.workflow}
+                                characterPreviewUrls={characterPreviewUrls}
+                                onCharacterPreviewError={handleCharacterPreviewError}
                             />
                         ) : effectiveRightTab === 'advanced' ? (
                             <div><div className={`mb-4 rounded-2xl border p-4 ${workspace === 'generation' ? 'border-fuchsia-400/25 bg-fuchsia-400/[0.07]' : 'border-amber-400/20 bg-amber-400/[0.06]'}`}><p className={`text-sm font-black ${workspace === 'generation' ? 'text-fuchsia-200' : 'text-amber-200'}`}>{workspace === 'generation' ? '생성 실행' : '고급 운영 콘솔'}</p><p className={`mt-2 text-xs leading-5 ${workspace === 'generation' ? 'text-fuchsia-100/60' : 'text-amber-100/60'}`}>{workspace === 'generation' ? '사양·비용 확인 → Generation 승인 → 유료 제출 → 작업 상태 확인 순서로 진행합니다. JSON·토큰·공급자 세부값은 아래 고급 항목입니다.' : '승인 해시, 생성 공급자와 복구 도구입니다. 일반 제작 흐름에서는 단계 정보 탭을 사용하세요.'}</p></div><WorkflowPanel /></div>
