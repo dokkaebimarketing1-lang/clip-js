@@ -9,3 +9,13 @@ export const getRenderBrowserExecutable = (
   }
   return executable;
 };
+
+export const parseHardwareEncoding = (
+  value: string | undefined,
+): 'if-possible' | undefined => {
+  if (value === undefined || value === 'off') return undefined;
+  if (value === 'auto' || value === 'if-possible') return 'if-possible';
+  throw new Error(
+    'CLIPJS_RENDER_HW_ENCODING must be one of: auto, if-possible, off',
+  );
+};

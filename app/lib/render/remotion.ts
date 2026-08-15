@@ -6,7 +6,7 @@ import type {ProjectState} from '@/app/types';
 import {stageRemoteMedia} from './stage-remote-media';
 import {withTimeout} from './timeout';
 import {createSerialTaskQueue} from './serial-task-queue';
-import {getRenderBrowserExecutable} from './render-browser-config';
+import {getRenderBrowserExecutable, parseHardwareEncoding} from './render-browser-config';
 import {
   COMPOSITION_TIMEOUT_MS,
   DELAY_RENDER_TIMEOUT_MS,
@@ -79,6 +79,7 @@ const performRender = async (project: ProjectState, signal?: AbortSignal): Promi
     );
     const {cancelSignal, cancel} = makeCancelSignal();
     cancelRender = cancel;
+    const hardwareAcceleration = parseHardwareEncoding(process.env.CLIPJS_RENDER_HW_ENCODING);
     await withTimeout(renderMedia({
       composition,
       serveUrl,
@@ -92,6 +93,7 @@ const performRender = async (project: ProjectState, signal?: AbortSignal): Promi
       chromiumOptions,
       puppeteerInstance: browser,
       cancelSignal,
+      ...(hardwareAcceleration === undefined ? {} : {hardwareAcceleration}),
     }), RENDER_HARD_TIMEOUT_MS, 'renderMedia', cancel);
     return {renderId, outputLocation};
   } catch (error) {
