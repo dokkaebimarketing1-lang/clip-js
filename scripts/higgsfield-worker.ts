@@ -36,6 +36,7 @@ const findString = (value: unknown, keys: string[], pattern?: RegExp): string | 
 };
 const uuid = (value: unknown) => findString(value, ['job_id', 'jobId', 'id', 'uuid'], /^[a-f0-9-]{36}$/i);
 const status = (value: unknown) => (findString(value, ['status', 'state']) || '').toLowerCase();
+const jobModel = (value: unknown) => findString(value, ['job_type', 'model_id', 'model']);
 const resultUrl = (value: unknown) => findString(value, ['result_url', 'min_result_url', 'url', 'download_url'], /^https?:\/\//i);
 const uploadId = (value: unknown) => findString(value, ['upload_id', 'uploadId', 'id', 'uuid']);
 const creditCost = (value: unknown) => {
@@ -81,7 +82,18 @@ const processJob = async (payload: {job: Record<string, unknown>; referenceUrls:
       for (const id of referenceIds) generationArgs.push('--image-references', id);
       const quote = creditCost(await run(['generate', 'cost', String(job.model), ...generationArgs, '--json']));
       if (quote !== Number(job.expectedCredits)) throw new Error(`Cost changed: approved ${job.expectedCredits}, current ${quote ?? 'unknown'}.`);
-      await update({action: 'prepare', requestKey, leaseToken});
+      let prepareError: unknown;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await update({action: 'prepare', requestKey, leaseToken});
+          prepareError = undefined;
+          break;
+        } catch (error) {
+          prepareError = error;
+          if (attempt < 2) await sleep(2_000);
+        }
+      }
+      if (prepareError) throw prepareError;
       const args = ['generate', 'create', String(job.model), ...generationArgs, '--json'];
       let submitted: unknown;
       try {
@@ -109,12 +121,17 @@ const processJob = async (payload: {job: Record<string, unknown>; referenceUrls:
       }
     }
     for (;;) {
-      const current = await run(['jobs', 'get', providerJobId, '--json']);
+      const current = await run(['generate', 'get', providerJobId, '--json']);
+      const currentModel = jobModel(current);
+      if (currentModel !== String(job.model)) {
+        await update({action: 'uncertain', requestKey, providerJobId, reason: `Provider job model mismatch: expected ${job.model}, received ${currentModel ?? 'unknown'}.`});
+        return;
+      }
       const currentStatus = status(current);
       if (currentStatus === 'completed') {
         const url = resultUrl(current);
         if (!url) throw new Error('Completed Higgsfield job has no result URL.');
-        const {bytes, type} = await downloadProviderImage(url);
+        const {bytes, type} = await downloadHiggsfieldProviderImage(url);
         await update({action: 'complete', requestKey, providerJobId, file: new Blob([bytes], {type})});
         return;
       }

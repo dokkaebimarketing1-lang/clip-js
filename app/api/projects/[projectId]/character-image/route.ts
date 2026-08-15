@@ -65,19 +65,21 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
       if (!UUID.test(attemptId) || !/^CHAR\d{2}$/.test(characterId)) throw new Error('Invalid character image recovery identity.');
       const repository = getSubmissionRepository();
       const submission = await repository.findByAttempt(projectId, attemptId);
-      if (!submission || submission.characterId !== characterId || submission.status !== 'uncertain') throw new Error('No matching uncertain character image request exists.');
+      if (!submission || submission.characterId !== characterId) throw new Error('No matching character image request exists.');
       const queue = createCharacterImageWorkerQueue();
       const queuedJob = await queue.get(submission.requestKey);
-      if (!queuedJob || !['prepared', 'uncertain', 'submitted'].includes(queuedJob.status)) throw new Error('No matching recoverable worker job exists.');
+      const recoverable = submission.status === 'uncertain' || (submission.status === 'submitting' && queuedJob?.status === 'prepared');
+      if (!recoverable || !queuedJob || !['prepared', 'uncertain', 'submitted'].includes(queuedJob.status)) throw new Error('No matching recoverable worker job exists.');
       if (recoveryAction === 'attach-provider') {
         const providerJobId = typeof body.providerJobId === 'string' ? body.providerJobId : '';
         if (!UUID.test(providerJobId)) throw new Error('A valid provider job ID is required.');
         if (queuedJob.providerJobId && queuedJob.providerJobId !== providerJobId) throw new Error('Worker job already has a different provider receipt.');
-        await queue.update(submission.requestKey, undefined, 'submitted', {providerJobId});
+        await queue.recoverReceipt(submission.requestKey, providerJobId);
         await repository.recordProviderReceipt(submission.requestKey, providerJobId);
         return NextResponse.json({ok: true, status: 'queued', jobId: attemptId, providerJobId});
       }
       if (recoveryAction === 'confirm-not-submitted') {
+        if (submission.providerJobId || queuedJob.providerJobId) throw new Error('A known provider receipt must be recovered instead of unlocked.');
         if (body.confirmation !== 'PROVIDER_NOT_SUBMITTED') throw new Error('Explicit provider non-submission confirmation is required.');
         await repository.markFailed(submission.requestKey, 'Operator confirmed that the prepared request was not submitted to the provider.');
         await queue.update(submission.requestKey, undefined, 'failed', {lastError: 'Operator confirmed no provider submission.'});
@@ -215,7 +217,10 @@ export async function POST(request: NextRequest, context: {params: Promise<{proj
     }
     return NextResponse.json({jobId, characterId, lineage, status: 'queued', model: 'nano_banana_2_lite', credits: 1, reused: false}, {status: 202});
   } catch (error) {
-    console.error('Higgsfield character image submission rejected.', {name: error instanceof Error ? error.name : 'UnknownError'});
+    console.error('Higgsfield character image submission rejected.', {
+      name: error instanceof Error ? error.name : 'UnknownError',
+      message: error instanceof Error ? error.message : 'Unknown submission error',
+    });
     if (error instanceof CharacterImageSubmissionUncertainError) {
       return NextResponse.json({error: 'provider 접수 여부가 불확실해 같은 요청의 재실행을 차단했습니다.', code: 'SUBMISSION_UNCERTAIN', jobId: error.jobId}, {status: 503});
     }
@@ -247,6 +252,12 @@ export async function GET(request: NextRequest, context: {params: Promise<{proje
         const asset = await getCharacterImageBlobAsset(durable.assetId);
         if (!asset || asset.projectId !== projectId) throw new Error('Completed character image asset is unavailable.');
         return NextResponse.json({jobId, characterId, lineage, status: 'completed', ...previewPayload(projectId, {assetId: asset.id, contentSha256: asset.contentSha256})});
+      }
+      if (durable.status === 'submitting') {
+        const queuedJob = await createCharacterImageWorkerQueue().get(durable.requestKey);
+        if (queuedJob?.status === 'prepared') {
+          return NextResponse.json({jobId, status: 'uncertain', code: 'SUBMISSION_UNCERTAIN', recoveryRequired: true, error: 'provider 제출 준비 이후 상태 확정이 중단됐습니다. 접수 여부를 확인해 주세요.'});
+        }
       }
       if (durable.status === 'failed') return NextResponse.json({jobId, status: 'failed', error: durable.lastError || '이미지 생성에 실패했습니다.'});
       if (durable.status === 'uncertain') return NextResponse.json({jobId, status: 'uncertain', code: 'SUBMISSION_UNCERTAIN', recoveryRequired: true, error: 'provider 접수 여부가 불확실해 자동 재실행하지 않습니다.'});

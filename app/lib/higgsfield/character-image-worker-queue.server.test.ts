@@ -49,5 +49,14 @@ describe('character image worker queue', () => {
     expect(recoveredAgain).toMatchObject({status: 'leased', providerJobId});
     await queue.update(input.requestKey, recoveredAgain!.leaseToken, 'completed', {providerJobId});
     expect(await queue.claim()).toBeUndefined();
+
+    const recoveryInput = {...input, requestKey: 'd'.repeat(64), attemptId: randomUUID()};
+    await queue.enqueue(recoveryInput);
+    const recoveryLease = await queue.claim();
+    await queue.prepareSubmit(recoveryInput.requestKey, recoveryLease!.leaseToken!);
+    await queue.update(recoveryInput.requestKey, recoveryLease!.leaseToken, 'uncertain', {lastError: 'simulated lost receipt'});
+    const recoveredProviderJobId = randomUUID();
+    await queue.recoverReceipt(recoveryInput.requestKey, recoveredProviderJobId);
+    await expect(queue.claim()).resolves.toMatchObject({requestKey: recoveryInput.requestKey, providerJobId: recoveredProviderJobId, status: 'leased'});
   });
 });

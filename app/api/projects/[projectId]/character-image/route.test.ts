@@ -18,6 +18,26 @@ const styleBibleHash = 'a'.repeat(64);
 const attemptId = '11111111-1111-4111-8111-111111111111';
 const submissionDirectories: string[] = [];
 const repositoryFaults = vi.hoisted(() => ({failReceipt: false}));
+const workerRuntime = vi.hoisted(() => ({
+  enabled: false,
+  repository: {
+    findByAttempt: vi.fn(),
+    recordProviderReceipt: vi.fn(),
+    markFailed: vi.fn(),
+  },
+  queue: {get: vi.fn(), update: vi.fn(), recoverReceipt: vi.fn()},
+}));
+vi.mock('@/app/lib/higgsfield/character-image-runtime.server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/lib/higgsfield/character-image-runtime.server')>();
+  return {
+    ...actual,
+    isCharacterImageWorkerMode: () => workerRuntime.enabled,
+    getCharacterImageSubmissionRepository: () => workerRuntime.enabled ? workerRuntime.repository : actual.getCharacterImageSubmissionRepository(),
+  };
+});
+vi.mock('@/app/lib/higgsfield/character-image-worker-queue.server', () => ({
+  createCharacterImageWorkerQueue: () => workerRuntime.queue,
+}));
 vi.mock('@/app/lib/higgsfield/generate.server', () => ({
   submitHiggsfieldCharacterImageJob: submit,
   getHiggsfieldGenerationJob: getJob,
@@ -52,6 +72,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   authorizeApproval.mockReturnValue(undefined);
   repositoryFaults.failReceipt = false;
+  workerRuntime.enabled = false;
+  workerRuntime.repository.findByAttempt.mockReset();
+  workerRuntime.repository.recordProviderReceipt.mockReset();
+  workerRuntime.repository.markFailed.mockReset();
+  workerRuntime.queue.get.mockReset();
+  workerRuntime.queue.update.mockReset();
+  workerRuntime.queue.recoverReceipt.mockReset();
   vi.stubEnv('CLIPJS_HIGGSFIELD_CHARACTER_IMAGE_SUBMIT_ENABLED', 'true');
   const submissionDirectory = mkdtempSync(join(tmpdir(), 'clipjs-character-image-route-claims-'));
   submissionDirectories.push(submissionDirectory);
@@ -69,6 +96,60 @@ afterEach(() => {
 });
 
 describe('project character image generation route', () => {
+  it('recovers an uncertain worker request using a verified provider receipt', async () => {
+    workerRuntime.enabled = true;
+    const uncertain = {requestKey: 'c'.repeat(64), projectId: 'project-1', characterId: 'CHAR01', attemptId, status: 'uncertain'};
+    workerRuntime.repository.findByAttempt.mockResolvedValueOnce(uncertain);
+    workerRuntime.queue.get.mockResolvedValueOnce({...uncertain, status: 'prepared'});
+    const providerJobId = '4e97908e-4b6d-413a-96e8-d64c560267bc';
+    const {POST} = await import('./route');
+    const response = await POST(makePost({recoveryAction: 'attach-provider', providerJobId}), context);
+    expect(response.status).toBe(200);
+    expect(workerRuntime.queue.recoverReceipt).toHaveBeenCalledWith(uncertain.requestKey, providerJobId);
+    expect(workerRuntime.repository.recordProviderReceipt).toHaveBeenCalledWith(uncertain.requestKey, providerJobId);
+  });
+
+  it('unlocks an uncertain request only after explicit provider non-submission confirmation', async () => {
+    workerRuntime.enabled = true;
+    const uncertain = {requestKey: 'd'.repeat(64), projectId: 'project-1', characterId: 'CHAR01', attemptId, status: 'uncertain'};
+    workerRuntime.repository.findByAttempt.mockResolvedValue(uncertain);
+    workerRuntime.queue.get.mockResolvedValue({...uncertain, status: 'prepared'});
+    const {POST} = await import('./route');
+    const rejected = await POST(makePost({recoveryAction: 'confirm-not-submitted', confirmation: ''}), context);
+    expect(rejected.status).toBe(400);
+    expect(workerRuntime.repository.markFailed).not.toHaveBeenCalled();
+    const recovered = await POST(makePost({recoveryAction: 'confirm-not-submitted', confirmation: 'PROVIDER_NOT_SUBMITTED'}), context);
+    expect(recovered.status).toBe(200);
+    expect(workerRuntime.repository.markFailed).toHaveBeenCalledWith(uncertain.requestKey, expect.stringMatching(/Operator confirmed/));
+  });
+
+  it('recovers a prepared queue record even when the repository commit stayed submitting', async () => {
+    workerRuntime.enabled = true;
+    const partial = {requestKey: 'f'.repeat(64), projectId: 'project-1', characterId: 'CHAR01', attemptId, status: 'submitting'};
+    workerRuntime.repository.findByAttempt.mockResolvedValue(partial);
+    workerRuntime.queue.get.mockResolvedValue({...partial, status: 'prepared'});
+    const {GET, POST} = await import('./route');
+
+    const statusResponse = await GET(new NextRequest(`http://localhost/api/projects/project-1/character-image?jobId=${attemptId}&characterId=CHAR01`, {headers: {origin: 'http://localhost', 'sec-fetch-site': 'same-origin'}}), context);
+    expect(await statusResponse.json()).toMatchObject({status: 'uncertain', recoveryRequired: true});
+
+    const recovered = await POST(makePost({recoveryAction: 'confirm-not-submitted', confirmation: 'PROVIDER_NOT_SUBMITTED'}), context);
+    expect(recovered.status).toBe(200);
+    expect(workerRuntime.repository.markFailed).toHaveBeenCalledWith(partial.requestKey, expect.stringMatching(/Operator confirmed/));
+  });
+
+  it('never unlocks an uncertain request that already has a provider receipt', async () => {
+    workerRuntime.enabled = true;
+    const providerJobId = '4e97908e-4b6d-413a-96e8-d64c560267bc';
+    const uncertain = {requestKey: 'e'.repeat(64), projectId: 'project-1', characterId: 'CHAR01', attemptId, status: 'uncertain', providerJobId};
+    workerRuntime.repository.findByAttempt.mockResolvedValueOnce(uncertain);
+    workerRuntime.queue.get.mockResolvedValueOnce({...uncertain, status: 'submitted'});
+    const {POST} = await import('./route');
+    const response = await POST(makePost({recoveryAction: 'confirm-not-submitted', confirmation: 'PROVIDER_NOT_SUBMITTED'}), context);
+    expect(response.status).toBe(400);
+    expect(workerRuntime.repository.markFailed).not.toHaveBeenCalled();
+  });
+
   it('rejects paid submission before claiming when operator approval is invalid', async () => {
     authorizeApproval.mockImplementationOnce(() => { throw new Error('Unauthorized approval request.'); });
     const {POST} = await import('./route');

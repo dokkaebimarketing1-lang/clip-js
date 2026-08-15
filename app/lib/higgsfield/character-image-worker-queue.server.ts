@@ -101,6 +101,24 @@ redis.call('ZADD', KEYS[1], ARGV[4], KEYS[2])
 return {1, nextJson}
 `;
 
+const RECOVER_RECEIPT = `
+local json = redis.call('GET', KEYS[2])
+if not json then return {-1, ''} end
+local job = cjson.decode(json)
+if job.status == 'submitted' and job.providerJobId == ARGV[1] then redis.call('ZADD', KEYS[1], ARGV[3], KEYS[2]) return {0, json} end
+if job.status ~= 'prepared' and job.status ~= 'uncertain' then return {-2, json} end
+if job.providerJobId and job.providerJobId ~= ARGV[1] then return {-3, json} end
+job.status = 'submitted'
+job.providerJobId = ARGV[1]
+job.updatedAt = ARGV[2]
+job.leaseToken = nil
+job.leaseExpiresAt = nil
+local nextJson = cjson.encode(job)
+redis.call('SET', KEYS[2], nextJson)
+redis.call('ZADD', KEYS[1], ARGV[3], KEYS[2])
+return {1, nextJson}
+`;
+
 const pair = (value: unknown): [number, string] => {
   if (!Array.isArray(value) || value.length !== 2) throw new Error('Invalid worker queue response.');
   return [Number(value[0]), typeof value[1] === 'string' ? value[1] : JSON.stringify(value[1])];
@@ -133,7 +151,8 @@ export const createCharacterImageWorkerQueue = (options: {redis?: Redis; keyPref
         && stored.model === input.model
         && stored.aspectRatio === input.aspectRatio
         && stored.resolution === input.resolution
-        && stored.thinking === input.thinking;
+        && stored.thinking === input.thinking
+        && stored.expectedCredits === input.expectedCredits;
       if (!exact) throw new Error('Character-image worker request identity collision detected.');
       return {created: code === 1, job: stored};
     },
@@ -154,6 +173,14 @@ export const createCharacterImageWorkerQueue = (options: {redis?: Redis; keyPref
       const now = Date.now();
       const [code, json] = pair(await redis.eval(RECORD_RECEIPT, [queueKey, jobKey(requestKey)], [leaseToken, providerJobId, new Date(now).toISOString(), now]));
       if (code === -2) throw new Error('Worker lease is stale.');
+      if (code !== 0 && code !== 1) throw new Error('Worker job not found.');
+      return parse(json)!;
+    },
+    recoverReceipt: async (requestKey: string, providerJobId: string) => {
+      const now = Date.now();
+      const [code, json] = pair(await redis.eval(RECOVER_RECEIPT, [queueKey, jobKey(requestKey)], [providerJobId, new Date(now).toISOString(), now]));
+      if (code === -2) throw new Error('Worker job is not in a recoverable receipt state.');
+      if (code === -3) throw new Error('Worker job already has a different provider receipt.');
       if (code !== 0 && code !== 1) throw new Error('Worker job not found.');
       return parse(json)!;
     },
