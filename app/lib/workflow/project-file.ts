@@ -148,6 +148,18 @@ const projectDocumentIngressSchema = z.object({
 
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 
+export type ProjectImportErrorCode = 'invalid-json' | 'invalid-project-file';
+
+export class ProjectImportError extends Error {
+  readonly code: ProjectImportErrorCode;
+
+  constructor(code: ProjectImportErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'ProjectImportError';
+    this.code = code;
+  }
+}
+
 export const serializeProject = (project: ProjectState): ProjectDocument => {
   const mediaFiles = project.mediaFiles.map((media) => {
     const serialized = {...media};
@@ -229,6 +241,22 @@ export const parseRenderProjectRequest = (input: unknown): ProjectState => {
 export const parseProjectDocument = (input: unknown): ProjectState => {
   const document = projectDocumentIngressSchema.parse(input);
   return parseProjectState(document.project);
+};
+
+export const parseProjectDocumentJson = (input: string): ProjectState => {
+  let document: unknown;
+  try {
+    document = JSON.parse(input);
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new ProjectImportError('invalid-json', 'Project file is not valid JSON.', {cause: error});
+    throw error;
+  }
+  try {
+    return parseProjectDocument(document);
+  } catch (error) {
+    if (error instanceof z.ZodError) throw new ProjectImportError('invalid-project-file', 'Project file is invalid or unsupported.', {cause: error});
+    throw error;
+  }
 };
 
 export const downloadProjectDocument = (project: ProjectState): void => {

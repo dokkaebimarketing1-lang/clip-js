@@ -10,6 +10,7 @@ import type {ProjectState} from '../../types';
 import {toast} from 'react-hot-toast';
 import {createDefaultWorkflow} from '@/app/lib/workflow/schema';
 import {deriveProjectCardProgress, type ProjectCardProgress} from '@/app/lib/editor/project-card-progress';
+import {ProjectImportButton} from './ProjectImportButton';
 
 const dateFormatter = new Intl.DateTimeFormat('ko-KR', {month: 'short', day: 'numeric'});
 
@@ -165,13 +166,17 @@ export default function Projects() {
                         <h1 className="clip-title mt-4 text-4xl font-black text-white sm:text-5xl">무엇을 만들지 정하면,<br className="hidden sm:block" /> 제작 흐름은 함께봄 Ai영상제작소가 정리합니다.</h1>
                         <p className="mt-5 max-w-xl text-sm leading-7 text-gray-400 sm:text-base">기획부터 캐릭터, 콘티, 생성, 편집까지 프로젝트마다 결정과 승인 상태를 이어서 관리하세요.</p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => setIsCreating(true)}
-                        className="group flex h-12 items-center justify-center gap-3 rounded-xl bg-white px-5 text-sm font-extrabold text-black shadow-[0_12px_40px_rgba(255,255,255,.08)] transition-colors hover:bg-fuchsia-100"
-                    >
-                        <FiPlus className="h-4 w-4" aria-hidden="true" /> 새 프로젝트
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <ProjectImportButton disabled={isLoading} />
+                        <button
+                            type="button"
+                            onClick={() => setIsCreating(true)}
+                            aria-label="새 프로젝트 만들기"
+                            className="group flex h-12 items-center justify-center gap-3 rounded-xl bg-white px-5 text-sm font-extrabold text-black shadow-[0_12px_40px_rgba(255,255,255,.08)] transition-colors hover:bg-fuchsia-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"
+                        >
+                            <FiPlus className="h-4 w-4" aria-hidden="true" /> 새 프로젝트
+                        </button>
+                    </div>
                 </header>
 
                 <section aria-labelledby="project-list-title" className="pt-10">

@@ -32,6 +32,7 @@ import {
     type ProjectSaveStatus,
 } from '@/app/lib/project/project-save-coordinator';
 import type {ProjectState} from '@/app/types';
+import {ProjectExportButton} from './ProjectExportButton';
 export default function Project({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const dispatch = useAppDispatch();
@@ -414,7 +415,7 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                 </div>
             )}
             {!sampleMode && (saveStatus.state === 'dirty' || saveStatus.state === 'saving') && (
-                <div role="status" className="absolute right-3 top-3 z-[90] rounded bg-black/80 px-3 py-1 text-xs text-white/80">
+                <div role="status" className="absolute right-3 top-16 z-[90] rounded bg-black/80 px-3 py-1 text-xs text-white/80">
                     {saveStatus.state === 'saving' ? '저장 중…' : '저장 대기 중…'}
                 </div>
             )}
@@ -438,7 +439,8 @@ export default function Project({ params }: { params: Promise<{ id: string }> })
                     <div className="min-w-0">{sampleMode ? <span className="block truncate text-sm font-black text-amber-200">샘플 프로젝트 · 읽기 전용</span> : <ProjectName />}</div>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
-                    <span className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] ${sampleMode ? 'text-amber-200' : saveStatus.state === 'saved' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    <ProjectExportButton project={projectState} disabled={isLoading || projectState.id !== id} />
+                    <span className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-[11px] ${sampleMode ? 'text-amber-200' : saveStatus.state === 'saved' ? 'text-emerald-400' : 'text-amber-400'}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${sampleMode ? 'bg-amber-300' : saveStatus.state === 'saved' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                         {sampleMode ? '저장 안 함' : saveStatus.state === 'saved' ? '저장됨' : saveStatus.state === 'saving' ? '저장 중…' : '저장 대기'}
                     </span>
