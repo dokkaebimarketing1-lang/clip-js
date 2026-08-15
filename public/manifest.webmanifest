@@ -1,0 +1,23 @@
+{
+  "name": "함께봄 Ai영상제작소",
+  "short_name": "함께봄 AI",
+  "description": "기획부터 캐릭터, 콘티, 생성, 편집까지 한 흐름으로 완성하는 AI 영상 제작 스튜디오",
+  "lang": "ko",
+  "start_url": "/projects",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#08090d",
+  "background_color": "#08090d",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

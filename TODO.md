@@ -43,7 +43,7 @@ There are also other various TODOS across the project (search with TODO)
 - [ ] Refactor timeline components cause it has a lot of repetitive code.
 - [ ] add elements as shapes blur effects.
 - [ ] more effects for text
-- [ ] PWA Mode: So users can edit offline.
+- [x] PWA Mode: So users can edit offline.
 - [ ] insert elements in timeline with https://www.npmjs.com/package/react-moveable (already used in timelines) **(ui)**
 - [x] thumbnail for listed vids and imgs **(ui)**
 - [ ] add option to use gpu with WebGL or WebGpu library like https://github.com/diffusionstudio/core

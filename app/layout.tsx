@@ -4,6 +4,7 @@ import { Inter, Roboto_Mono } from "next/font/google";
 import { Providers } from './providers'
 import Header from "./components/header/Header";
 import Footer from "./components/footer/Footer";
+import { ServiceWorkerRegistration } from './components/ServiceWorkerRegistration';
 import { Toaster } from 'react-hot-toast';
 import { Analytics } from "@vercel/analytics/next"
 
@@ -23,6 +24,16 @@ export const metadata: Metadata = {
     template: '%s · 함께봄 Ai영상제작소',
   },
   description: '기획부터 캐릭터, 콘티, 생성, 편집까지 한 흐름으로 완성하는 AI 영상 제작 스튜디오',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+  },
 }
 
 export const viewport: Viewport = {
@@ -39,6 +50,7 @@ export default function RootLayout({
       <body
         className={`min-h-screen flex flex-col bg-darkSurfacePrimary text-text-primary dark:bg-darkSurfacePrimary dark:text-dark-text-primary font-sans ${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <ServiceWorkerRegistration />
         <Providers>
           <Header />
           <main className="flex-grow">
