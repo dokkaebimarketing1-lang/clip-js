@@ -40,6 +40,19 @@ export type CharacterImageSubmissionRecord = z.infer<typeof recordSchema>;
 export type CharacterImageSubmissionClaim = Omit<CharacterImageSubmissionRecord,
   'version' | 'revision' | 'status' | 'providerJobId' | 'assetId' | 'lastError' | 'createdAt' | 'updatedAt'>;
 
+export interface CharacterImageSubmissionRepository {
+  get(key: string): Promise<CharacterImageSubmissionRecord | undefined>;
+  claim(input: CharacterImageSubmissionClaim): Promise<{record: CharacterImageSubmissionRecord; created: boolean}>;
+  recordProviderReceipt(key: string, providerJobId: string): Promise<CharacterImageSubmissionRecord>;
+  markUncertain(key: string, reason: string, providerJobId?: string): Promise<CharacterImageSubmissionRecord>;
+  markCompleted(key: string, assetId: string): Promise<CharacterImageSubmissionRecord>;
+  markFailed(key: string, reason: string): Promise<CharacterImageSubmissionRecord>;
+  findByAttempt(projectId: string, attemptId: string): Promise<CharacterImageSubmissionRecord | undefined>;
+  findByProviderJob(projectId: string, providerJobId: string): Promise<CharacterImageSubmissionRecord | undefined>;
+}
+
+export const parseCharacterImageSubmissionRecord = (value: unknown): CharacterImageSubmissionRecord => recordSchema.parse(value);
+
 export class CharacterImageSubmissionBusyError extends Error {
   constructor() {
     super('Character image submission repository is busy.');
@@ -113,7 +126,7 @@ const replaceJson = (path: string, value: unknown): void => {
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export const createFilesystemCharacterImageSubmissionRepository = (options: {rootDirectory: string; lockWaitMs?: number}) => {
+export const createFilesystemCharacterImageSubmissionRepository = (options: {rootDirectory: string; lockWaitMs?: number}): CharacterImageSubmissionRepository => {
   const lockWaitMs = options.lockWaitMs ?? LOCK_WAIT_MS;
   if (!Number.isFinite(lockWaitMs) || lockWaitMs < 0 || lockWaitMs > LOCK_WAIT_MS) throw new Error('Invalid character image lock wait.');
   const recordsDirectory = join(options.rootDirectory, 'records');
@@ -256,6 +269,12 @@ export const createFilesystemCharacterImageSubmissionRepository = (options: {roo
       if (!initial) throw new Error('Character image submission claim not found.');
       return withProjectLock(initial.projectId, () => persist(readRecord(key)!, {status: 'failed', lastError: reason}));
     },
+
+    findByAttempt: async (projectId: string, attemptId: string): Promise<CharacterImageSubmissionRecord | undefined> =>
+      readdirSync(recordsDirectory, {withFileTypes: true})
+        .filter((entry) => entry.isFile() && HEX64.test(entry.name.replace(/\.json$/, '')))
+        .map((entry) => readRecord(entry.name.slice(0, -5)))
+        .find((record): record is CharacterImageSubmissionRecord => Boolean(record && record.projectId === projectId && record.attemptId === attemptId)),
 
     findByProviderJob: async (projectId: string, providerJobId: string): Promise<CharacterImageSubmissionRecord | undefined> =>
       readdirSync(recordsDirectory, {withFileTypes: true})

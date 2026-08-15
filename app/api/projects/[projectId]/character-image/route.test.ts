@@ -5,6 +5,8 @@ import {extname, join} from 'node:path';
 import {tmpdir} from 'node:os';
 
 vi.mock('server-only', () => ({}));
+const authorizeApproval = vi.fn();
+vi.mock('@/app/lib/security/api-auth', () => ({authorizeApprovalRequest: authorizeApproval}));
 const submit = vi.fn();
 const getJob = vi.fn();
 const ingest = vi.fn();
@@ -48,6 +50,7 @@ const makeGet = (characterId = 'CHAR01') => new NextRequest(`http://localhost/ap
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  authorizeApproval.mockReturnValue(undefined);
   repositoryFaults.failReceipt = false;
   vi.stubEnv('CLIPJS_HIGGSFIELD_CHARACTER_IMAGE_SUBMIT_ENABLED', 'true');
   const submissionDirectory = mkdtempSync(join(tmpdir(), 'clipjs-character-image-route-claims-'));
@@ -66,6 +69,14 @@ afterEach(() => {
 });
 
 describe('project character image generation route', () => {
+  it('rejects paid submission before claiming when operator approval is invalid', async () => {
+    authorizeApproval.mockImplementationOnce(() => { throw new Error('Unauthorized approval request.'); });
+    const {POST} = await import('./route');
+    const response = await POST(makePost({prompt: 'A complete character image prompt.', confirmCreditCost: 1}), context);
+    expect(response.status).toBe(401);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it('requires explicit approval of exactly one credit', async () => {
     const {POST} = await import('./route');
     const response = await POST(makePost({prompt: 'a valid character reference prompt', confirmCreditCost: 0}), context);

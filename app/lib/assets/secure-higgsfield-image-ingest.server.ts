@@ -7,9 +7,8 @@ import {downloadPinnedRemoteMedia} from '@/app/lib/render/stage-remote-media';
 import {resolveSafeRemoteUrl} from '@/app/lib/security/remote-url.server';
 import type {createLocalGeneratedAssetStore} from './generated-asset-store.server';
 import type {GeneratedAsset} from './generated-asset-schema';
+import {HIGGSFIELD_IMAGE_MAX_BYTES, HIGGSFIELD_IMAGE_RESULT_HOSTS} from '@/app/lib/higgsfield/result-policy';
 
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-export const HIGGSFIELD_IMAGE_RESULT_HOSTS = ['d8j0ntlcm91z4.cloudfront.net'] as const;
 type AssetStore = ReturnType<typeof createLocalGeneratedAssetStore>;
 
 export const ingestHiggsfieldCharacterImage = async (input: {
@@ -30,7 +29,7 @@ export const ingestHiggsfieldCharacterImage = async (input: {
   });
   let downloadedPath: string | undefined;
   try {
-    const downloaded = await downloadPinnedRemoteMedia(input.resultUrl, destinationBase, MAX_IMAGE_BYTES, 'image', undefined, 0, resolveResultUrl);
+    const downloaded = await downloadPinnedRemoteMedia(input.resultUrl, destinationBase, HIGGSFIELD_IMAGE_MAX_BYTES, 'image', undefined, 0, resolveResultUrl);
     downloadedPath = join(input.assetStore.tempDirectory, downloaded.filename);
     const metadata = await sharp(downloadedPath, {failOn: 'error'}).metadata();
     const format = metadata.format;

@@ -3,6 +3,7 @@ import {createReadStream, statSync} from 'node:fs';
 import {Readable} from 'node:stream';
 import {getGeneratedAssetStore} from '@/app/lib/generation/runtime.server';
 import {verifyAssetCapability} from '@/app/lib/assets/asset-capability.server';
+import {getCharacterImageBlobAsset, readCharacterImageBlob} from '@/app/lib/assets/character-image-blob-store.server';
 
 const parseRange = (header: string | null, size: number): {start: number; end: number} | undefined => {
   if (!header) return undefined;
@@ -27,6 +28,18 @@ const serve = async (request: NextRequest, context: {params: Promise<{projectId:
   try {
     const {projectId, assetId} = await context.params;
     verifyAssetCapability(projectId, assetId, request.nextUrl.searchParams.get('token') ?? '');
+    const blobAsset = await getCharacterImageBlobAsset(assetId);
+    if (blobAsset) {
+      if (blobAsset.projectId !== projectId) return new NextResponse(null, {status: 404});
+      const blob = await readCharacterImageBlob(blobAsset);
+      const headers = new Headers({
+        'content-length': String(blob.blob.size),
+        'content-type': blobAsset.mimeType,
+        'cache-control': 'private, no-store',
+        etag: `"${blobAsset.contentSha256}"`,
+      });
+      return new NextResponse(head ? null : blob.stream, {status: 200, headers});
+    }
     const store = getGeneratedAssetStore();
     const asset = await store.get(assetId);
     if (!asset || asset.projectId !== projectId) return new NextResponse(null, {status: 404});
