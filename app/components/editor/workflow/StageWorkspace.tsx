@@ -123,6 +123,7 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const [isLockingStyle, setIsLockingStyle] = useState(false);
   const [pendingStyleAnchorId, setPendingStyleAnchorId] = useState<string | null>(null);
   const composeControllerRef = useRef<AbortController | null>(null);
+  const imageGenerationAttemptIdRef = useRef<string | null>(null);
   const workflowRef = useRef(workflow);
   const projectStateRef = useRef(projectState);
   const characterSheetsRef = useRef(allCharacterSheets);
@@ -427,6 +428,8 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
   const startCharacterImageGeneration = async () => {
     if (sampleModeRef.current || !activeCharacter?.id || !styleBible || !styleBibleHash || !confirmImageCredit || ['submitting', 'queued', 'processing'].includes(imageGenerationStatus)) return;
     const targetCharacterId = activeCharacter.id;
+    const attemptId = imageGenerationAttemptIdRef.current ?? crypto.randomUUID();
+    imageGenerationAttemptIdRef.current = attemptId;
     setCharacterUploadError(null);
     setGenerationCharacterId(targetCharacterId);
     setCompletedCharacterId(null);
@@ -450,10 +453,18 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
     try {
       const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/character-image`, {
         method: 'POST', headers: {'content-type': 'application/json'},
-        body: JSON.stringify({characterId: targetCharacterId, prompt, styleBibleHash, styleReferenceImageIds, confirmCreditCost: 1}),
+        body: JSON.stringify({characterId: targetCharacterId, attemptId, prompt, styleBibleHash, styleReferenceImageIds, confirmCreditCost: 1}),
       });
-      const payload = await response.json() as {jobId?: string; error?: string};
-      if (!response.ok || !payload.jobId) throw new Error(payload.error ?? '이미지 생성 요청 실패');
+      const payload = await response.json() as {jobId?: string; error?: string; code?: string};
+      if (!response.ok && payload.code === 'SUBMISSION_UNCERTAIN' && payload.jobId) {
+        setImageGenerationJobId(payload.jobId);
+        setImageGenerationStatus('queued');
+        return;
+      }
+      if (!response.ok || !payload.jobId) {
+        if (payload.code !== 'SUBMISSION_UNCERTAIN' && payload.code !== 'SUBMISSION_IN_PROGRESS') imageGenerationAttemptIdRef.current = null;
+        throw new Error(payload.error ?? '이미지 생성 요청 실패');
+      }
       setImageGenerationJobId(payload.jobId);
       setImageGenerationStatus('queued');
     } catch (error) {
@@ -480,10 +491,17 @@ export default function StageWorkspace({workspace, interviewBrief, characterShee
           setGenerationCharacterId(null);
           setRetryCharacterId(null);
           setImageGenerationStatus('completed');
+          imageGenerationAttemptIdRef.current = null;
           setConfirmImageCredit(false);
           return;
         }
-        if (payload.status === 'failed' || payload.status === 'error') throw new Error('Higgsfield 이미지 생성이 실패했습니다.');
+        const normalizedStatus = payload.status?.toLowerCase();
+        if (normalizedStatus && ['failed', 'error', 'cancelled', 'canceled'].includes(normalizedStatus)) {
+          imageGenerationAttemptIdRef.current = null;
+          setImageGenerationJobId(null);
+          setGenerationCharacterId(null);
+          throw new Error('Higgsfield 이미지 생성이 실패했습니다.');
+        }
         if (!cancelled) setImageGenerationStatus('processing');
       } catch (error) {
         if (!cancelled) {
