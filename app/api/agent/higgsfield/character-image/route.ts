@@ -84,6 +84,18 @@ export async function POST(request: NextRequest) {
       await repository.recordProviderReceipt(requestKey, providerJobId);
       return NextResponse.json({ok: true});
     }
+    if (action === 'cancel-queued') {
+      if (!UUID.test(leaseToken)) throw new Error('Invalid worker lease.');
+      const queuedJob = await queue.get(requestKey);
+      if (submission.status !== 'submitting' || submission.providerJobId || !queuedJob
+        || queuedJob.status !== 'leased' || queuedJob.leaseToken !== leaseToken || queuedJob.providerJobId) {
+        throw new Error('Only an actively leased request without a provider receipt can be cancelled.');
+      }
+      const reason = 'Cancelled by the operator before provider submission.';
+      await repository.markFailed(requestKey, reason);
+      await queue.update(requestKey, leaseToken, 'failed', {lastError: reason});
+      return NextResponse.json({ok: true, cancelledBeforeProviderSubmission: true});
+    }
     if (action === 'uncertain') {
       const reason = String(form.get('reason') ?? 'CLI provider submission result is uncertain.').slice(0, 4000);
       const validProviderJobId = UUID.test(providerJobId) ? providerJobId : undefined;

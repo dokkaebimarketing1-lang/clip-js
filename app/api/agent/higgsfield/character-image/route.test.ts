@@ -127,6 +127,42 @@ describe('Higgsfield character-image agent route', () => {
     expect(queue.update).not.toHaveBeenCalled();
   });
 
+  it('cancels a leased queued request only before any provider receipt exists', async () => {
+    repository.get.mockResolvedValueOnce({...job, status: 'submitting'});
+    queue.get.mockResolvedValueOnce({...job, status: 'leased'});
+    const form = new FormData();
+    form.set('action', 'cancel-queued');
+    form.set('requestKey', requestKey);
+    form.set('leaseToken', leaseToken);
+    const {POST} = await import('./route');
+
+    const response = await POST(new NextRequest('https://clip-js-three.vercel.app/api/agent/higgsfield/character-image', {
+      method: 'POST', headers: {authorization: 'Bearer test'}, body: form,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(repository.markFailed).toHaveBeenCalledWith(requestKey, 'Cancelled by the operator before provider submission.');
+    expect(queue.update).toHaveBeenCalledWith(requestKey, leaseToken, 'failed', {lastError: 'Cancelled by the operator before provider submission.'});
+  });
+
+  it('refuses queued cancellation when a provider receipt is already known', async () => {
+    repository.get.mockResolvedValueOnce({...job, status: 'queued', providerJobId});
+    queue.get.mockResolvedValueOnce({...job, status: 'submitted', providerJobId});
+    const form = new FormData();
+    form.set('action', 'cancel-queued');
+    form.set('requestKey', requestKey);
+    form.set('leaseToken', leaseToken);
+    const {POST} = await import('./route');
+
+    const response = await POST(new NextRequest('https://clip-js-three.vercel.app/api/agent/higgsfield/character-image', {
+      method: 'POST', headers: {authorization: 'Bearer test'}, body: form,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(repository.markFailed).not.toHaveBeenCalled();
+    expect(queue.update).not.toHaveBeenCalled();
+  });
+
   it('rejects an image above the Vercel multipart upload budget before Blob ingest', async () => {
     repository.get.mockResolvedValueOnce({...job, status: 'queued', providerJobId});
     const form = new FormData();
