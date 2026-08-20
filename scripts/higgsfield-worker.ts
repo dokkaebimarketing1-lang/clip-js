@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {downloadHiggsfieldProviderImage} from '../app/lib/higgsfield/provider-result-download';
 import {prepareHiggsfieldImageUpload} from '../app/lib/higgsfield/provider-result-upload';
+import {resolveHiggsfieldCliInvocation} from '../app/lib/higgsfield/higgsfield-cli-command';
 
 const baseUrl = (process.env.CLIPJS_WORKER_BASE_URL || 'https://clip-js-three.vercel.app').replace(/\/$/, '');
 const token = process.env.CLIPJS_AGENT_TOKEN || '';
@@ -11,7 +12,8 @@ const once = process.argv.includes('--once');
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const run = (args: string[]): Promise<unknown> => new Promise((resolve, reject) => {
-  const child = spawn('higgsfield', args, {windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe']});
+  const invocation = resolveHiggsfieldCliInvocation(args);
+  const child = spawn(invocation.command, invocation.args, {windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (chunk) => { stdout += String(chunk); });
